@@ -1,0 +1,43 @@
+# Generated build output
+/build/*
+!/build/.gitkeep
+/artifacts/*
+!/artifacts/.gitkeep
+
+# Local secrets and machine-specific configuration
+/local/*
+!/local/README.md
+!/local/wifi.nmconnection.example
+!/local/grub-password.example
+!/local/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Test output
+coverage.xml
+htmlcov/
+.junit/
+test-results/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# live-build generated state if a command is run from the repository root
+.binary/
+.chroot/
+.cache/
+config/bootstrap
+config/chroot
+config/common
+config/source
+binary/
+chroot/
+*.hybrid.iso
+*.iso

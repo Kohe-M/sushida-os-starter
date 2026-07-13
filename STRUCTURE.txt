@@ -1,0 +1,99 @@
+.gitignore
+AGENTS.md
+LICENSE
+Makefile
+README.md
+artifacts/
+  .gitkeep
+build/
+  .gitkeep
+builder/
+  Dockerfile
+  entrypoint.sh
+docs/
+  acceptance-tests.md
+  architecture.md
+  build.md
+  hardware-compatibility.md
+  installation.md
+  maintenance.md
+  networking.md
+  threat-model.md
+live-build/
+  auto/
+    build
+    clean
+    config
+  config/
+    hooks/
+      live/
+        010-create-kiosk-user.hook.chroot
+        020-enable-services.hook.chroot
+        030-configure-audio.hook.chroot
+        040-configure-network.hook.chroot
+        050-lock-down-system.hook.chroot
+        090-validate-image.hook.chroot
+    includes.binary/
+      README.md
+    includes.chroot/
+      etc/
+        NetworkManager/
+          conf.d/
+            90-sushida-os.conf
+        chromium/
+          policies/
+            managed/
+              sushida-os.json
+        sushida-os/
+          config.env
+        sysctl.d/
+          90-sushida-kiosk.conf
+        systemd/
+          logind.conf.d/
+            90-sushida-kiosk.conf
+          system/
+            sushida-kiosk.service
+            sushida-network-watch.service
+      usr/
+        local/
+          bin/
+            sushida-diagnostics
+            sushida-launch
+            sushida-network-watch
+        share/
+          sushida-os/
+            loading.html
+            offline.html
+      var/
+        lib/
+          sushida-os/
+            .gitkeep
+    package-lists/
+      kiosk.list.chroot
+local/
+  README.md
+  grub-password.example
+  wifi.nmconnection.example
+scripts/
+  build.sh
+  clean.sh
+  flash.sh
+  run-qemu.sh
+  smoke-test.sh
+  verify-iso.sh
+  windows/
+    Build-In-WSL.ps1
+    Run-Qemu.ps1
+tests/
+  qemu/
+    expected/
+      .gitkeep
+    smoke-test.sh
+  shell/
+    launch.bats
+    network-watch.bats
+  static/
+    test_chromium_policy.py
+    test_lockdown.py
+    test_no_secrets.py
+    test_systemd_units.py
