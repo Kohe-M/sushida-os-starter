@@ -10,7 +10,7 @@ builder:
 	$(CONTAINER_ENGINE) build -t $(BUILDER_IMAGE):$(BUILDER_TAG) -f builder/Dockerfile .
 
 configure:
-	@echo "TODO: Configure live-build."
+	./live-build/auto/config
 
 iso:
 	@echo "TODO: Build artifacts/sushida-os-amd64.iso."

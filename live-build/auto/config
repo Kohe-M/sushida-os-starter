@@ -1,5 +1,57 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "TODO: Implement this script."
-exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+BUILD_ROOT="$PROJECT_ROOT/build"
+SOURCE_DIR="$PROJECT_ROOT/live-build"
+
+# Reject a symlinked build root; all removal logic depends on physical paths.
+if [ -L "$BUILD_ROOT" ]; then
+    echo "ERROR: Build root is a symlink: $BUILD_ROOT" >&2
+    exit 1
+fi
+
+mkdir -p "$BUILD_ROOT"
+RESOLVED_BUILD_ROOT="$(cd "$BUILD_ROOT" && pwd -P)"
+EXPECTED_BUILD_ROOT="$PROJECT_ROOT/build"
+
+if [ "$RESOLVED_BUILD_ROOT" != "$EXPECTED_BUILD_ROOT" ]; then
+    echo "ERROR: Build root resolves to $RESOLVED_BUILD_ROOT, expected $EXPECTED_BUILD_ROOT" >&2
+    exit 1
+fi
+
+BUILD_DIR="$RESOLVED_BUILD_ROOT/live-build"
+
+# Remove any previous build directory with safety checks.
+if [ -e "$BUILD_DIR" ]; then
+    TARGET="$(cd "$BUILD_DIR" && pwd -P)"
+    EXPECTED="$BUILD_DIR"
+    if [ "$TARGET" != "$EXPECTED" ]; then
+        echo "ERROR: Build directory resolves to $TARGET, expected $EXPECTED" >&2
+        exit 1
+    fi
+    rm -rf -- "$TARGET"
+fi
+
+mkdir -p "$BUILD_DIR/config"
+mkdir -p "$BUILD_DIR/auto"
+
+# Copy tracked source configuration and auto scripts into the build directory.
+# live-build writes generated state into config/ during configuration; using
+# a copy keeps the tracked originals pristine.
+cp -a "$SOURCE_DIR/config/." "$BUILD_DIR/config/"
+cp -a "$SOURCE_DIR/auto/." "$BUILD_DIR/auto/"
+
+cd "$BUILD_DIR"
+lb config noauto \
+    --distribution trixie \
+    --architectures amd64 \
+    --binary-images iso-hybrid \
+    --source false \
+    --archive-areas "main contrib non-free-firmware" \
+    "$@"
+
+# Mark configuration as complete.  Because set -e is active, this line is
+# reached only when lb config succeeds.
+touch "$BUILD_DIR/.configured"

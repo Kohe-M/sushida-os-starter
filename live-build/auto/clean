@@ -1,5 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "TODO: Implement this script."
-exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+BUILD_ROOT="$PROJECT_ROOT/build"
+BUILD_DIR="$BUILD_ROOT/live-build"
+
+if [ -L "$BUILD_ROOT" ]; then
+    echo "ERROR: Build root is a symlink: $BUILD_ROOT" >&2
+    exit 1
+fi
+
+if [ ! -e "$BUILD_DIR" ]; then
+    echo "No build directory at $BUILD_DIR. Nothing to clean."
+    exit 0
+fi
+
+# Resolve the target to an absolute physical path and verify it is the
+# expected build directory before removing anything.
+TARGET="$(cd "$BUILD_DIR" && pwd -P)"
+EXPECTED="$(cd "$PROJECT_ROOT/build" && pwd -P)/live-build"
+
+if [ "$TARGET" != "$EXPECTED" ]; then
+    echo "ERROR: Refusing to remove $TARGET (expected $EXPECTED)" >&2
+    exit 1
+fi
+
+rm -rf -- "$TARGET"

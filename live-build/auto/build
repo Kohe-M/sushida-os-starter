@@ -1,5 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "TODO: Implement this script."
-exit 1
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+BUILD_ROOT="$PROJECT_ROOT/build"
+
+if [ -L "$BUILD_ROOT" ]; then
+    echo "ERROR: Build root is a symlink: $BUILD_ROOT" >&2
+    exit 1
+fi
+
+if [ ! -d "$BUILD_ROOT" ]; then
+    echo "ERROR: Build root does not exist. Run 'make configure' first." >&2
+    exit 1
+fi
+
+RESOLVED_BUILD_ROOT="$(cd "$BUILD_ROOT" && pwd -P)"
+EXPECTED_BUILD_ROOT="$PROJECT_ROOT/build"
+
+if [ "$RESOLVED_BUILD_ROOT" != "$EXPECTED_BUILD_ROOT" ]; then
+    echo "ERROR: Build root resolves to $RESOLVED_BUILD_ROOT, expected $EXPECTED_BUILD_ROOT" >&2
+    exit 1
+fi
+
+BUILD_DIR="$RESOLVED_BUILD_ROOT/live-build"
+
+if [ -L "$BUILD_DIR" ]; then
+    echo "ERROR: Build directory is a symlink: $BUILD_DIR" >&2
+    exit 1
+fi
+
+if [ ! -d "$BUILD_DIR" ]; then
+    echo "ERROR: Build directory does not exist. Run 'make configure' first." >&2
+    exit 1
+fi
+
+RESOLVED_BUILD_DIR="$(cd "$BUILD_DIR" && pwd -P)"
+EXPECTED_BUILD_DIR="$RESOLVED_BUILD_ROOT/live-build"
+
+if [ "$RESOLVED_BUILD_DIR" != "$EXPECTED_BUILD_DIR" ]; then
+    echo "ERROR: Build directory resolves to $RESOLVED_BUILD_DIR, expected $EXPECTED_BUILD_DIR" >&2
+    exit 1
+fi
+
+if [ ! -d "$BUILD_DIR/config" ] || [ ! -f "$BUILD_DIR/.configured" ]; then
+    echo "ERROR: Build directory not configured. Run 'make configure' first." >&2
+    exit 1
+fi
+
+cd "$BUILD_DIR"
+lb build noauto "$@"
