@@ -1,10 +1,13 @@
 SHELL := /bin/bash
 PYTHON ?= python3
+CONTAINER_ENGINE ?= docker
+BUILDER_IMAGE ?= sushida-os-builder
+BUILDER_TAG ?= trixie
 
 .PHONY: builder configure iso test test-static test-shell test-qemu qemu verify clean distclean
 
 builder:
-	@echo "TODO: Build the Debian 13 live-build container."
+	$(CONTAINER_ENGINE) build -t $(BUILDER_IMAGE):$(BUILDER_TAG) -f builder/Dockerfile .
 
 configure:
 	@echo "TODO: Configure live-build."
