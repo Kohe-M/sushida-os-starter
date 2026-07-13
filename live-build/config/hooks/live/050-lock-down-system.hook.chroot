@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+#
+# live-build chroot hook -- lock down console and escape inputs.
+# Runs inside the target chroot during image build, NOT on the host.
 set -euo pipefail
 
-echo "TODO: Implement live-build chroot hook."
+# Mask getty and virtual-terminal units that could provide a login shell.
+systemctl mask getty@.service
+systemctl mask autovt@.service
+systemctl mask serial-getty@.service
+systemctl mask console-getty.service
+systemctl mask container-getty@.service
+
+# Mask Ctrl+Alt+Delete target (single press).
+systemctl mask ctrl-alt-del.target
