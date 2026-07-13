@@ -1,1 +1,54 @@
-# TODO: Add minimal production packages.
+# Base live system
+linux-image-amd64
+live-boot
+live-config
+systemd-sysv
+
+# Kiosk compositor -- Wayland wlroots-based kiosk
+cage
+
+# Web browser
+chromium
+
+# Network management
+network-manager
+wpasupplicant
+wireless-regdb
+
+# Audio stack
+pipewire
+pipewire-pulse
+wireplumber
+
+# Graphics acceleration -- Mesa DRI, VA-API, EGL, GLES, GBM, DRM
+libgl1-mesa-dri
+mesa-va-drivers
+libegl1
+libgles2
+libgbm1
+libdrm2
+
+# Wayland client/server runtime
+libwayland-client0
+libwayland-server0
+
+# Keyboard layout data
+keyboard-configuration
+console-setup
+xkb-data
+
+# Japanese-capable font for Web display
+fonts-noto-cjk
+
+# Non-free firmware for target hardware (Intel/AMD/Realtek)
+firmware-intel-graphics
+firmware-iwlwifi
+firmware-realtek
+firmware-amd-graphics
+
+# CPU microcode
+intel-microcode
+amd64-microcode
+
+# TLS certificates
+ca-certificates
