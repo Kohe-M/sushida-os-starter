@@ -1,5 +1,4 @@
 {
-  "_comment": "Starter placeholder. Codex must validate all policy names against Debian Chromium.",
   "DeveloperToolsAvailability": 2,
   "BrowserGuestModeEnabled": false,
   "IncognitoModeAvailability": 1,
@@ -10,10 +9,11 @@
   "PrintingEnabled": false,
   "DownloadRestrictions": 3,
   "URLBlocklist": [
-    "*"
+    "*",
+    "view-source:*"
   ],
   "URLAllowlist": [
-    "https://sushida.net/*",
+    "https://.sushida.net:443",
     "file:///usr/share/sushida-os/offline.html"
   ]
 }
