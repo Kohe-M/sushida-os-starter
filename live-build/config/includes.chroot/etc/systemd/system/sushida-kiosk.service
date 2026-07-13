@@ -1,1 +1,23 @@
-# TODO: Implement and validate this production systemd unit.
+[Unit]
+Description=Sushi-da OS Kiosk
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=kiosk
+Group=kiosk
+RuntimeDirectory=sushida-os
+RuntimeDirectoryMode=0750
+ExecStart=/usr/local/bin/sushida-launch
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+KillMode=control-group
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+# live-build chroot hook -- enable production systemd services.
+# Runs inside the target chroot during image build, NOT on the host.
 set -euo pipefail
 
-echo "TODO: Implement live-build chroot hook."
+systemctl enable sushida-kiosk.service
