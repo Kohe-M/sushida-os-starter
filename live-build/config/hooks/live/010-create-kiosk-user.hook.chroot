@@ -1,4 +1,57 @@
 #!/usr/bin/env bash
+#
+# live-build chroot hook -- create and constrain the kiosk account.
+# Runs inside the target chroot during image build, NOT on the host.
 set -euo pipefail
 
-echo "TODO: Implement live-build chroot hook."
+KIOSK_USER="kiosk"
+KIOSK_SHELL="/usr/sbin/nologin"
+KIOSK_HOME="/nonexistent"
+KIOSK_GROUPS="audio,video,render,input"
+
+# Create dedicated primary group if it does not exist.
+if ! getent group "$KIOSK_USER" > /dev/null 2>&1; then
+    groupadd --system "$KIOSK_USER"
+fi
+
+# Verify the group exists and is not GID 0.
+KIOSK_GID="$(getent group "$KIOSK_USER" | cut -d: -f3)"
+if [ -z "$KIOSK_GID" ] || [ "$KIOSK_GID" -eq 0 ]; then
+    echo "ERROR: kiosk group has invalid GID: $KIOSK_GID" >&2
+    exit 1
+fi
+
+# Pre-validate that each supplemental group exists in the chroot.
+IFS=',' read -r -a KIOSK_GROUP_ARRAY <<< "$KIOSK_GROUPS"
+for grp in "${KIOSK_GROUP_ARRAY[@]}"; do
+    if ! getent group "$grp" > /dev/null 2>&1; then
+        echo "ERROR: Required group '$grp' does not exist in the chroot." >&2
+        exit 1
+    fi
+done
+
+if getent passwd "$KIOSK_USER" > /dev/null 2>&1; then
+    # Account already exists -- reject UID 0, then fix attributes.
+    KIOSK_UID="$(getent passwd "$KIOSK_USER" | cut -d: -f3)"
+    if [ -z "$KIOSK_UID" ] || [ "$KIOSK_UID" -eq 0 ]; then
+        echo "ERROR: kiosk user has UID 0" >&2
+        exit 1
+    fi
+    usermod --gid "$KIOSK_USER" \
+        --home "$KIOSK_HOME" \
+        --shell "$KIOSK_SHELL" \
+        "$KIOSK_USER"
+    # Replace supplementary groups with only the allowed set.
+    usermod -G "$KIOSK_GROUPS" "$KIOSK_USER"
+else
+    useradd --system \
+        --gid "$KIOSK_USER" \
+        --no-create-home \
+        --home-dir "$KIOSK_HOME" \
+        --shell "$KIOSK_SHELL" \
+        --groups "$KIOSK_GROUPS" \
+        "$KIOSK_USER"
+fi
+
+# Ensure the account has no usable password.
+passwd -l "$KIOSK_USER"
