@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 
 LOCAL_DIR = Path("local")
+GITIGNORE = Path(".gitignore")
 
 
 def _git_ls_files(path: str = "local/") -> list[str]:
@@ -17,6 +18,12 @@ def _git_ls_files(path: str = "local/") -> list[str]:
 def test_wifi_nmconnection_not_tracked() -> None:
     tracked = _git_ls_files("local/wifi.nmconnection")
     assert "local/wifi.nmconnection" not in tracked
+
+
+def test_wifi_nmconnection_in_gitignore() -> None:
+    content = GITIGNORE.read_text()
+    assert "/local/wifi.nmconnection" in content or \
+           "local/wifi.nmconnection" in content
 
 
 def test_only_allowed_tracked_in_local() -> None:
@@ -43,7 +50,7 @@ def test_wifi_example_no_real_ssid() -> None:
         if line.startswith("ssid="):
             val = line.split("=", 1)[1]
             assert val == "REPLACE_WITH_WIFI_SSID", (
-                f"Wi-Fi example contains a non-placeholder ssid: {val}"
+                "Wi-Fi example contains a non-placeholder ssid"
             )
 
 
@@ -54,7 +61,7 @@ def test_wifi_example_no_real_password() -> None:
         if line.startswith("psk="):
             val = line.split("=", 1)[1]
             assert val == "REPLACE_WITH_WIFI_PASSWORD", (
-                f"Wi-Fi example contains a non-placeholder psk: {val}"
+                "Wi-Fi example contains a non-placeholder psk"
             )
 
 
@@ -70,5 +77,5 @@ def test_grub_example_no_real_password() -> None:
         if line.startswith("GRUB_PASSWORD_PBKDF2="):
             val = line.split("=", 1)[1]
             assert val == "REPLACE_WITH_GENERATED_HASH", (
-                f"GRUB example contains a non-placeholder hash: {val}"
+                "GRUB example contains a non-placeholder hash"
             )

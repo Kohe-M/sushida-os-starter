@@ -38,10 +38,26 @@ mkdir -p "$BUILD_DIR/config"
 mkdir -p "$BUILD_DIR/auto"
 
 # Copy tracked source configuration and auto scripts into the build directory.
-# live-build writes generated state into config/ during configuration; using
-# a copy keeps the tracked originals pristine.
 cp -a "$SOURCE_DIR/config/." "$BUILD_DIR/config/"
 cp -a "$SOURCE_DIR/auto/." "$BUILD_DIR/auto/"
+
+# Conditionally stage local Wi-Fi credentials into the build tree.
+# The file is NOT copied to the tracked source tree.
+WIFI_SOURCE="$PROJECT_ROOT/local/wifi.nmconnection"
+WIFI_DEST="$BUILD_DIR/config/includes.chroot/etc/NetworkManager/system-connections/sushida-os-wifi.nmconnection"
+
+if [ -e "$WIFI_SOURCE" ]; then
+    if [ -L "$WIFI_SOURCE" ]; then
+        echo "ERROR: Wi-Fi credential file is a symlink: $WIFI_SOURCE" >&2
+        exit 1
+    fi
+    if [ ! -f "$WIFI_SOURCE" ]; then
+        echo "ERROR: Wi-Fi credential path is not a regular file: $WIFI_SOURCE" >&2
+        exit 1
+    fi
+    mkdir -p "$(dirname "$WIFI_DEST")"
+    install -m 0600 "$WIFI_SOURCE" "$WIFI_DEST"
+fi
 
 cd "$BUILD_DIR"
 lb config noauto \
@@ -52,6 +68,5 @@ lb config noauto \
     --archive-areas "main contrib non-free-firmware" \
     "$@"
 
-# Mark configuration as complete.  Because set -e is active, this line is
-# reached only when lb config succeeds.
+# Mark configuration as complete.
 touch "$BUILD_DIR/.configured"

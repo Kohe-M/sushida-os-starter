@@ -1,4 +1,25 @@
 #!/usr/bin/env bash
+#
+# live-build chroot hook -- configure network services.
+# Runs inside the target chroot during image build, NOT on the host.
 set -euo pipefail
 
-echo "TODO: Implement live-build chroot hook."
+# Enable NetworkManager.
+systemctl enable NetworkManager.service
+
+# Ensure system-connections directory exists.
+mkdir -p /etc/NetworkManager/system-connections
+chmod 0755 /etc/NetworkManager/system-connections
+
+# If a Wi-Fi connection was staged into the build tree, secure it.
+WIFI_FILE="/etc/NetworkManager/system-connections/sushida-os-wifi.nmconnection"
+
+if [ -f "$WIFI_FILE" ]; then
+    # Reject example placeholders that should never reach production.
+    if grep -q "REPLACE_WITH_" "$WIFI_FILE"; then
+        echo "ERROR: Wi-Fi connection file contains placeholder values: $WIFI_FILE" >&2
+        exit 1
+    fi
+    chown root:root "$WIFI_FILE"
+    chmod 0600 "$WIFI_FILE"
+fi
