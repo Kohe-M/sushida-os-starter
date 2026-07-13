@@ -1,5 +1,120 @@
 #!/usr/bin/env bash
+#
+# Kiosk launcher -- parse config, validate URL, start Cage + Chromium.
 set -euo pipefail
 
-echo "TODO: Implement this script."
-exit 1
+# ── production paths (overridable only with SUSHIDA_OS_TEST_MODE=1) ────────
+CONFIG_FILE="${SUSHIDA_OS_CONFIG:-/etc/sushida-os/config.env}"
+BASE_RUNTIME="${SUSHIDA_OS_RUNTIME:-/run/sushida-os}"
+
+if [ "$CONFIG_FILE" != "/etc/sushida-os/config.env" ] && \
+   [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
+    echo "ERROR: SUSHIDA_OS_CONFIG override requires SUSHIDA_OS_TEST_MODE=1" >&2
+    exit 1
+fi
+
+if [ "$BASE_RUNTIME" != "/run/sushida-os" ] && \
+   [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
+    echo "ERROR: SUSHIDA_OS_RUNTIME override requires SUSHIDA_OS_TEST_MODE=1" >&2
+    exit 1
+fi
+
+# ── executable pre-check ───────────────────────────────────────────────────
+if ! command -v cage > /dev/null 2>&1; then
+    echo "ERROR: cage not found in PATH" >&2
+    exit 1
+fi
+
+if ! command -v chromium > /dev/null 2>&1; then
+    echo "ERROR: chromium not found in PATH" >&2
+    exit 1
+fi
+
+# ── config parser ─────────────────────────────────────────────────────────
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "ERROR: Config file not found: $CONFIG_FILE" >&2
+    exit 1
+fi
+
+SUSHIDA_URL=""
+seen_url=false
+
+while IFS= read -r line || [ -n "$line" ]; do
+    # Strip trailing CR (Windows-style line endings)
+    line="${line%$'\r'}"
+    # Skip empty lines and comments
+    if [ -z "$line" ] || [[ "$line" == "#"* ]]; then
+        continue
+    fi
+    # Must contain '='
+    if [[ "$line" != *"="* ]]; then
+        echo "ERROR: Invalid config line (missing '='): $line" >&2
+        exit 1
+    fi
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "$key" in
+        SUSHIDA_URL)
+            if $seen_url; then
+                echo "ERROR: Duplicate SUSHIDA_URL" >&2
+                exit 1
+            fi
+            seen_url=true
+            SUSHIDA_URL="$value"
+            ;;
+        NETWORK_CHECK_INTERVAL_SECONDS|KIOSK_RESTART_SECONDS)
+            # Known keys, safely ignored by this launcher
+            ;;
+        *)
+            echo "ERROR: Unknown config key: $key" >&2
+            exit 1
+            ;;
+    esac
+done < "$CONFIG_FILE"
+
+if [ -z "$SUSHIDA_URL" ]; then
+    echo "ERROR: SUSHIDA_URL not set" >&2
+    exit 1
+fi
+
+# ── URL validation ────────────────────────────────────────────────────────
+# Allow only https://sushida.net/ or sub-paths, no other origin or scheme.
+case "$SUSHIDA_URL" in
+    https://sushida.net|https://sushida.net/|https://sushida.net/*)
+        # OK
+        ;;
+    *)
+        echo "ERROR: Invalid or disallowed URL: $SUSHIDA_URL" >&2
+        exit 1
+        ;;
+esac
+
+# ── user check ────────────────────────────────────────────────────────────
+if [ "$(id -un)" != "kiosk" ]; then
+    echo "ERROR: Launcher must run as kiosk user" >&2
+    exit 1
+fi
+
+# ── runtime directories ──────────────────────────────────────────────────
+umask 077
+mkdir -p "$BASE_RUNTIME"/{chromium,cache,tmp,downloads,xdg-runtime}
+
+# ── environment ──────────────────────────────────────────────────────────
+export HOME="$BASE_RUNTIME/home"
+export XDG_RUNTIME_DIR="$BASE_RUNTIME/xdg-runtime"
+export XDG_CACHE_HOME="$BASE_RUNTIME/cache"
+export TMPDIR="$BASE_RUNTIME/tmp"
+
+# ── Chromium arguments ───────────────────────────────────────────────────
+CHROMIUM_ARGS=(
+    --kiosk
+    --no-first-run
+    --no-default-browser-check
+    --user-data-dir="$BASE_RUNTIME/chromium"
+    --disk-cache-dir="$BASE_RUNTIME/cache"
+    --ozone-platform=wayland
+    --hide-crash-restore-bubble
+)
+
+# ── exec Cage + Chromium ─────────────────────────────────────────────────
+exec cage -- chromium "${CHROMIUM_ARGS[@]}" "$SUSHIDA_URL"
