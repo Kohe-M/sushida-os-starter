@@ -1,4 +1,5 @@
 SHELL := /bin/bash
+PYTHON ?= python3
 
 .PHONY: builder configure iso test test-static test-shell test-qemu qemu verify clean distclean
 
@@ -16,7 +17,7 @@ test: test-static test-shell
 	@echo "TODO: Add QEMU tests when supported."
 
 test-static:
-	@echo "TODO: Run Python static validation."
+	$(PYTHON) -m pytest tests/static/
 
 test-shell:
 	@echo "TODO: Run ShellCheck and BATS."
