@@ -5,3 +5,4 @@
 set -euo pipefail
 
 systemctl enable sushida-kiosk.service
+systemctl enable sushida-network-watch.service

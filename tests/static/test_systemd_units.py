@@ -1,8 +1,11 @@
 import subprocess
 from pathlib import Path
 
-UNIT = Path(
+KIOSK_UNIT = Path(
     "live-build/config/includes.chroot/etc/systemd/system/sushida-kiosk.service"
+)
+WATCHER_UNIT = Path(
+    "live-build/config/includes.chroot/etc/systemd/system/sushida-network-watch.service"
 )
 HOOK = Path(
     "live-build/config/hooks/live/020-enable-services.hook.chroot"
@@ -22,13 +25,8 @@ def _git_ls_files_stage(path: str) -> list[str]:
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
-def _unit_section(name: str) -> dict[str, str]:
-    """Return key→value pairs from a systemd unit section.
-
-    The returned dict distinguishes "key absent" (not in dict) from
-    "key present with empty value" (in dict, maps to "").
-    """
-    content = UNIT.read_text()
+def _unit_section(path: Path, name: str) -> dict[str, str]:
+    content = path.read_text()
     mapping: dict[str, str] = {}
     in_section = False
     for line in content.splitlines():
@@ -46,7 +44,6 @@ def _unit_section(name: str) -> dict[str, str]:
 
 
 def _hook_exec_lines() -> list[str]:
-    """Return non-comment, non-empty lines from the enable hook."""
     lines: list[str] = []
     for line in HOOK.read_text().splitlines():
         stripped = line.strip()
@@ -58,154 +55,230 @@ def _hook_exec_lines() -> list[str]:
     return lines
 
 
-# ── unit: presence ──────────────────────────────────────────────────────────
+_K_sec = lambda s: _unit_section(KIOSK_UNIT, s)
+_W_sec = lambda s: _unit_section(WATCHER_UNIT, s)
 
 
-def test_unit_exists() -> None:
-    assert UNIT.is_file()
+# ── files exist ──────────────────────────────────────────────────────────────
+
+def test_kiosk_unit_exists() -> None:
+    assert KIOSK_UNIT.is_file()
 
 
-def test_unit_no_todo() -> None:
-    assert "TODO" not in UNIT.read_text()
+def test_watcher_unit_exists() -> None:
+    assert WATCHER_UNIT.is_file()
+
+
+def test_kiosk_unit_no_todo() -> None:
+    assert "TODO" not in KIOSK_UNIT.read_text()
+
+
+def test_watcher_unit_no_todo() -> None:
+    assert "TODO" not in WATCHER_UNIT.read_text()
 
 
 def test_hook_exists() -> None:
     assert HOOK.is_file()
 
 
-# ── unit: [Unit] section ───────────────────────────────────────────────────
+# ── kiosk unit: [Unit] section ───────────────────────────────────────────────
+
+def test_kiosk_description_set() -> None:
+    assert "Description" in _K_sec("Unit")
 
 
-def test_unit_description_set() -> None:
-    unit = _unit_section("Unit")
-    assert "Description" in unit
-
-
-def test_after_network() -> None:
-    unit = _unit_section("Unit")
-    after = unit.get("After", "")
+def test_kiosk_after_network() -> None:
+    after = _K_sec("Unit").get("After", "")
     assert "network-online.target" in after
 
 
-def test_startlimitinterval_disabled() -> None:
-    unit = _unit_section("Unit")
-    assert "StartLimitIntervalSec" in unit, (
-        "StartLimitIntervalSec must be present in [Unit]"
-    )
-    assert unit["StartLimitIntervalSec"] == "0", (
-        f"StartLimitIntervalSec={unit['StartLimitIntervalSec']} must be 0"
-    )
+def test_kiosk_startlimitinterval_disabled() -> None:
+    unit = _K_sec("Unit")
+    assert "StartLimitIntervalSec" in unit
+    assert unit["StartLimitIntervalSec"] == "0"
 
 
-def test_startlimitburst_not_in_service() -> None:
-    """StartLimitBurst must not appear in [Service] (moved to [Unit])."""
-    svc = _unit_section("Service")
+def test_kiosk_startlimitburst_not_in_service() -> None:
+    svc = _K_sec("Service")
     assert "StartLimitBurst" not in svc
 
 
-# ── unit: [Service] section ─────────────────────────────────────────────────
+# ── kiosk unit: [Service] section ────────────────────────────────────────────
+
+def test_kiosk_user_kiosk() -> None:
+    assert _K_sec("Service").get("User") == "kiosk"
 
 
-def test_service_user_kiosk() -> None:
-    svc = _unit_section("Service")
-    assert svc.get("User") == "kiosk"
+def test_kiosk_group_kiosk() -> None:
+    assert _K_sec("Service").get("Group") == "kiosk"
 
 
-def test_service_group_kiosk() -> None:
-    svc = _unit_section("Service")
-    assert svc.get("Group") == "kiosk"
+def test_kiosk_execstart_correct_path() -> None:
+    assert _K_sec("Service").get("ExecStart") == "/usr/local/bin/sushida-launch"
 
 
-def test_execstart_correct_path() -> None:
-    svc = _unit_section("Service")
-    assert svc.get("ExecStart") == "/usr/local/bin/sushida-launch"
+def test_kiosk_restart_always() -> None:
+    assert _K_sec("Service").get("Restart") == "always"
 
 
-def test_restart_always() -> None:
-    svc = _unit_section("Service")
-    assert svc.get("Restart") == "always"
-
-
-def test_restartsec_finite_short() -> None:
-    svc = _unit_section("Service")
-    val = svc.get("RestartSec", "")
+def test_kiosk_restartsec_finite_short() -> None:
+    val = _K_sec("Service").get("RestartSec", "")
     assert val
     n = int(val)
-    assert 1 <= n <= 4, f"RestartSec={n} must be 1-4 seconds"
+    assert 1 <= n <= 4
 
 
-def test_timeoutstopsec_finite() -> None:
-    svc = _unit_section("Service")
-    val = svc.get("TimeoutStopSec", "")
-    assert val, "TimeoutStopSec must be set to a finite value"
-    n = int(val)
-    assert n >= 1, f"TimeoutStopSec={n} must be positive"
+def test_kiosk_timeoutstopsec_finite() -> None:
+    val = _K_sec("Service").get("TimeoutStopSec", "")
+    assert val
+    assert int(val) >= 1
 
 
-def test_killmode_control_group() -> None:
-    svc = _unit_section("Service")
-    assert svc.get("KillMode") == "control-group"
+def test_kiosk_killmode_control_group() -> None:
+    assert _K_sec("Service").get("KillMode") == "control-group"
 
 
-def test_nonewprivileges_true() -> None:
-    svc = _unit_section("Service")
-    assert svc.get("NoNewPrivileges") == "true"
+def test_kiosk_nonewprivileges_true() -> None:
+    assert _K_sec("Service").get("NoNewPrivileges") == "true"
 
 
-def test_capability_bounding_set_empty() -> None:
-    svc = _unit_section("Service")
-    assert "CapabilityBoundingSet" in svc, (
-        "CapabilityBoundingSet must be explicitly set (even if empty)"
-    )
-    assert svc["CapabilityBoundingSet"] == "", (
-        "CapabilityBoundingSet must be empty (no capabilities granted)"
-    )
+def test_kiosk_capability_bounding_set_empty() -> None:
+    svc = _K_sec("Service")
+    assert "CapabilityBoundingSet" in svc
+    assert svc["CapabilityBoundingSet"] == ""
 
 
-def test_ambient_capabilities_empty() -> None:
-    svc = _unit_section("Service")
-    assert "AmbientCapabilities" in svc, (
-        "AmbientCapabilities must be explicitly set (even if empty)"
-    )
-    assert svc["AmbientCapabilities"] == "", (
-        "AmbientCapabilities must be empty (no capabilities granted)"
-    )
+def test_kiosk_ambient_capabilities_empty() -> None:
+    svc = _K_sec("Service")
+    assert "AmbientCapabilities" in svc
+    assert svc["AmbientCapabilities"] == ""
 
 
-def test_runtime_directory_sushida_os() -> None:
-    svc = _unit_section("Service")
-    assert svc.get("RuntimeDirectory") == "sushida-os"
+def test_kiosk_runtime_directory_sushida_os() -> None:
+    assert _K_sec("Service").get("RuntimeDirectory") == "sushida-os"
 
 
-def test_runtime_directory_mode() -> None:
-    svc = _unit_section("Service")
-    mode = svc.get("RuntimeDirectoryMode", "")
-    assert mode in ("0750", "750"), f"RuntimeDirectoryMode={mode} is not restrictive"
+def test_kiosk_runtime_directory_mode() -> None:
+    mode = _K_sec("Service").get("RuntimeDirectoryMode", "")
+    assert mode in ("0750", "750")
 
 
-def test_type_simple() -> None:
-    svc = _unit_section("Service")
-    assert svc.get("Type") == "simple"
+def test_kiosk_type_simple() -> None:
+    assert _K_sec("Service").get("Type") == "simple"
 
 
-def test_no_forbidden_flags_in_execstart() -> None:
-    svc = _unit_section("Service")
-    path = svc.get("ExecStart", "")
+def test_kiosk_no_forbidden_flags_in_execstart() -> None:
+    path = _K_sec("Service").get("ExecStart", "")
     assert "--no-sandbox" not in path
     assert "--disable-gpu" not in path
 
 
-# ── unit: [Install] section ─────────────────────────────────────────────────
+# ── kiosk unit: [Install] section ────────────────────────────────────────────
+
+def test_kiosk_wantedby_multi_user() -> None:
+    target = _K_sec("Install").get("WantedBy", "")
+    assert target in ALLOWED_BY_DEFAULT
 
 
-def test_wantedby_multi_user() -> None:
-    install = _unit_section("Install")
-    target = install.get("WantedBy", "")
-    assert target in ALLOWED_BY_DEFAULT, f"WantedBy={target} is unexpected"
+# ── watcher unit: [Unit] section ─────────────────────────────────────────────
+
+def test_watcher_description_set() -> None:
+    assert "Description" in _W_sec("Unit")
 
 
-# ── enable hook ─────────────────────────────────────────────────────────────
+def test_watcher_after_network_and_kiosk() -> None:
+    after = _W_sec("Unit").get("After", "")
+    assert "NetworkManager.service" in after
+    assert "sushida-kiosk.service" in after
 
+
+def test_watcher_wants_networkmanager() -> None:
+    assert _W_sec("Unit").get("Wants", "") == "NetworkManager.service"
+
+
+def test_watcher_startlimitinterval_disabled() -> None:
+    unit = _W_sec("Unit")
+    assert "StartLimitIntervalSec" in unit
+    assert unit["StartLimitIntervalSec"] == "0"
+
+
+def test_watcher_partof_not_enable_proxy() -> None:
+    """PartOf is a lifecycle relationship, not a substitute for enable."""
+    unit = _W_sec("Unit")
+    partof = unit.get("PartOf", "")
+    assert "sushida-kiosk.service" in partof
+
+
+# ── watcher unit: [Service] section ──────────────────────────────────────────
+
+def test_watcher_user_kiosk() -> None:
+    assert _W_sec("Service").get("User") == "kiosk"
+
+
+def test_watcher_group_kiosk() -> None:
+    assert _W_sec("Service").get("Group") == "kiosk"
+
+
+def test_watcher_execstart_correct_path() -> None:
+    assert _W_sec("Service").get("ExecStart") == "/usr/local/bin/sushida-network-watch"
+
+
+def test_watcher_restart_always() -> None:
+    assert _W_sec("Service").get("Restart") == "always"
+
+
+def test_watcher_restartsec_bounded() -> None:
+    val = _W_sec("Service").get("RestartSec", "")
+    assert val
+    n = int(val)
+    assert 1 <= n <= 10
+
+
+def test_watcher_timeoutstopsec_finite() -> None:
+    val = _W_sec("Service").get("TimeoutStopSec", "")
+    assert val
+    assert int(val) >= 1
+
+
+def test_watcher_killmode_control_group() -> None:
+    assert _W_sec("Service").get("KillMode") == "control-group"
+
+
+def test_watcher_nonewprivileges_true() -> None:
+    assert _W_sec("Service").get("NoNewPrivileges") == "true"
+
+
+def test_watcher_capability_bounding_set_empty() -> None:
+    svc = _W_sec("Service")
+    assert "CapabilityBoundingSet" in svc
+    assert svc["CapabilityBoundingSet"] == ""
+
+
+def test_watcher_ambient_capabilities_empty() -> None:
+    svc = _W_sec("Service")
+    assert "AmbientCapabilities" in svc
+    assert svc["AmbientCapabilities"] == ""
+
+
+def test_watcher_no_forbidden_flags_in_execstart() -> None:
+    path = _W_sec("Service").get("ExecStart", "")
+    assert "--no-sandbox" not in path
+    assert "--disable-gpu" not in path
+
+
+def test_watcher_no_root() -> None:
+    svc = _W_sec("Service")
+    assert svc.get("User") != "root"
+
+
+# ── watcher unit: [Install] section ──────────────────────────────────────────
+
+def test_watcher_wantedby_multi_user() -> None:
+    target = _W_sec("Install").get("WantedBy", "")
+    assert target in ALLOWED_BY_DEFAULT
+
+
+# ── enable hook ──────────────────────────────────────────────────────────────
 
 def test_hook_strict_mode() -> None:
     assert "set -euo pipefail" in HOOK.read_text()
@@ -215,23 +288,42 @@ def test_hook_no_todo() -> None:
     assert "TODO" not in HOOK.read_text()
 
 
-def test_hook_enables_only_kiosk_service() -> None:
-    """Hook must enable exactly sushida-kiosk.service (no other services)."""
+def test_hook_enables_kiosk_and_watcher() -> None:
+    """Hook must enable exactly 2 services: sushida-kiosk and sushida-network-watch."""
     exec_lines = _hook_exec_lines()
-    # Filter only systemctl enable commands
     enable_lines = [line for line in exec_lines if "systemctl enable" in line]
     assert len(enable_lines) >= 1, "No systemctl enable command found"
+    # Collect all .service names from enable commands
+    services_found: list[str] = []
     for cmd in enable_lines:
-        # Each command should reference only sushida-kiosk.service
-        assert "sushida-kiosk.service" in cmd, (
-            f"Unexpected enable target: {cmd}"
-        )
-        # Verify no other .service file is named
         parts = cmd.split()
-        services = [p for p in parts if p.endswith(".service")]
-        assert all(s == "sushida-kiosk.service" for s in services), (
-            f"Extra service(s) enabled: {services}"
-        )
+        services_found.extend(p for p in parts if p.endswith(".service"))
+    # Must be exactly 2 tokens (rejects duplicates and extra services)
+    assert len(services_found) == 2, (
+        f"Expected exactly 2 .service tokens, got {len(services_found)}: {services_found}"
+    )
+    expected = {"sushida-kiosk.service", "sushida-network-watch.service"}
+    assert set(services_found) == expected, (
+        f"Expected enabled services {expected}, got {set(services_found)}"
+    )
+    # Reject wildcard, variable expansion, --now, start, restart
+    text = HOOK.read_text()
+    assert "--now" not in text
+    assert "systemctl start" not in text
+    assert "systemctl restart" not in text
+    assert "systemctl daemon-reload" not in text
+    for cmd in enable_lines:
+        assert "*" not in cmd, f"Wildcard in enable command: {cmd}"
+        assert "${" not in cmd, f"Variable expansion in enable command: {cmd}"
+
+
+def test_hook_no_start_or_now() -> None:
+    """Hook must not use --now, start, restart, or daemon-reload."""
+    text = HOOK.read_text()
+    assert "--now" not in text
+    assert "systemctl start" not in text
+    assert "systemctl restart" not in text
+    assert "systemctl daemon-reload" not in text
 
 
 def test_hook_is_executable() -> None:

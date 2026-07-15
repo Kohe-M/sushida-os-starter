@@ -1,1 +1,26 @@
-# TODO: Implement and validate this production systemd unit.
+[Unit]
+Description=Sushi-da OS Network Watcher
+After=NetworkManager.service sushida-kiosk.service
+Wants=NetworkManager.service
+PartOf=sushida-kiosk.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=kiosk
+Group=kiosk
+ExecStart=/usr/local/bin/sushida-network-watch
+Restart=always
+RestartSec=5
+TimeoutStopSec=5
+KillMode=control-group
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target
