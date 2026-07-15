@@ -35,8 +35,8 @@
 | K29 | Ctrl+Shift+I | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
 | K30 | F11 | No full-screen toggle (already kiosk) |  |  | Chromium --kiosk mode |
 | K31 | F12 | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
-| K32 | Disconnect network | Local offline screen appears |  |  | Task 11 network watcher |
-| K33 | Restore network | Sushi-da page returns automatically |  |  | Task 11 network watcher |
+| K32 | Disconnect network | Local offline screen appears |  |  | Low-frequency NetworkManager watcher |
+| K33 | Restore network | Sushi-da page returns automatically |  |  | Validated URL recovery transition |
 
 ## Gameplay input
 
@@ -55,7 +55,7 @@
 |---|---|---|---|---|---|
 | P01 | Chromium crash | Cage exits; service restarts within 5 seconds |  |  | Restart=always + RestartSec=3 |
 | P02 | Cage crash | Service restarts within 5 seconds |  |  | Restart=always + RestartSec=3 |
-| P03 | Power loss | On next boot, system returns to known-good kiosk state |  |  | Read-only root (Task 13) |
+| P03 | Power loss | On next boot, system returns to known-good kiosk state |  |  | Immutable SquashFS plus volatile overlay |
 
 ## Audio
 
@@ -69,3 +69,54 @@
 |---|---|---|---|---|---|
 | V01 | Check WebGL | Chromium uses WebGL without deliberate GPU disable flags |  |  | No --disable-gpu or --disable-webgl |
 | V02 | Check HW acceleration | GPU-accelerated compositing is active |  |  | --ozone-platform=wayland |
+
+## Definition of Done coverage map
+
+This table defines required evidence; it does not record a pass. Automated
+configuration evidence and manual runtime evidence are complementary.
+
+| ID | Definition of Done item | Required verification |
+|---|---|---|
+| D01 | `make iso` succeeds | Automated builder command exit 0 and retained build log |
+| D02 | ISO and checksums generated | Automated `make verify`, four exact artifact paths, matching SHA-256 |
+| D03 | QEMU boots image | Automated BIOS/UEFI bounded run plus reviewed final screenshots |
+| D04 | No ordinary login screen | Serial login-prompt scan plus BIOS/UEFI screenshot and physical boot review |
+| D05 | Chromium displays configured page full-screen | Manual QEMU/hardware visual inspection with artifact SHA recorded |
+| D06 | Tabs and address bar absent | Manual Chromium UI inspection; launcher/static policy evidence is supporting only |
+| D07 | Cannot switch application | Manual K02-K07 and compositor behavior on representative hardware |
+| D08 | Cannot open terminal | Automated prohibited-package checks plus manual K08 |
+| D09 | Developer tools cannot open | Managed-policy test plus manual K29/K31 |
+| D10 | Arbitrary navigation blocked | JSON/launcher/helper URL tests plus controlled manual navigation attempts |
+| D11 | Chromium restarts within five seconds | Unit static check plus timed manual P01/K04/K27 observation |
+| D12 | Offline mode works | Watcher BATS plus reviewed offline QEMU/hardware K32 evidence |
+| D13 | Network recovery returns to configured page | Watcher BATS plus physical or controlled runtime K33 |
+| D14 | WebGL not deliberately disabled | Source/argv tests; actual WebGL backend requires V01 hardware evidence |
+| D15 | Audio packages/config present | Package/image validation; audible output requires A01 hardware evidence |
+| D16 | Kiosk user has no administrative privilege | Account hook, image validator, package and service static tests |
+| D17 | No SSH server installed | Package-list and image-internal prohibited-package validation |
+| D18 | Root filesystem is read-only design | live-build/SquashFS verification plus destructive P03 test on sacrificial hardware |
+| D19 | No secret committed | Git-aware secret tests and manual artifact distribution review |
+| D20 | `make test` succeeds | Retained full pytest/ShellCheck/BATS command output from the release commit |
+| D21 | Build, verification, installation, acceptance documented | Static documentation test plus operator review of all required docs |
+
+## Evidence collection rules
+
+For every manual run, record artifact SHA-256, Git commit, hardware model,
+firmware version/settings, display/audio/network/input devices, date, operator,
+steps, actual result, and retained screenshot/log/report paths. Do not put SSIDs,
+PSKs, MAC addresses, tokens, or other credentials in shared evidence.
+
+- Input latency: preserve raw high-speed video or external event/display timing
+  data and the measurement method. Define the deployment threshold before the
+  run; this project specifies no invented universal number.
+- GPU/WebGL: retain a controlled `chrome://gpu` screenshot and redacted
+  diagnostics; do not enable remote debugging or weaken production policy.
+- Audio: identify the physical connector/output and record audible/not-audible
+  results separately for each tested path.
+- Power loss: use sacrificial hardware, predefine cycle count and interruption
+  phases, and record every subsequent boot/runtime-state result.
+- Representative hardware: use the matrix in `hardware-compatibility.md` and do
+  not generalize one passing model to all Intel/AMD systems.
+
+The `Actual result` and `Pass/Fail` cells above intentionally remain blank until
+the corresponding procedure is executed on the named artifact and hardware.

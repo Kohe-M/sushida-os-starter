@@ -80,7 +80,7 @@ The allowlist contains:
 | Entry | Purpose |
 |---|---|
 | `https://.sushida.net:443` | Sushi-da origin, port 443, all paths |
-| `file:///usr/share/sushida-os/offline.html` | Local offline page (expected Task 11) |
+| `file:///usr/share/sushida-os/offline.html` | Local offline page |
 
 `https://.sushida.net:443` uses the following Chromium URL filter
 conventions (see [Chromium URL filter format][url-filter-format]):
@@ -163,8 +163,8 @@ beyond managed Chromium policy:
 
 - Physical access to storage or firmware
 - Booting from removable media
-- Keyboard shortcut interception (Alt+Tab, Ctrl+Alt+T, etc. — Task 9)
-- Virtual terminal switching (Task 9)
+- Keyboard shortcut behavior that depends on compositor/browser/runtime input handling
+- Physical verification of virtual-terminal switching controls
 - Process inspection from another user account (kernel-level)
 - DMA attacks via Thunderbolt / PCIe
 - Network-level traffic interception
@@ -173,17 +173,16 @@ These are documented in `docs/threat-model.md`.
 
 ## Verified vs. unverified
 
-The following were confirmed by static inspection of this repository:
+The following are verified by repository tests and image/artifact validation:
 
 - Policy JSON is valid and contains no placeholder or duplicate keys
-- All required policy names match those expected by Chromium enterprise
-  policy documentation
+- Required policy names and exact configured values are checked
 - URL allowlist uses explicit host (`.sushida.net`) and port (`:443`)
 - Launcher and policy boundaries are consistent for the permitted origin
 - `view-source:*` is added to the URLBlocklist
 
-The following require QEMU, real hardware, or a Debian 13 Chromium runtime
-to verify:
+The following still require controlled Chromium runtime or physical hardware
+verification:
 
 - Chromium actually enforces each policy as expected
 - The URL filter patterns match exactly sushida.net (not subdomains)
@@ -194,6 +193,6 @@ to verify:
 - WebGL, GPU acceleration, and Chromium sandbox remain functional
 - The offline page renders correctly when loaded via file://
 
-Policy values were selected based on Chromium enterprise policy
-documentation.  Runtime verification with Debian 13 Chromium has not been
-performed.
+The launcher/session BATS suite verifies Chromium argument construction and
+forbidden-flag absence with stubs. It does not establish effective GPU,
+sandbox, policy, audio, or kiosk-escape behavior in the real browser.

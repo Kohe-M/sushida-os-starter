@@ -1,36 +1,56 @@
 # Hardware compatibility
 
-## Primary supported targets
+## Intended targets
 
-- Intel integrated graphics (Iris Xe, UHD Graphics, etc.) with Mesa
-- AMD integrated graphics (Radeon Graphics in Ryzen APUs) with Mesa
+- amd64 systems with legacy BIOS or UEFI
+- Intel integrated graphics with Mesa and `firmware-intel-graphics`
+- AMD integrated graphics with Mesa and `firmware-amd-graphics`
+- Intel Wi-Fi (`firmware-iwlwifi`) and common Realtek devices (`firmware-realtek`)
+- HDMI/DisplayPort or HDA analog audio through PipeWire/WirePlumber
 
-## Audio
+The image includes DRM, GBM, EGL/GLES, Wayland, Mesa DRI/VA, PipeWire,
+PipeWire-Pulse, and standard keyboard data. Production does not pass
+`--disable-gpu`, `--disable-webgl`, or `--no-sandbox`, and does not force
+software rendering. QEMU uses emulated `virtio-vga` and TCG when KVM is absent;
+that is not evidence for physical GPU performance.
 
-- PipeWire (started by the kiosk launcher before Cage/Chromium)
-- WirePlumber session manager
-- PipeWire-Pulse compatibility layer
-- HDMI/DisplayPort audio via GPU (requires hardware)
-- Analog audio via built-in Intel/AMD HDA controllers (requires hardware)
+NVIDIA proprietary drivers are not included or supported. Xwayland may appear
+as a Debian Cage dependency; no Xorg desktop, display manager, or ordinary X11
+session is configured.
 
-## Boot
+## Evidence to collect per representative machine
 
-- UEFI and legacy BIOS
-- Debian 13 live ISO amd64
+Record the hardware model, firmware version/settings, display/audio connection,
+input devices, network adapter, artifact SHA-256, and test date. Preserve the
+diagnostics report and acceptance worksheet without Wi-Fi credentials.
 
-## Untested
+- **DRM/GBM/EGL/WebGL:** save `sushida-diagnostics`, inspect Chromium's
+  controlled `chrome://gpu` view, and record renderer/backend, errors, and a
+  screenshot. Do not enable remote debugging or weaken URL policy in production.
+- **Audio:** record selected physical output, whether game audio is audible,
+  PipeWire/WirePlumber state, and failures for HDMI/DP/analog/USB separately.
+- **Input latency:** use a repeatable camera or external event/display capture,
+  preserve raw timestamps/video, and compare candidate releases on identical
+  hardware. The project does not invent a universal pass threshold; deployment
+  owners must define one before testing.
+- **Power loss:** use sacrificial test hardware, interrupt power at documented
+  phases, then record boot, filesystem, kiosk, and runtime-state outcome. Define
+  the number of cycles before execution; do not infer durability from one boot.
+- **Networking:** record wired DHCP, optional Wi-Fi association, offline page,
+  and recovery without including SSID/PSK in public evidence.
+- **Escape controls:** execute every shortcut and gameplay-input row in
+  `docs/acceptance-tests.md` with the actual keyboard/firmware.
 
-The following have NOT been verified in this environment and require
-physical-hardware validation:
+## Current verification boundary
 
-- Intel Arc discrete GPUs
-- AMD Radeon discrete GPUs (RX 6000/7000 series)
-- NVIDIA GPUs (not supported -- use Intel/AMD integrated graphics)
-- USB audio devices
-- Bluetooth audio
-- Microphone capture
-- DisplayPort daisy-chaining or multi-monitor
-- HDR output
-- Secure Boot
-- specific laptop models
-- external GPU enclosures
+Repository static/BATS/image checks confirm package/configuration presence and
+forbidden-flag absence. QEMU automation can capture BIOS/UEFI screenshots and
+serial logs, but effective Cage/Chromium/offline UI must be reviewed from those
+images. Audio playback, Chromium WebGL/GPU acceleration, Intel/AMD DRM/GBM/EGL,
+HDMI/DP/analog audio, physical shortcut resistance, sudden-power-loss recovery,
+Secure Boot, and representative hardware are unverified until a completed
+worksheet records them.
+
+Additional unverified targets include Intel Arc and AMD discrete GPUs, USB and
+Bluetooth audio, microphones, multi-monitor/daisy-chain/HDR, laptop-specific
+hotkeys, docks, and external GPU enclosures.

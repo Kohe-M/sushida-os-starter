@@ -1,5 +1,46 @@
 # Maintenance
 
+## Update and rebuild
+
+The production image has no in-place persistent package update path. Update the
+repository, review the diff and dependency changes, run `make test`, rebuild
+with `make iso`, and retain all four artifacts together. Compare
+`package-manifest.txt` and `build-info.json` with the deployed release before
+installation. A successful static suite is not a substitute for QEMU and
+hardware acceptance after Chromium, kernel, Mesa, firmware, Cage, or PipeWire
+changes.
+
+Wi-Fi changes require replacing the ignored `local/wifi.nmconnection` and
+rebuilding. Credentials inside an ISO are extractable. Never commit the real
+profile.
+
+## Rollback
+
+Archive a previously accepted four-file artifact set by checksum. Rollback is
+a fresh guarded write of that already verified ISO to the kiosk medium; there
+is no mutable root state to revert. Repeat the relevant acceptance tests after
+rollback. Do not overwrite the only known-good artifact set during a rebuild.
+
+## Recovery
+
+The read-only SquashFS lower image and volatile overlay normally restore a
+known image state at reboot. If boot or kiosk startup fails, collect serial/QEMU
+or physical-console evidence, verify the ISO checksum, and rebuild or reinstall
+from a known-good artifact set. Production intentionally has no SSH server,
+normal getty, terminal emulator, or debug shell. Do not add one merely for
+recovery; use a separately controlled administrator maintenance medium and
+respect the physical-security policy.
+
+Runtime journal data is volatile. Collect it before reboot when an authorized
+maintenance environment is available:
+
+```bash
+journalctl -b --no-pager
+systemctl status sushida-kiosk.service sushida-network-watch.service --no-pager
+```
+
+These commands are not reachable from the kiosk UI.
+
 ## Volatile diagnostics
 
 The production image includes `sushida-diagnostics`, but it is not linked from
@@ -24,4 +65,9 @@ forms are redacted as a second boundary.
 GPU/WebGL backend requires the controlled hardware acceptance procedure. A
 diagnostics report alone is not evidence that rendering or audio output works.
 
-Updates, rebuilds, rollback, and recovery are completed in Task 20.
+## Cleaning generated state
+
+Container builds produce root-owned mount trees. Run `make clean` or
+`make distclean` in the same privileged builder container (or with `sudo` on a
+direct Debian builder). Cleanup is restricted to fixed repository paths;
+`local/` and source files are preserved.

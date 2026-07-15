@@ -52,16 +52,26 @@ settings GUI in the production image.
 
 ## Offline behaviour and recovery
 
-Offline detection and automatic recovery are implemented by the network
-watcher (Task 11).  The local offline page at
+The network watcher checks `nmcli -t -f STATE general` at a default interval of
+30 seconds. Only NetworkManager's exact global `connected` state is online; it
+does not use `curl`, `wget`, `ping`, DNS probes, or requests to Sushi-da. The
+local offline page at
 `file:///usr/share/sushida-os/offline.html` is displayed while the network
-is unavailable.
+is unavailable, and the validated configured official URL is selected after
+recovery. Navigation failures do not advance watcher state, so a later
+low-frequency iteration retries.
+
+The watcher uses Chromium's process-singleton artifacts and bounded invocation
+as a control boundary. BATS verifies state transitions, URL validation,
+timeouts, and fail-closed artifact checks. Whether Debian Chromium forwards the
+request to the existing Cage window without creating a tab/window, and all
+PID-reuse/race cases, remain runtime-unverified.
 
 ## NetworkManager services
 
 - `NetworkManager.service` is enabled at build time.
-- `NetworkManager-wait-online.service` is not explicitly enabled; its role
-  is evaluated during the offline-design task (Task 11).
+- `sushida-network-watch.service` is enabled and ordered after the kiosk service
+  and NetworkManager ordering constraints.
 
 ## Verifying network behaviour
 
@@ -69,5 +79,5 @@ The following require QEMU or physical hardware:
 
 - Wired Ethernet DHCP obtains an address and provides connectivity.
 - Wi-Fi association works with a staged credential.
-- Network recovery transition described in Task 11.
+- Network recovery from the offline page to the configured official URL.
 - Absence of unexpected network connections.

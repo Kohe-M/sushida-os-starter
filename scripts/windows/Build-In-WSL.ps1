@@ -10,6 +10,9 @@ $RepoWsl = (& wsl.exe wslpath -a $RepoWindows).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($RepoWsl)) {
     throw "Could not translate the repository path for WSL2."
 }
+if ($RepoWsl.Contains("'")) {
+    throw "Repository paths containing a single quote are not supported."
+}
 
 $EngineArgs = ""
 if ($Engine -eq "podman") {

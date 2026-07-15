@@ -3,11 +3,14 @@ PYTHON ?= python3
 CONTAINER_ENGINE ?= docker
 BUILDER_IMAGE ?= sushida-os-builder
 BUILDER_TAG ?= trixie
+CONTAINER_ENGINE_NAME := $(notdir $(CONTAINER_ENGINE))
+CONTAINER_ENGINE_ARGS := $(if $(filter podman,$(CONTAINER_ENGINE_NAME)),--cgroup-manager=cgroupfs,)
+EXECUTABLE_SHELL_FILES := $(shell git ls-files --stage | awk '$$1 == "100755" {print $$4}')
 
 .PHONY: builder configure iso test test-static test-shell test-qemu qemu verify clean distclean
 
 builder:
-	$(CONTAINER_ENGINE) build -t $(BUILDER_IMAGE):$(BUILDER_TAG) -f builder/Dockerfile .
+	$(CONTAINER_ENGINE) $(CONTAINER_ENGINE_ARGS) build -t $(BUILDER_IMAGE):$(BUILDER_TAG) -f builder/Dockerfile .
 
 configure:
 	./live-build/auto/config
@@ -16,13 +19,13 @@ iso:
 	./scripts/build.sh
 
 test: test-static test-shell
-	@echo "TODO: Add QEMU tests when supported."
 
 test-static:
 	$(PYTHON) -m pytest tests/static/
 
 test-shell:
-	@echo "TODO: Run ShellCheck and BATS."
+	shellcheck -S warning $(EXECUTABLE_SHELL_FILES) tests/shell/*.bats
+	bats tests/shell/*.bats
 
 test-qemu:
 	./scripts/smoke-test.sh

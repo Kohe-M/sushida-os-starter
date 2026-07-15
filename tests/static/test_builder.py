@@ -77,3 +77,9 @@ def test_makefile_builder_uses_container_engine() -> None:
 def test_makefile_builder_specifies_dockerfile() -> None:
     content = MAKEFILE.read_text()
     assert "-f builder/Dockerfile" in content
+
+
+def test_makefile_adds_required_podman_cgroup_manager() -> None:
+    content = MAKEFILE.read_text()
+    assert "--cgroup-manager=cgroupfs" in content
+    assert "CONTAINER_ENGINE_ARGS" in content

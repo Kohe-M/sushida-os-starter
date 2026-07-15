@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# shellcheck disable=SC2188  # Redirection-only commands intentionally truncate fixture logs.
 
 setup() {
     TEST_ROOT="${BATS_TEST_TMPDIR}/watch-test"

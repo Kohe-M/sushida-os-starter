@@ -138,7 +138,7 @@ capture() {
     capture "Chromium version" chromium --version
     echo
     echo "### WebGL and acceleration boundary"
-    echo "CONFIGURED: launcher does not pass --disable-gpu or --disable-webgl"
+    echo "CONFIGURED: launcher preserves Chromium GPU and WebGL support"
     echo "RUNTIME_WEBGL_STATUS=UNVERIFIED; inspect chrome://gpu during a controlled acceptance test"
 
     heading "Audio"
