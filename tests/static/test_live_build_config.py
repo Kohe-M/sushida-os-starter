@@ -119,6 +119,16 @@ def test_auto_config_source_false() -> None:
     assert "--source false" in AUTO_CONFIG.read_text()
 
 
+def test_auto_config_disables_implicit_recommends() -> None:
+    assert "--apt-recommends false" in AUTO_CONFIG.read_text()
+
+
+def test_auto_config_uses_only_explicit_firmware_packages() -> None:
+    content = AUTO_CONFIG.read_text()
+    assert "--firmware-binary false" in content
+    assert "--firmware-chroot false" in content
+
+
 def test_auto_config_archive_areas() -> None:
     assert "non-free-firmware" in AUTO_CONFIG.read_text()
 

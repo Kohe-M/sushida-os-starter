@@ -126,6 +126,16 @@ def test_firmware() -> None:
         assert pkg in s, f"Missing firmware package: {pkg}"
 
 
+def test_only_target_firmware_is_explicit() -> None:
+    firmware = {package for package in _package_set() if package.startswith("firmware-")}
+    assert firmware == {
+        "firmware-intel-graphics",
+        "firmware-iwlwifi",
+        "firmware-realtek",
+        "firmware-amd-graphics",
+    }
+
+
 def test_ca_certificates() -> None:
     assert "ca-certificates" in _package_set()
 

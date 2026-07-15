@@ -65,6 +65,9 @@ lb config noauto \
     --architectures amd64 \
     --binary-images iso-hybrid \
     --source false \
+    --apt-recommends false \
+    --firmware-binary false \
+    --firmware-chroot false \
     --archive-areas "main contrib non-free-firmware" \
     "$@"
 
