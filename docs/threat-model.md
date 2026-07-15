@@ -23,7 +23,7 @@ Navigation is default-deny in managed policy and independently validated by the
 launcher and session helper. Mutable browser/session state is volatile. The
 kiosk service has no shell-facing UI, SSH, settings GUI, or second application.
 Residual risks include Chromium/Cage/kernel vulnerabilities, unverified policy
-runtime semantics, process-singleton races in network recovery, USB/input
+runtime semantics, PID-reuse races in network recovery, USB/input
 firmware behavior, and shortcuts not caught by the selected components.
 
 ## 3. Privilege escalation from the kiosk account

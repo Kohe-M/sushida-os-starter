@@ -9,6 +9,7 @@ set -euo pipefail
 readonly PROD_CONFIG="/etc/sushida-os/config.env"
 readonly PROD_RUNTIME="/run/sushida-os"
 readonly PROD_SESSION="/usr/local/libexec/sushida-session"
+readonly OFFLINE_URL="file:///usr/share/sushida-os/offline.html"
 
 CONFIG_FILE="${SUSHIDA_OS_CONFIG:-$PROD_CONFIG}"
 BASE_RUNTIME="${SUSHIDA_OS_RUNTIME:-$PROD_RUNTIME}"
@@ -41,7 +42,8 @@ export XDG_CACHE_HOME="$BASE_RUNTIME/cache"
 export TMPDIR="$BASE_RUNTIME/tmp"
 
 # ── Executable pre-check ─────────────────────────────────────────────────
-for cmd in cage chromium pipewire pipewire-pulse wireplumber dbus-run-session; do
+for cmd in cage chromium pipewire pipewire-pulse wireplumber dbus-run-session \
+    nmcli mktemp mv; do
     if ! command -v "$cmd" > /dev/null 2>&1; then
         echo "ERROR: Required command not found: $cmd" >&2
         exit 1
@@ -89,5 +91,18 @@ if [ "$(id -un)" != "kiosk" ]; then
 fi
 
 # ── Launch session helper inside dbus-run-session ─────────────────────────
+START_URL="$OFFLINE_URL"
+ACTIVE_ROUTE="offline"
+if nm_state=$(LC_ALL=C nmcli -t -f STATE general 2>/dev/null) && \
+   [ "$nm_state" = "connected" ]; then
+    START_URL="$SUSHIDA_URL"
+    ACTIVE_ROUTE="online"
+fi
+readonly START_URL ACTIVE_ROUTE
+
+route_tmp=$(mktemp "$BASE_RUNTIME/.active-route.XXXXXXXX")
+printf '%s\n' "$ACTIVE_ROUTE" > "$route_tmp"
+mv -f -- "$route_tmp" "$BASE_RUNTIME/active-route"
+
 exec dbus-run-session -- \
-    "$SESSION_HELPER" "$SUSHIDA_URL"
+    "$SESSION_HELPER" "$START_URL"

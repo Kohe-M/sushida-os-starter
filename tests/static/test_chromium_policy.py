@@ -77,7 +77,7 @@ def _launcher_patterns() -> list[str]:
                     line_clean = line_clean.replace(";;", "").rstrip(")").rstrip(";").strip()
                     for alt in line_clean.split("|"):
                         alt = alt.strip().rstrip(")").strip()
-                        if alt:
+                        if alt.startswith("https://"):
                             patterns.append(alt)
     return patterns
 

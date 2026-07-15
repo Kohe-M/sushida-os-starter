@@ -58,14 +58,17 @@ does not use `curl`, `wget`, `ping`, DNS probes, or requests to Sushi-da. The
 local offline page at
 `file:///usr/share/sushida-os/offline.html` is displayed while the network
 is unavailable, and the validated configured official URL is selected after
-recovery. Navigation failures do not advance watcher state, so a later
-low-frequency iteration retries.
+recovery. The launcher performs this selection before starting Chromium and
+atomically records `online` or `offline` in `/run/sushida-os/active-route`.
 
-The watcher uses Chromium's process-singleton artifacts and bounded invocation
-as a control boundary. BATS verifies state transitions, URL validation,
-timeouts, and fail-closed artifact checks. Whether Debian Chromium forwards the
-request to the existing Cage window without creating a tab/window, and all
-PID-reuse/race cases, remain runtime-unverified.
+The watcher never invokes Chromium. When the recorded route differs from the
+current NetworkManager state, it obtains `sushida-kiosk.service`'s `MainPID`
+and validates that the PID exists, is owned by the watcher UID, and belongs to
+the exact kiosk service cgroup. It then sends `TERM` to that PID. The unit's
+`Restart=always` starts a fresh managed Cage/Chromium session, and the launcher
+selects the new route. Missing or invalid markers, PID metadata, ownership, or
+cgroup data fail closed without signalling a process. BATS covers these
+transitions and rejection paths.
 
 ## NetworkManager services
 

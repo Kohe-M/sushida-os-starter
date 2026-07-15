@@ -112,8 +112,24 @@ def test_launcher_exec_dbus_session() -> None:
     """Launcher execs dbus-run-session with helper and URL as separate args."""
     content = LAUNCHER.read_text()
     assert "exec dbus-run-session" in content
-    assert '"$SESSION_HELPER" "$SUSHIDA_URL"' in content or \
-           '"$SESSION_HELPER" "$URL"' in content
+    assert '"$SESSION_HELPER" "$START_URL"' in content
+
+def test_launcher_selects_route_from_nm_global_state() -> None:
+    content = LAUNCHER.read_text()
+    assert "LC_ALL=C nmcli -t -f STATE general" in content
+    assert '[ "$nm_state" = "connected" ]' in content
+    assert "connected.local" not in content
+
+def test_launcher_offline_url_is_fixed() -> None:
+    content = LAUNCHER.read_text()
+    assert 'readonly OFFLINE_URL="file:///usr/share/sushida-os/offline.html"' in content
+    assert 'START_URL="$OFFLINE_URL"' in content
+
+def test_launcher_writes_atomic_active_route_marker() -> None:
+    content = LAUNCHER.read_text()
+    assert "mktemp" in content
+    assert 'mv -f -- "$route_tmp" "$BASE_RUNTIME/active-route"' in content
+    assert 'printf \'%s\\n\' "$ACTIVE_ROUTE"' in content
 
 def test_launcher_is_executable() -> None:
     entries = _git_ls_files_stage(
@@ -159,6 +175,11 @@ def test_helper_url_validation() -> None:
     content = SESSION_HELPER.read_text()
     assert "sushida.net" in content
     assert "https://" in content or "disallowed" in content
+
+def test_helper_allows_only_fixed_offline_file_url() -> None:
+    content = SESSION_HELPER.read_text()
+    assert 'readonly OFFLINE_URL="file:///usr/share/sushida-os/offline.html"' in content
+    assert '"$OFFLINE_URL"' in content
 
 def test_helper_starts_pipewire() -> None:
     text = SESSION_HELPER.read_text()

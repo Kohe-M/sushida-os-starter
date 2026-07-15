@@ -103,6 +103,6 @@ def test_architecture_explains_live_overlay_boundary() -> None:
         "discarded at shutdown or reboot",
         "not a claim",
         "Storage=volatile",
-        "/run/sushida-os/network-state",
+        "/run/sushida-os/active-route",
     ):
         assert phrase in text

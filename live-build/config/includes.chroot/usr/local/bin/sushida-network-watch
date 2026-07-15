@@ -1,35 +1,17 @@
 #!/usr/bin/env bash
-#
-# Network watcher -- monitor NetworkManager state and navigate Chromium.
-#
-# SAFETY LIMITATIONS
-#
-# Precondition checks (kiosk service active, profile directory present,
-# Chromium process-singleton runtime artifacts) reduce the probability
-# of launching an unmanaged instance, but a race exists: the session can
-# exit between the precondition check and the chromium invocation.
-#
-# The following are NOT verified at runtime:
-#   - Whether the existing Chromium navigates, opens a new tab/window, or
-#     ignores the request.
-#   - Whether tabs or windows accumulate across repeated transitions.
-#   - Whether all child processes of the chromium command are terminated
-#     after a timeout.
-#
-# On navigation failure the state is not updated, so the next low-frequency
-# iteration retries.  A bounded timeout with kill-after limits hangs.
-#
-# A formally safe control boundary requires future launcher-side IPC or
-# a dedicated navigation endpoint in the Cage/Chromium session.
+# Restart the managed kiosk session when its selected route no longer matches
+# NetworkManager. This watcher never starts or controls the browser directly.
 set -euo pipefail
 
-# ── Production paths ───────────────────────────────────────────────────────
 readonly PROD_CONFIG="/etc/sushida-os/config.env"
 readonly PROD_RUNTIME="/run/sushida-os"
+readonly MIN_INTERVAL=30
+readonly MAX_INTERVAL=3600
 
 CONFIG_FILE="${SUSHIDA_OS_CONFIG:-$PROD_CONFIG}"
 RUNTIME_DIR="${SUSHIDA_OS_RUNTIME:-$PROD_RUNTIME}"
 MAX_ITER="${SUSHIDA_OS_MAX_ITERATIONS:-0}"
+TEST_CGROUP_FILE="${SUSHIDA_OS_TEST_CGROUP_FILE:-}"
 
 if [ "$CONFIG_FILE" != "$PROD_CONFIG" ] && [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
     echo "ERROR: CONFIG_FILE override requires SUSHIDA_OS_TEST_MODE=1" >&2; exit 1
@@ -40,158 +22,102 @@ fi
 if [ "$MAX_ITER" != "0" ] && [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
     echo "ERROR: SUSHIDA_OS_MAX_ITERATIONS override requires SUSHIDA_OS_TEST_MODE=1" >&2; exit 1
 fi
-
-# ── Fixed constants ─────────────────────────────────────────────────────────
-readonly OFFLINE_URL="file:///usr/share/sushida-os/offline.html"
-readonly PROFILE_DIR="$RUNTIME_DIR/chromium"
-readonly STATE_FILE="$RUNTIME_DIR/network-state"
-readonly MIN_INTERVAL=30
-readonly MAX_INTERVAL=3600
-
-# ── Navigation timeout ────────────────────────────────────────────────────
-if [ -z "${SUSHIDA_OS_NAV_TIMEOUT+x}" ]; then _raw_tmo=10; else _raw_tmo="$SUSHIDA_OS_NAV_TIMEOUT"; fi
-case "$_raw_tmo" in ''|*[!0-9]*) echo "ERROR: NAV_TIMEOUT must be a positive integer: $_raw_tmo" >&2; exit 1;; esac
-if [ "$_raw_tmo" -lt 1 ]; then echo "ERROR: NAV_TIMEOUT must be positive: $_raw_tmo" >&2; exit 1; fi
-if [ "$_raw_tmo" -ne 10 ] && [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
-    echo "ERROR: NAV_TIMEOUT override requires SUSHIDA_OS_TEST_MODE=1" >&2; exit 1
+if [ -n "$TEST_CGROUP_FILE" ] && [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
+    echo "ERROR: SUSHIDA_OS_TEST_CGROUP_FILE requires SUSHIDA_OS_TEST_MODE=1" >&2; exit 1
 fi
-readonly NAV_TIMEOUT="$_raw_tmo"; unset _raw_tmo
+readonly ACTIVE_ROUTE_FILE="$RUNTIME_DIR/active-route"
 
-# ── Config file parsing (no source, no eval) ──────────────────────────────
-if [ ! -f "$CONFIG_FILE" ]; then echo "ERROR: Config file not found: $CONFIG_FILE" >&2; exit 1; fi
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "ERROR: Config file not found: $CONFIG_FILE" >&2; exit 1
+fi
 SUSHIDA_URL=""; INTERVAL=30; seen_url=false; seen_interval=false
 while IFS= read -r line || [ -n "$line" ]; do
-    line="${line%$'\r'}"; [ -z "$line" ] || [[ "$line" == "#"* ]] && continue
-    [[ "$line" != *"="* ]] && { echo "ERROR: Invalid config line (missing '='): $line" >&2; exit 1; }
+    line="${line%$'\r'}"
+    if [ -z "$line" ] || [[ "$line" == "#"* ]]; then continue; fi
+    if [[ "$line" != *"="* ]]; then
+        echo "ERROR: Invalid config line (missing '='): $line" >&2; exit 1
+    fi
     key="${line%%=*}"; value="${line#*=}"
     case "$key" in
-        SUSHIDA_URL) $seen_url && { echo "ERROR: Duplicate SUSHIDA_URL" >&2; exit 1; }; seen_url=true; SUSHIDA_URL="$value" ;;
-        NETWORK_CHECK_INTERVAL_SECONDS) $seen_interval && { echo "ERROR: Duplicate NETWORK_CHECK_INTERVAL_SECONDS" >&2; exit 1; }; seen_interval=true; INTERVAL="$value" ;;
+        SUSHIDA_URL)
+            if $seen_url; then echo "ERROR: Duplicate SUSHIDA_URL" >&2; exit 1; fi
+            seen_url=true; SUSHIDA_URL="$value" ;;
+        NETWORK_CHECK_INTERVAL_SECONDS)
+            if $seen_interval; then
+                echo "ERROR: Duplicate NETWORK_CHECK_INTERVAL_SECONDS" >&2; exit 1
+            fi
+            seen_interval=true; INTERVAL="$value" ;;
         KIOSK_RESTART_SECONDS) ;;
         *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;
     esac
 done < "$CONFIG_FILE"
-[ -z "$SUSHIDA_URL" ] && { echo "ERROR: SUSHIDA_URL not set" >&2; exit 1; }
 
-# ── URL validation ─────────────────────────────────────────────────────────
-case "$SUSHIDA_URL" in https://sushida.net|https://sushida.net/|https://sushida.net/*) ;; *) echo "ERROR: Invalid or disallowed URL: $SUSHIDA_URL" >&2; exit 1;; esac
+if [ -z "$SUSHIDA_URL" ]; then echo "ERROR: SUSHIDA_URL not set" >&2; exit 1; fi
+case "$SUSHIDA_URL" in
+    https://sushida.net|https://sushida.net/|https://sushida.net/*) ;;
+    *) echo "ERROR: Invalid or disallowed URL: $SUSHIDA_URL" >&2; exit 1 ;;
+esac
+case "$INTERVAL" in
+    ''|*[!0-9]*)
+        echo "ERROR: NETWORK_CHECK_INTERVAL_SECONDS must be a positive integer: $INTERVAL" >&2
+        exit 1 ;;
+esac
+if [ "$INTERVAL" -lt "$MIN_INTERVAL" ]; then
+    echo "ERROR: NETWORK_CHECK_INTERVAL_SECONDS=$INTERVAL is below minimum $MIN_INTERVAL" >&2; exit 1
+fi
+if [ "$INTERVAL" -gt "$MAX_INTERVAL" ]; then
+    echo "ERROR: NETWORK_CHECK_INTERVAL_SECONDS=$INTERVAL exceeds maximum $MAX_INTERVAL" >&2; exit 1
+fi
+case "$MAX_ITER" in
+    ''|*[!0-9]*) echo "ERROR: Invalid SUSHIDA_OS_MAX_ITERATIONS: $MAX_ITER" >&2; exit 1 ;;
+esac
 
-# ── Interval validation ────────────────────────────────────────────────────
-! [[ "$INTERVAL" =~ ^[0-9]+$ ]] && { echo "ERROR: NETWORK_CHECK_INTERVAL_SECONDS must be a positive integer: $INTERVAL" >&2; exit 1; }
-[ "$INTERVAL" -lt "$MIN_INTERVAL" ] && { echo "ERROR: NETWORK_CHECK_INTERVAL_SECONDS=$INTERVAL is below minimum $MIN_INTERVAL" >&2; exit 1; }
-[ "$INTERVAL" -gt "$MAX_INTERVAL" ] && { echo "ERROR: NETWORK_CHECK_INTERVAL_SECONDS=$INTERVAL exceeds maximum $MAX_INTERVAL" >&2; exit 1; }
+for cmd in nmcli systemctl id stat grep kill sleep; do
+    if ! command -v "$cmd" > /dev/null 2>&1; then
+        echo "ERROR: Required command not found: $cmd" >&2; exit 1
+    fi
+done
 
-mkdir -p "$RUNTIME_DIR"
-
-# ── Helpers ────────────────────────────────────────────────────────────────
-read_state() {
-    if [ ! -f "$STATE_FILE" ]; then echo "INIT"; return; fi
-    local s; s=$(cat "$STATE_FILE" 2>/dev/null || echo "INIT")
-    case "$s" in INIT|OFFLINE_FIRST|OFFLINE_STEADY|ONLINE_FIRST|ONLINE_STEADY) echo "$s" ;; *) echo "INIT" ;; esac
-}
-write_state() { mkdir -p "$(dirname "$STATE_FILE")"; local tmp; tmp=$(mktemp "$STATE_FILE.XXXXXXXX"); echo "$1" > "$tmp"; mv -f "$tmp" "$STATE_FILE"; }
-is_online() {
-    local state; state=$(LC_ALL=C nmcli -t -f STATE general 2>/dev/null) || return 1
-    case "$state" in connected) return 0 ;; *) return 1 ;; esac
-}
-
-# Chromium process-singleton artifact validation.
-#
-# Linux ProcessSingleton uses three items in the user data directory:
-#
-#   SingletonLock   -- dangling symlink "hostname-PID"
-#                      (chromium/common/process_singleton_lock_posix.cc)
-#   SingletonSocket -- symlink to a Unix domain socket in a temp directory
-#                      (chromium/browser/process_singleton_linux.cc)
-#   SingletonCookie -- Cookie file used to verify socket connection identity.
-#                      The profile directory contains a symlink whose target
-#                      is the cookie value.  The socket temp directory also
-#                      contains a SingletonCookie with the same value.
-#                      Both are compared to prevent cross-instance confusion.
-#
-# References:
-#   https://chromium.googlesource.com/chromium/src/+/master/chrome/browser/process_singleton_linux.cc
-#   https://chromium.googlesource.com/chromium/src/+/master/chrome/common/process_singleton_lock_posix.cc
-#
-# These checks are static and racy -- exit between check and invocation,
-# PID reuse, and stale artifacts are NOT fully prevented.
-validate_singleton() {
-    local dir="$1"
-    # ── Commands must be available ─────────────────────────────────────
-    command -v readlink > /dev/null 2>&1 || return 1
-    command -v dirname > /dev/null 2>&1 || return 1
-    command -v id > /dev/null 2>&1 || return 1
-    command -v stat > /dev/null 2>&1 || return 1
-
-    # ── SingletonLock: dangling symlink "hostname-PID" ─────────────────
-    local lock="$dir/SingletonLock"
-    [ -L "$lock" ] || return 1
-    local lock_target; lock_target=$(readlink "$lock") || return 1
-    [ -n "$lock_target" ] || return 1
-    # Extract PID (last hyphen-separated component)
-    local pid; pid="${lock_target##*-}"
-    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
-    [ "$pid" -gt 0 ] || return 1
-    [ -d "/proc/$pid" ] || return 1
-    local my_uid; my_uid=$(id -u) || return 1
-    [ "$(stat -c '%u' "/proc/$pid" 2>/dev/null)" = "$my_uid" ] || return 1
-
-    # ── SingletonSocket: symlink to a Unix domain socket ───────────────
-    local sock="$dir/SingletonSocket"
-    [ -L "$sock" ] || return 1
-    local sock_target; sock_target=$(readlink "$sock") || return 1
-    [ -n "$sock_target" ] || return 1
-    # -S follows symlinks; verifies the target is a Unix domain socket.
-    [ -S "$sock" ] || return 1
-
-    # ── SingletonCookie: identity verification via matching symlinks ───
-    # Profile cookie
-    local cookie="$dir/SingletonCookie"
-    [ -L "$cookie" ] || return 1
-    local profile_cookie; profile_cookie=$(readlink "$cookie") || return 1
-    [ -n "$profile_cookie" ] || return 1
-
-    # Remote cookie (in socket temp directory)
-    local sock_dir; sock_dir=$(dirname "$sock_target") || return 1
-    local remote_cookie="$sock_dir/SingletonCookie"
-    [ -L "$remote_cookie" ] || return 1
-    local remote_cookie_val; remote_cookie_val=$(readlink "$remote_cookie") || return 1
-    [ -n "$remote_cookie_val" ] || return 1
-
-    # Both cookies must share the same identifier value
-    [ "$profile_cookie" = "$remote_cookie_val" ] || return 1
-
-    return 0
-}
-
-navigate() {
-    local url="$1"
-    systemctl -q is-active sushida-kiosk.service 2>/dev/null || return 1
-    validate_singleton "$PROFILE_DIR" || return 1
-    command -v chromium > /dev/null 2>&1 || return 1
-    command -v timeout > /dev/null 2>&1 || return 1
-    timeout --kill-after=2 "$NAV_TIMEOUT" chromium --user-data-dir="$PROFILE_DIR" --kiosk "$url" > /dev/null 2>&1 && return 0 || return 1
-}
-
-# ── State machine main loop ──────────────────────────────────────────────
-ITER=0
-while true; do
-    [ "$MAX_ITER" -gt 0 ] && [ "$ITER" -ge "$MAX_ITER" ] && break
-    ITER=$((ITER + 1))
-    current_state=$(read_state)
-    if is_online; then
-        case "$current_state" in
-            INIT) write_state "ONLINE_STEADY" ;;
-            OFFLINE_FIRST|OFFLINE_STEADY) if navigate "$SUSHIDA_URL"; then write_state "ONLINE_FIRST"; fi ;;
-            ONLINE_FIRST) write_state "ONLINE_STEADY" ;;
-            ONLINE_STEADY) ;;
-        esac
+desired_route() {
+    local state
+    if state=$(LC_ALL=C nmcli -t -f STATE general 2>/dev/null) && [ "$state" = connected ]; then
+        printf '%s\n' online
     else
-        case "$current_state" in
-            INIT|ONLINE_FIRST|ONLINE_STEADY) if navigate "$OFFLINE_URL"; then write_state "OFFLINE_FIRST"; fi ;;
-            OFFLINE_FIRST) write_state "OFFLINE_STEADY" ;;
-            OFFLINE_STEADY) ;;
-        esac
+        printf '%s\n' offline
+    fi
+}
+
+read_active_route() {
+    [ -f "$ACTIVE_ROUTE_FILE" ] || return 1
+    local route
+    IFS= read -r route < "$ACTIVE_ROUTE_FILE" || return 1
+    case "$route" in online|offline) printf '%s\n' "$route" ;; *) return 1 ;; esac
+}
+
+restart_kiosk() {
+    systemctl -q is-active sushida-kiosk.service 2>/dev/null || return 1
+    local pid my_uid pid_uid cgroup_file
+    pid=$(systemctl show --property MainPID --value sushida-kiosk.service 2>/dev/null) || return 1
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$pid" -gt 1 ] || return 1
+    [ -d "/proc/$pid" ] || return 1
+    my_uid=$(id -u) || return 1
+    pid_uid=$(stat -c '%u' "/proc/$pid" 2>/dev/null) || return 1
+    [ "$pid_uid" = "$my_uid" ] || return 1
+    cgroup_file="/proc/$pid/cgroup"
+    if [ -n "$TEST_CGROUP_FILE" ]; then cgroup_file="$TEST_CGROUP_FILE"; fi
+    [ -f "$cgroup_file" ] || return 1
+    grep -Eq '(^|/)sushida-kiosk\.service($|/)' "$cgroup_file" || return 1
+    kill -TERM -- "$pid"
+}
+
+iteration=0
+while true; do
+    if [ "$MAX_ITER" -gt 0 ] && [ "$iteration" -ge "$MAX_ITER" ]; then break; fi
+    iteration=$((iteration + 1))
+    wanted=$(desired_route)
+    if active=$(read_active_route) && [ "$active" != "$wanted" ]; then
+        restart_kiosk || true
     fi
     sleep "$INTERVAL"
 done

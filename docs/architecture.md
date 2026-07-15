@@ -39,7 +39,7 @@ mounts as tmpfs:
 | Downloads/temp files | `/run/sushida-os/downloads`, `/run/sushida-os/tmp` | None |
 | Synthetic home | `/run/sushida-os/home` | None |
 | Wayland/PipeWire/session sockets | `/run/sushida-os/xdg-runtime` | None |
-| Network watcher state | `/run/sushida-os/network-state` | None |
+| Selected network route | `/run/sushida-os/active-route` | None |
 | system journal | `/run/log/journal` (`Storage=volatile`) | None |
 
 `systemd-tmpfiles` creates the kiosk directories as `kiosk:kiosk`, mode 0700
@@ -52,8 +52,9 @@ Navigation is restricted at two independent layers.
 
 ### Layer 1: Launcher (sushida-launch)
 
-The launcher parses `/etc/sushida-os/config.env` and validates the
-configured `SUSHIDA_URL` before passing it to Chromium.  Only URLs
+The launcher parses `/etc/sushida-os/config.env`, validates the configured
+`SUSHIDA_URL`, and selects either that URL or the fixed local offline URL from
+NetworkManager's global state before passing it to Chromium. Only configured URLs
 matching the following patterns are accepted:
 
 - `https://sushida.net` — bare domain
@@ -114,9 +115,11 @@ config.env path.
 
 ### offline.html
 
-The page at `file:///usr/share/sushida-os/offline.html` is displayed by the
-network watcher when NetworkManager reports that global connectivity is lost.
-The watcher returns Chromium to the validated configured URL after recovery.
+The page at `file:///usr/share/sushida-os/offline.html` is selected by the
+launcher when NetworkManager does not report exact global connectivity. On a
+later transition, the watcher validates and terminates only the managed kiosk
+service MainPID; systemd restarts the whole session and the launcher selects
+the newly appropriate URL. The watcher never launches a secondary browser.
 
 The page contains only a plain-text message in Japanese explaining that
 the network is unavailable.  It does not copy, imitate, or redistribute

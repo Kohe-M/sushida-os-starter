@@ -13,10 +13,11 @@ if [ $# -ne 1 ]; then
     exit 1
 fi
 readonly SUSHIDA_URL="$1"
+readonly OFFLINE_URL="file:///usr/share/sushida-os/offline.html"
 
 # ── Defense-in-depth URL validation ──────────────────────────────────────
 case "$SUSHIDA_URL" in
-    https://sushida.net|https://sushida.net/|https://sushida.net/*) ;;
+    https://sushida.net|https://sushida.net/|https://sushida.net/*|"$OFFLINE_URL") ;;
     *)
         echo "ERROR: Invalid or disallowed URL: $SUSHIDA_URL" >&2
         exit 1

@@ -11,6 +11,9 @@ HOOK = Path(
 AUTO_CONFIG = Path("live-build/auto/config")
 EXAMPLE = Path("local/wifi.nmconnection.example")
 PACKAGE_LIST = Path("live-build/config/package-lists/kiosk.list.chroot")
+WATCHER = Path(
+    "live-build/config/includes.chroot/usr/local/bin/sushida-network-watch"
+)
 
 
 def _git_ls_files_stage(path: str) -> list[str]:
@@ -47,6 +50,34 @@ def _package_set() -> set[str]:
             continue
         pkgs.add(s.split()[0])
     return pkgs
+
+
+# ── Network recovery control boundary ───────────────────────────────────
+
+def test_watcher_never_starts_browser() -> None:
+    content = WATCHER.read_text().lower()
+    assert "chromium" not in content
+    assert "singletonlock" not in content
+
+
+def test_watcher_uses_exact_nm_global_connected_state() -> None:
+    content = WATCHER.read_text()
+    assert "LC_ALL=C nmcli -t -f STATE general" in content
+    assert '[ "$state" = connected ]' in content
+
+
+def test_watcher_validates_restart_target() -> None:
+    content = WATCHER.read_text()
+    assert "MainPID" in content
+    assert "stat -c '%u'" in content
+    assert "sushida-kiosk\\.service" in content
+    assert 'kill -TERM -- "$pid"' in content
+
+
+def test_watcher_has_no_external_probe() -> None:
+    content = WATCHER.read_text()
+    for command in ("curl", "wget", "ping", "dig", "nslookup", "traceroute"):
+        assert command not in content
 
 
 # ── NM config ──────────────────────────────────────────────────────────────
