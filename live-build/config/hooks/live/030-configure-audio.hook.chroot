@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+#
+# live-build chroot hook -- validate audio runtime dependencies.
+# Runs inside the target chroot during image build, NOT on the host.
+#
+# The kiosk launcher starts pipewire, pipewire-pulse, and wireplumber
+# inside a dbus-run-session together with Cage/Chromium so they share
+# the same XDG_RUNTIME_DIR, session bus, and systemd cgroup.
+# This hook verifies the required binaries exist in the image.
 set -euo pipefail
 
-echo "TODO: Implement live-build chroot hook."
+# Verify audio binaries that the launcher will invoke.
+for cmd in pipewire pipewire-pulse wireplumber dbus-run-session; do
+    if ! command -v "$cmd" > /dev/null 2>&1; then
+        echo "ERROR: Required command not found: $cmd" >&2
+        exit 1
+    fi
+done

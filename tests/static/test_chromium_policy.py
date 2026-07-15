@@ -11,6 +11,9 @@ CONFIG_ENV = Path(
 LAUNCHER = Path(
     "live-build/config/includes.chroot/usr/local/bin/sushida-launch"
 )
+SESSION_HELPER = Path(
+    "live-build/config/includes.chroot/usr/local/libexec/sushida-session"
+)
 LIVE_BUILD_DIR = Path("live-build")
 
 REQUIRED_POLICIES: dict[str, tuple] = {
@@ -52,27 +55,30 @@ def _config_url() -> str:
 
 
 def _launcher_patterns() -> list[str]:
-    """Return individual URL patterns from the launcher case clause,
-    splitting on | so each alternative is checked separately."""
-    content = LAUNCHER.read_text()
+    """Return individual URL patterns from the launcher and helper case
+    clauses, splitting on | so each alternative is checked separately."""
     patterns: list[str] = []
-    in_case = False
-    for line in content.splitlines():
-        stripped = line.strip()
-        if "case " in stripped and "SUSHIDA_URL" in stripped:
-            in_case = True
-            continue
-        if in_case:
-            if stripped == ";;":
+    for path in (LAUNCHER, SESSION_HELPER):
+        content = path.read_text()
+        in_case = False
+        for line in content.splitlines():
+            stripped = line.strip()
+            if "case " in stripped and "SUSHIDA_URL" in stripped:
+                in_case = True
                 continue
-            if stripped == "esac" or stripped.startswith("*)"):
-                break
-            if "https://" in stripped:
-                line_clean = stripped.split("#")[0].strip().rstrip(")")
-                for alt in line_clean.split("|"):
-                    alt = alt.strip()
-                    if alt:
-                        patterns.append(alt)
+            if in_case:
+                if stripped == ";;" or stripped.startswith(";;"):
+                    continue
+                if stripped == "esac" or stripped.startswith("*)") or stripped == "*)":
+                    break
+                if "https://" in stripped:
+                    line_clean = stripped.split("#")[0].strip()
+                    # Remove trailing semicolons and closing paren
+                    line_clean = line_clean.replace(";;", "").rstrip(")").rstrip(";").strip()
+                    for alt in line_clean.split("|"):
+                        alt = alt.strip().rstrip(")").strip()
+                        if alt:
+                            patterns.append(alt)
     return patterns
 
 

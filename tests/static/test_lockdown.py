@@ -18,6 +18,9 @@ SYSCTL = Path(
 LAUNCHER = Path(
     "live-build/config/includes.chroot/usr/local/bin/sushida-launch"
 )
+SESSION_HELPER = Path(
+    "live-build/config/includes.chroot/usr/local/libexec/sushida-session"
+)
 KIOSK_SERVICE = Path(
     "live-build/config/includes.chroot/etc/systemd/system/sushida-kiosk.service"
 )
@@ -267,13 +270,14 @@ def test_no_keyboard_interception_in_packages() -> None:
 
 
 def _check_cage_single_app() -> None:
-    content = LAUNCHER.read_text()
+    # Cage invocation now lives in the session helper, not the launcher.
+    content = SESSION_HELPER.read_text()
     found = False
     for line in content.splitlines():
-        if "exec cage" in line or "cage -- chromium" in line:
+        if "cage -- chromium" in line:
             found = True
             assert " -s" not in line, "Cage VT switching (-s) enabled"
-    assert found, "Cage invocation not found in launcher"
+    assert found, "Cage invocation not found in session helper"
     # Verify no DE packages added
     de_pkgs = {"gnome", "plasma-desktop", "xfce4", "lxde", "cinnamon"}
     pkgs = set(_package_names())
@@ -319,7 +323,8 @@ def _check_ctrl_alt_del() -> None:
 
 
 def _check_chromium_kiosk() -> None:
-    assert "--kiosk" in LAUNCHER.read_text()
+    # --kiosk now lives in the session helper
+    assert "--kiosk" in SESSION_HELPER.read_text()
     p = _chromium_policy()
     assert "*" in p["URLBlocklist"]
     expected = {

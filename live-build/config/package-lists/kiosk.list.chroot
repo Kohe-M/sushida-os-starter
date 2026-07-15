@@ -15,10 +15,12 @@ network-manager
 wpasupplicant
 wireless-regdb
 
-# Audio stack
+# Audio stack (minimal PipeWire + PulseAudio compat + session mgmt)
 pipewire
 pipewire-pulse
 wireplumber
+libspa-0.2-modules
+dbus-user-session
 
 # Graphics acceleration -- Mesa DRI, VA-API, EGL, GLES, GBM, DRM
 libgl1-mesa-dri

@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+#
+# Kiosk session supervisor -- start audio services and Cage/Chromium.
+#
+# Runs inside dbus-run-session.  Expects a single argument: the URL.
+# Manages pipewire, pipewire-pulse, wireplumber, and cage -- chromium.
+# When any process exits, the entire session is cleaned up and the
+# exit status is preserved.
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+    echo "ERROR: Usage: sushida-session <url>" >&2
+    exit 1
+fi
+readonly SUSHIDA_URL="$1"
+
+# ── Defense-in-depth URL validation ──────────────────────────────────────
+case "$SUSHIDA_URL" in
+    https://sushida.net|https://sushida.net/|https://sushida.net/*) ;;
+    *)
+        echo "ERROR: Invalid or disallowed URL: $SUSHIDA_URL" >&2
+        exit 1
+        ;;
+esac
+
+# ── Runtime base validation ──────────────────────────────────────────────
+readonly PROD_XDG="/run/sushida-os/xdg-runtime"
+if [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
+    if [ "$XDG_RUNTIME_DIR" != "$PROD_XDG" ]; then
+        echo "ERROR: XDG_RUNTIME_DIR must be $PROD_XDG in production (got $XDG_RUNTIME_DIR)" >&2
+        exit 1
+    fi
+fi
+
+# ── Readiness timeout ────────────────────────────────────────────────────
+if [ -z "${SUSHIDA_OS_AUDIO_TIMEOUT+x}" ]; then
+    _raw_at=3
+else
+    _raw_at="$SUSHIDA_OS_AUDIO_TIMEOUT"
+fi
+case "$_raw_at" in ''|*[!0-9]*) echo "ERROR: AUDIO_TIMEOUT must be positive integer: $_raw_at" >&2; exit 1;; esac
+if [ "$_raw_at" -lt 1 ]; then echo "ERROR: AUDIO_TIMEOUT must be >= 1: $_raw_at" >&2; exit 1; fi
+if [ "$_raw_at" -ne 3 ] && [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
+    echo "ERROR: AUDIO_TIMEOUT override requires TEST_MODE=1" >&2; exit 1
+fi
+readonly AUDIO_TIMEOUT="$_raw_at"
+unset _raw_at
+
+# ── Managed PIDs ─────────────────────────────────────────────────────────
+SESSION_PIDS=()
+SESSION_NAMES=()
+
+_cleanup() {
+    local p
+    for p in "${SESSION_PIDS[@]}"; do
+        case "$p" in ''|*[!0-9]*) continue ;; esac
+        kill "$p" 2>/dev/null || true
+    done
+    /usr/bin/sleep 0.2 2>/dev/null || true
+    for p in "${SESSION_PIDS[@]}"; do
+        case "$p" in ''|*[!0-9]*) continue ;; esac
+        if kill -0 "$p" 2>/dev/null; then
+            kill -9 "$p" 2>/dev/null || true
+        fi
+        wait "$p" 2>/dev/null || true
+    done
+    SESSION_PIDS=()
+    SESSION_NAMES=()
+}
+
+# shellcheck disable=SC2317  # called via EXIT trap
+_cleanup_exit() { local s=$?; _cleanup; trap - EXIT; exit "$s"; }
+trap '_cleanup_exit' EXIT
+
+# shellcheck disable=SC2317  # called via signal traps
+_on_term() { trap - TERM INT HUP; _cleanup; exit 143; }
+trap '_on_term' TERM INT HUP
+
+mkdir -p "$XDG_RUNTIME_DIR"
+
+# ── Start audio services & Cage ─────────────────────────────────────────
+
+# pipewire
+pipewire > /dev/null 2>&1 &
+SESSION_PIDS+=("$!")
+SESSION_NAMES+=("pipewire")
+
+# wireplumber
+wireplumber > /dev/null 2>&1 &
+SESSION_PIDS+=("$!")
+SESSION_NAMES+=("wireplumber")
+
+# pipewire-pulse
+pipewire-pulse > /dev/null 2>&1 &
+SESSION_PIDS+=("$!")
+SESSION_NAMES+=("pipewire-pulse")
+
+# Wait bounded for PipeWire socket readiness; monitor ALL audio PIDs
+_PW_SOCKET="$XDG_RUNTIME_DIR/pipewire-0"
+_w=0
+while [ "$_w" -lt "$((AUDIO_TIMEOUT * 10))" ]; do
+    if [ -S "$_PW_SOCKET" ]; then
+        break
+    fi
+    # Check all audio processes are still alive
+    for _aidx in 0 1 2; do
+        if ! kill -0 "${SESSION_PIDS[$_aidx]}" 2>/dev/null; then
+            echo "ERROR: ${SESSION_NAMES[$_aidx]} exited before socket was ready" >&2
+            exit 1
+        fi
+    done
+    /usr/bin/sleep 0.1
+    _w=$((_w + 1))
+done
+if [ ! -S "$_PW_SOCKET" ]; then
+    echo "ERROR: PipeWire socket not ready after ${AUDIO_TIMEOUT}s" >&2
+    exit 1
+fi
+
+# ── Chromium arguments ──────────────────────────────────────────────────
+CHROMIUM_ARGS=(
+    --kiosk
+    --no-first-run
+    --no-default-browser-check
+    --user-data-dir="${XDG_RUNTIME_DIR%/xdg-runtime}/chromium"
+    --disk-cache-dir="${XDG_RUNTIME_DIR%/xdg-runtime}/cache"
+    --ozone-platform=wayland
+    --hide-crash-restore-bubble
+)
+
+# cage (backgrounded; will exec chromium)
+cage -- chromium "${CHROMIUM_ARGS[@]}" "$SUSHIDA_URL" &
+SESSION_PIDS+=("$!")
+SESSION_NAMES+=("cage")
+
+# ── Supervision: wait for any process to exit ───────────────────────────
+set +e
+_WAIT_STATUS=1
+_EXITED_PID=""
+_EXITED_NAME=""
+while [ "${#SESSION_PIDS[@]}" -gt 0 ]; do
+    _EXITED_PID=""
+    wait -n -p _EXITED_PID "${SESSION_PIDS[@]}" 2>/dev/null
+    _WAIT_STATUS=$?
+    if [ -z "$_EXITED_PID" ]; then
+        # wait -n -p failed to identify PID -- fail closed
+        _WAIT_STATUS=1
+        break
+    fi
+    _EXITED_NAME=""
+    for _i in "${!SESSION_PIDS[@]}"; do
+        if [ "${SESSION_PIDS[$_i]}" = "$_EXITED_PID" ]; then
+            _EXITED_NAME="${SESSION_NAMES[$_i]}"
+            break
+        fi
+    done
+    if [ -z "$_EXITED_NAME" ]; then
+        # Unknown PID exited -- fail closed
+        _WAIT_STATUS=1
+        break
+    fi
+    # Remove exited PID from arrays
+    _NEW_PIDS=(); _NEW_NAMES=()
+    for _i in "${!SESSION_PIDS[@]}"; do
+        if [ "${SESSION_PIDS[$_i]}" != "$_EXITED_PID" ]; then
+            _NEW_PIDS+=("${SESSION_PIDS[$_i]}")
+            _NEW_NAMES+=("${SESSION_NAMES[$_i]}")
+        fi
+    done
+    SESSION_PIDS=("${_NEW_PIDS[@]}")
+    SESSION_NAMES=("${_NEW_NAMES[@]}")
+    # If cage exited, use its status and stop
+    if [ "$_EXITED_NAME" = "cage" ]; then
+        break
+    fi
+    # Audio process exited while cage is running -> failure
+    echo "ERROR: $_EXITED_NAME exited unexpectedly (status $_WAIT_STATUS) while Cage was running" >&2
+    _WAIT_STATUS=1
+    break
+done
+set -e
+
+_cleanup
+exit "$_WAIT_STATUS"
