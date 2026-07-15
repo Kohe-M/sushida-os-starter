@@ -25,12 +25,10 @@ test-shell:
 	@echo "TODO: Run ShellCheck and BATS."
 
 test-qemu:
-	@echo "TODO: Run QEMU smoke tests."
-	@exit 1
+	./scripts/smoke-test.sh
 
 qemu:
-	@echo "TODO: Boot the generated ISO in QEMU."
-	@exit 1
+	./scripts/run-qemu.sh
 
 verify:
 	./scripts/verify-iso.sh

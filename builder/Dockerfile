@@ -17,10 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     mtools \
     python3 \
     python3-pytest \
+    qemu-system-x86 \
     shellcheck \
+    socat \
     squashfs-tools \
     syslinux-common \
     systemd \
+    ovmf \
     xorriso \
     && rm -rf /var/lib/apt/lists/*
 
