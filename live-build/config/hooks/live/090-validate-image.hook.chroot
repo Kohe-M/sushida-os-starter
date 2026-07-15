@@ -64,7 +64,7 @@ for package in \
     network-manager wpasupplicant pipewire pipewire-pulse wireplumber \
     libspa-0.2-modules dbus-user-session libgl1-mesa-dri mesa-va-drivers \
     libegl1 libgles2 libgbm1 libdrm2 libwayland-client0 \
-    libwayland-server0 python3-minimal; do
+    libwayland-server0 python3-minimal pciutils; do
     require_package "$package"
 done
 
@@ -85,6 +85,7 @@ done
 for file in \
     /usr/local/bin/sushida-launch \
     /usr/local/bin/sushida-network-watch \
+    /usr/local/bin/sushida-diagnostics \
     /usr/local/libexec/sushida-session; do
     require_executable "$file"
 done
@@ -164,6 +165,7 @@ fi
 if grep -R -n -E 'TO''DO|FIX''ME|IMPLEMENT[[:space:]]+ME|REPLACE_WITH_' \
     /usr/local/bin/sushida-launch \
     /usr/local/bin/sushida-network-watch \
+    /usr/local/bin/sushida-diagnostics \
     /usr/local/libexec/sushida-session \
     /etc/systemd/system/sushida-kiosk.service \
     /etc/systemd/system/sushida-network-watch.service \

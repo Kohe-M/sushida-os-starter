@@ -1,5 +1,172 @@
 #!/usr/bin/env bash
+# Collect bounded, redacted kiosk hardware diagnostics without exposing secrets.
 set -euo pipefail
 
-echo "TODO: Implement this script."
-exit 1
+DEFAULT_DIR="/run/sushida-os/diagnostics"
+OUTPUT=""
+
+usage() {
+    echo "Usage: sushida-diagnostics [--output /absolute/path]"
+}
+
+fail() {
+    echo "ERROR: diagnostics: $*" >&2
+    exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --output)
+            [ "$#" -ge 2 ] || fail "--output requires a path"
+            OUTPUT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            fail "unknown argument: $1"
+            ;;
+    esac
+done
+
+umask 077
+if [ -z "$OUTPUT" ]; then
+    mkdir -p "$DEFAULT_DIR"
+    chmod 0700 "$DEFAULT_DIR"
+    OUTPUT="$DEFAULT_DIR/diagnostics-$(date -u +%Y%m%dT%H%M%SZ)-$$.txt"
+fi
+case "$OUTPUT" in /*) ;; *) fail "output path must be absolute" ;; esac
+if [ -e "$OUTPUT" ] || [ -L "$OUTPUT" ]; then
+    fail "output already exists"
+fi
+OUTPUT_PARENT="$(dirname "$OUTPUT")"
+if [ ! -d "$OUTPUT_PARENT" ] || [ -L "$OUTPUT_PARENT" ]; then
+    fail "output directory is unsafe or missing"
+fi
+OUTPUT_PARENT="$(cd "$OUTPUT_PARENT" && pwd -P)"
+OUTPUT="$OUTPUT_PARENT/$(basename "$OUTPUT")"
+TEMP_OUTPUT="$(mktemp "$OUTPUT_PARENT/.sushida-diagnostics.XXXXXX")"
+REDACTED_OUTPUT=""
+cleanup() {
+    [ -z "$TEMP_OUTPUT" ] || rm -f -- "$TEMP_OUTPUT"
+    [ -z "$REDACTED_OUTPUT" ] || rm -f -- "$REDACTED_OUTPUT"
+}
+trap cleanup EXIT INT TERM HUP
+
+redact_stream() {
+    sed -E \
+        -e 's#(https?://[^?[:space:]]+)\?[^[:space:]]+#\1?[REDACTED]#g' \
+        -e 's/([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}/[REDACTED-MAC]/g' \
+        -e 's/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[1-5][[:xdigit:]]{3}-[89abAB][[:xdigit:]]{3}-[[:xdigit:]]{12}/[REDACTED-UUID]/g' \
+        -e 's/(password|passwd|psk|secret|token|credential)[=:][^[:space:]]*/\1=[REDACTED]/gI'
+}
+
+heading() {
+    printf '\n## %s\n' "$1"
+}
+
+capture() {
+    local label="$1"
+    shift
+    printf '\n### %s\n' "$label"
+    if ! command -v "$1" > /dev/null 2>&1; then
+        printf 'UNAVAILABLE: command not installed: %s\n' "$1"
+        return 0
+    fi
+    set +e
+    local result
+    result="$("$@" 2>&1)"
+    local status=$?
+    set -e
+    printf '%s\n' "$result" | redact_stream
+    printf 'COMMAND_STATUS=%s\n' "$status"
+}
+
+{
+    echo "SUSHIDA_OS_DIAGNOSTICS_VERSION=1"
+    printf 'COLLECTED_AT_UTC=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'OUTPUT_PERSISTENCE=caller-selected; default is volatile /run\n'
+
+    heading "Operating system"
+    capture "Kernel release" uname -r
+    capture "Debian release" grep -E '^(PRETTY_NAME|VERSION_ID|VERSION_CODENAME)=' /etc/os-release
+
+    heading "Kiosk services"
+    capture "Kiosk service" systemctl show sushida-kiosk.service \
+        --property=LoadState,ActiveState,SubState,Result,NRestarts --no-pager
+    capture "Network watcher service" systemctl show sushida-network-watch.service \
+        --property=LoadState,ActiveState,SubState,Result,NRestarts --no-pager
+    capture "Cage process IDs" pgrep -x cage
+    capture "Chromium process IDs" pgrep -x chromium
+
+    heading "DRM and graphics"
+    capture "PCI display devices and drivers" lspci -nnk -d ::0300
+    capture "DRM device permissions" ls -la /dev/dri
+    echo
+    echo "### DRM kernel drivers"
+    found_driver=false
+    for driver in /sys/class/drm/card*/device/driver; do
+        [ -L "$driver" ] || continue
+        found_driver=true
+        printf '%s=%s\n' "$(basename "$(dirname "$(dirname "$driver")")")" \
+            "$(basename "$(readlink -f "$driver")")"
+    done
+    [ "$found_driver" = true ] || echo "UNAVAILABLE: no DRM card driver found"
+    echo
+    echo "### DRM connector status"
+    found_connector=false
+    for status_file in /sys/class/drm/card*-*/status; do
+        [ -f "$status_file" ] || continue
+        found_connector=true
+        printf '%s=%s\n' "$(basename "$(dirname "$status_file")")" "$(cat "$status_file")"
+    done
+    [ "$found_connector" = true ] || echo "UNAVAILABLE: no DRM connector status found"
+    capture "GBM EGL GL and Wayland libraries" sh -c \
+        "ldconfig -p | grep -E 'lib(gbm|EGL|GLX|wayland-client|wayland-server)\\.so'"
+
+    heading "Wayland Cage and Chromium"
+    echo
+    echo "### Wayland runtime sockets"
+    if [ -d /run/sushida-os/xdg-runtime ]; then
+        find /run/sushida-os/xdg-runtime -maxdepth 1 -type s -printf '%f\n' | LC_ALL=C sort
+    else
+        echo "UNAVAILABLE: kiosk XDG runtime directory is absent"
+    fi
+    capture "Cage version" cage -v
+    capture "Chromium version" chromium --version
+    echo
+    echo "### WebGL and acceleration boundary"
+    echo "CONFIGURED: launcher does not pass --disable-gpu or --disable-webgl"
+    echo "RUNTIME_WEBGL_STATUS=UNVERIFIED; inspect chrome://gpu during a controlled acceptance test"
+
+    heading "Audio"
+    capture "Audio device permissions" ls -la /dev/snd
+    capture "ALSA cards" cat /proc/asound/cards
+    capture "PipeWire process IDs" pgrep -x pipewire
+    capture "PipeWire Pulse process IDs" pgrep -x pipewire-pulse
+    capture "WirePlumber process IDs" pgrep -x wireplumber
+    capture "PipeWire graph summary" wpctl status --name
+
+    heading "NetworkManager"
+    capture "NetworkManager service" systemctl show NetworkManager.service \
+        --property=LoadState,ActiveState,SubState,Result --no-pager
+    capture "NetworkManager global state" nmcli -t -f STATE general
+    capture "Network device state without identifiers" nmcli -t -f TYPE,STATE device
+    echo "NOT_COLLECTED: SSIDs, connection profiles, addresses, MACs, and credentials"
+} > "$TEMP_OUTPUT"
+
+REDACTED_OUTPUT="$TEMP_OUTPUT.redacted"
+redact_stream < "$TEMP_OUTPUT" > "$REDACTED_OUTPUT"
+chmod 0600 "$REDACTED_OUTPUT"
+rm -f -- "$TEMP_OUTPUT"
+TEMP_OUTPUT=""
+if [ -e "$OUTPUT" ] || [ -L "$OUTPUT" ]; then
+    fail "output appeared during collection; refusing to overwrite"
+fi
+mv -- "$REDACTED_OUTPUT" "$OUTPUT"
+REDACTED_OUTPUT=""
+trap - EXIT INT TERM HUP
+
+echo "Diagnostics written to $OUTPUT"

@@ -113,6 +113,7 @@ def test_hook_validates_executable_ownership_and_wifi_mode() -> None:
     assert "root:root:600" in text
     assert "sushida-launch" in text
     assert "sushida-network-watch" in text
+    assert "sushida-diagnostics" in text
     assert "sushida-session" in text
 
 

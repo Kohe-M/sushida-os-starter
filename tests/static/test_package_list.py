@@ -144,6 +144,10 @@ def test_image_validation_runtime() -> None:
     assert "python3-minimal" in _package_set()
 
 
+def test_diagnostics_runtime() -> None:
+    assert "pciutils" in _package_set()
+
+
 # ── superseded metapackage not present ───────────────────────────────────────
 
 

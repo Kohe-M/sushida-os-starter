@@ -57,3 +57,4 @@ ca-certificates
 
 # Image-internal policy validation during the live-build chroot stage
 python3-minimal
+pciutils
