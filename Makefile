@@ -13,8 +13,7 @@ configure:
 	./live-build/auto/config
 
 iso:
-	@echo "TODO: Build artifacts/sushida-os-amd64.iso."
-	@exit 1
+	./scripts/build.sh
 
 test: test-static test-shell
 	@echo "TODO: Add QEMU tests when supported."
@@ -34,11 +33,10 @@ qemu:
 	@exit 1
 
 verify:
-	@echo "TODO: Verify ISO checksum and contents."
-	@exit 1
+	./scripts/verify-iso.sh
 
 clean:
-	@echo "TODO: Remove disposable build state."
+	./scripts/clean.sh clean
 
-distclean: clean
-	@echo "TODO: Remove all generated artifacts."
+distclean:
+	./scripts/clean.sh distclean

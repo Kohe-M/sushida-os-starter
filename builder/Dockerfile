@@ -5,14 +5,23 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bats \
     ca-certificates \
+    debootstrap \
+    dosfstools \
     git \
+    grub-efi-amd64-bin \
+    grub-pc-bin \
+    isolinux \
     jq \
     live-build \
     make \
+    mtools \
     python3 \
     python3-pytest \
     shellcheck \
+    squashfs-tools \
+    syslinux-common \
     systemd \
+    xorriso \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /sushida-os
