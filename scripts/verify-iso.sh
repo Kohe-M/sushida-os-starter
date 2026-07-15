@@ -77,7 +77,7 @@ trap cleanup EXIT INT TERM HUP
 
 iso="$resolved_dir/$ISO_NAME"
 iso_listing="$VERIFY_ROOT/iso-files.txt"
-xorriso -indev "$iso" -find / -type f -print > "$iso_listing" 2> "$VERIFY_ROOT/xorriso.log" || \
+xorriso -indev "$iso" -find / -type f -exec echo > "$iso_listing" 2> "$VERIFY_ROOT/xorriso.log" || \
     fail "cannot read ISO filesystem"
 grep -Eq "^'?/live/filesystem\.squashfs'?$" "$iso_listing" || \
     fail "required ISO path missing: /live/filesystem.squashfs"

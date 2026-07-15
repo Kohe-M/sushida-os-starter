@@ -76,6 +76,8 @@ def test_verify_checks_checksum_metadata_and_manifest() -> None:
 def test_verify_checks_iso_and_squashfs_contents() -> None:
     text = VERIFY.read_text()
     assert "xorriso" in text
+    assert "-find / -type f -exec echo" in text
+    assert "-find / -type f -print" not in text
     assert "unsquashfs" in text
     for path in (
         "filesystem.squashfs",
