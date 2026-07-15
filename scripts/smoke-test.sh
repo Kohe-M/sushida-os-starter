@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-DURATION="${SUSHIDA_QEMU_DURATION:-90}"
+DURATION="${SUSHIDA_QEMU_DURATION:-180}"
 
 [[ "$DURATION" =~ ^[1-9][0-9]*$ ]] || {
     echo "ERROR: SUSHIDA_QEMU_DURATION must be a positive integer" >&2

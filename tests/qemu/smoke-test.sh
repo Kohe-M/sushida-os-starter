@@ -28,11 +28,22 @@ grep -q '^QEMU_STATUS=0$' "$RESULT" || {
     echo "ERROR: bounded QEMU run was not cleanly observed" >&2
     exit 1
 }
+for evidence in \
+    'systemd.setenv=WLR_RENDERER=pixman' \
+    'sushida-kiosk.service' \
+    'sushida-network-watch.service' \
+    'graphical.target'; do
+    grep -Fq "$evidence" "$SERIAL" || {
+        echo "ERROR: serial output lacks boot evidence: $evidence" >&2
+        exit 1
+    }
+done
 
 {
     echo "AUTOMATED: QEMU stayed alive for the configured observation interval: PASS"
     echo "AUTOMATED: screenshot was captured as PNG: PASS"
     echo "AUTOMATED: serial log contains no normal login/password prompt: PASS"
+    echo "AUTOMATED: QEMU pixman boot entry reached kiosk services and graphical target: PASS"
     echo "MANUAL: boot reached the kiosk UI: UNVERIFIED"
     echo "MANUAL: Cage and Chromium are visible and full-screen: UNVERIFIED"
     echo "MANUAL: offline page is visible: UNVERIFIED"

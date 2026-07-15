@@ -35,8 +35,8 @@
 | K29 | Ctrl+Shift+I | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
 | K30 | F11 | No full-screen toggle (already kiosk) |  |  | Chromium --kiosk mode |
 | K31 | F12 | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
-| K32 | Disconnect network | Local offline screen appears |  |  | Low-frequency NetworkManager watcher |
-| K33 | Restore network | Sushi-da page returns automatically |  |  | Validated URL recovery transition |
+| K32 | Disconnect network | Local offline screen appears |  |  | Low-frequency watcher restarts the managed kiosk session |
+| K33 | Restore network | Sushi-da page returns automatically |  |  | Fresh session selects the validated configured URL |
 
 ## Gameplay input
 

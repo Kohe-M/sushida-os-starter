@@ -177,15 +177,20 @@ done
 [ -S "$MONITOR_SOCKET" ] || fail "QEMU monitor did not become ready"
 
 if [ "$QEMU_SMOKE" = true ]; then
-    # Both bootloaders expose a q hotkey for the isolated QEMU entry. Repeat
-    # during the firmware/menu window because TCG timing varies by host.
-    for _ in $(seq 1 15); do
+    # Both bootloaders expose a q hotkey for the isolated QEMU entry. UEFI
+    # firmware can take tens of seconds under TCG, so repeat until the serial
+    # kernel command line proves that the intended entry was selected.
+    QEMU_BOOT_MARKER="systemd.setenv=WLR_RENDERER=pixman"
+    for _ in $(seq 1 90); do
         {
             printf 'sendkey q\n'
             printf 'sendkey ret\n'
         } | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
+        if grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG"; then break; fi
         sleep 1
     done
+    grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG" || \
+        fail "QEMU-only boot entry was not selected"
 fi
 
 sleep "$DURATION"

@@ -85,9 +85,12 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     runner = RUN.read_text()
     smoke = SMOKE.read_text()
     marker = "systemd.setenv=WLR_RENDERER_ALLOW_SOFTWARE=1"
+    renderer = "systemd.setenv=WLR_RENDERER=pixman"
 
     assert marker in isolinux
     assert marker in grub
+    assert renderer in isolinux
+    assert renderer in grub
     assert sum(line.startswith("label ") for line in isolinux.splitlines()) == 1
     assert "label qemu-smoke-amd64" in isolinux
     assert "menu default" not in isolinux
@@ -95,4 +98,6 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     assert "--hotkey=q" in grub
     assert "--qemu-smoke" in runner
     assert "sendkey q" in runner
+    assert "QEMU_BOOT_MARKER" in runner
+    assert 'grep -Fq "$QEMU_BOOT_MARKER"' in runner
     assert smoke.count("--qemu-smoke") == 2
