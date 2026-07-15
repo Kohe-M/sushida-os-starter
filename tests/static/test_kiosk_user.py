@@ -216,9 +216,16 @@ def test_tmpfiles_exact_paths() -> None:
         fields = stripped.split()
         assert len(fields) >= 7, f"Expected at least 7 fields, got {len(fields)}"
         paths.append(fields[1])
-    assert "/run/sushida-os" in paths, "Missing /run/sushida-os"
-    assert "/run/sushida-os/home" in paths, "Missing /run/sushida-os/home"
-    assert len(paths) == 2, f"Expected exactly 2 paths, got {len(paths)}: {paths}"
+    expected = {
+        "/run/sushida-os",
+        "/run/sushida-os/home",
+        "/run/sushida-os/chromium",
+        "/run/sushida-os/cache",
+        "/run/sushida-os/tmp",
+        "/run/sushida-os/downloads",
+        "/run/sushida-os/xdg-runtime",
+    }
+    assert set(paths) == expected, f"Unexpected runtime paths: {paths}"
 
 
 def test_tmpfiles_parent_mode_0750() -> None:

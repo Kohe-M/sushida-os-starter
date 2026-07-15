@@ -54,3 +54,6 @@ amd64-microcode
 
 # TLS certificates
 ca-certificates
+
+# Image-internal policy validation during the live-build chroot stage
+python3-minimal

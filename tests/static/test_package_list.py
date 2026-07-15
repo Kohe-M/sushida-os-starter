@@ -130,6 +130,10 @@ def test_ca_certificates() -> None:
     assert "ca-certificates" in _package_set()
 
 
+def test_image_validation_runtime() -> None:
+    assert "python3-minimal" in _package_set()
+
+
 # ── superseded metapackage not present ───────────────────────────────────────
 
 

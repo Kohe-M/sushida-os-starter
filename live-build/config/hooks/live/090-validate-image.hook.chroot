@@ -1,4 +1,175 @@
 #!/usr/bin/env bash
+# Fail the live-build chroot stage if the production image violates a required
+# account, package, policy, service, permission, or volatile-state invariant.
 set -euo pipefail
 
-echo "TODO: Implement live-build chroot hook."
+fail() {
+    echo "ERROR: image validation: $*" >&2
+    exit 1
+}
+
+require_command() {
+    command -v "$1" > /dev/null 2>&1 || fail "missing command: $1"
+}
+
+require_package() {
+    local status
+    status="$(dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null || true)"
+    [ "${status:0:2}" = "ii" ] || fail "required package is not installed: $1"
+}
+
+reject_package() {
+    if dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'ok installed'; then
+        fail "prohibited package is installed: $1"
+    fi
+}
+
+require_file() {
+    [ -f "$1" ] || fail "missing file: $1"
+}
+
+require_executable() {
+    require_file "$1"
+    [ -x "$1" ] || fail "file is not executable: $1"
+    [ "$(stat -c '%U:%G:%a' "$1")" = "root:root:755" ] || \
+        fail "unsafe owner or mode for $1: $(stat -c '%U:%G:%a' "$1")"
+}
+
+for cmd in dpkg-query getent id stat systemctl systemd-analyze python3; do
+    require_command "$cmd"
+done
+
+# Account boundary.
+getent passwd kiosk > /dev/null || fail "kiosk account is missing"
+IFS=: read -r _name _password uid gid _gecos home shell < <(getent passwd kiosk)
+[ "$uid" -ne 0 ] || fail "kiosk UID must not be zero"
+[ "$gid" -ne 0 ] || fail "kiosk primary GID must not be zero"
+[ "$home" = "/nonexistent" ] || fail "unexpected kiosk home: $home"
+[ "$shell" = "/usr/sbin/nologin" ] || fail "unexpected kiosk shell: $shell"
+shadow_password="$(getent shadow kiosk | cut -d: -f2)"
+case "$shadow_password" in !*|\**) ;; *) fail "kiosk password is not locked" ;; esac
+for group in audio video render input; do
+    id -nG kiosk | tr ' ' '\n' | grep -qx "$group" || \
+        fail "kiosk is missing required group: $group"
+done
+for group in root sudo adm wheel disk shadow; do
+    if id -nG kiosk | tr ' ' '\n' | grep -qx "$group"; then
+        fail "kiosk belongs to prohibited group: $group"
+    fi
+done
+
+# Required production packages.
+for package in \
+    linux-image-amd64 live-boot live-config systemd-sysv cage chromium \
+    network-manager wpasupplicant pipewire pipewire-pulse wireplumber \
+    libspa-0.2-modules dbus-user-session libgl1-mesa-dri mesa-va-drivers \
+    libegl1 libgles2 libgbm1 libdrm2 libwayland-client0 \
+    libwayland-server0 python3-minimal; do
+    require_package "$package"
+done
+
+# Production image must not expose a shell, desktop, display manager, remote
+# administration service, proprietary NVIDIA stack, or persistence tooling.
+for package in \
+    openssh-server dropbear telnetd inetutils-telnetd sudo \
+    xterm gnome-terminal konsole xfce4-terminal mate-terminal lxterminal \
+    nautilus dolphin thunar pcmanfm \
+    gdm3 sddm lightdm xdm slim lxdm \
+    xserver-xorg xserver-xorg-core xorg \
+    task-gnome-desktop task-kde-desktop task-xfce-desktop \
+    nvidia-driver nvidia-kernel-dkms nvidia-settings; do
+    reject_package "$package"
+done
+
+# Installed scripts and units.
+for file in \
+    /usr/local/bin/sushida-launch \
+    /usr/local/bin/sushida-network-watch \
+    /usr/local/libexec/sushida-session; do
+    require_executable "$file"
+done
+for unit in sushida-kiosk.service sushida-network-watch.service; do
+    require_file "/etc/systemd/system/$unit"
+    systemctl is-enabled "$unit" > /dev/null 2>&1 || fail "$unit is not enabled"
+done
+for unit in getty@.service autovt@.service serial-getty@.service \
+    console-getty.service container-getty@.service ctrl-alt-del.target; do
+    [ "$(systemctl is-enabled "$unit" 2>/dev/null || true)" = "masked" ] || \
+        fail "$unit is not masked"
+done
+systemd-analyze verify \
+    /etc/systemd/system/sushida-kiosk.service \
+    /etc/systemd/system/sushida-network-watch.service
+
+# Chromium policy: syntax, types, exact security values, and minimal origins.
+policy=/etc/chromium/policies/managed/sushida-os.json
+require_file "$policy"
+python3 - "$policy" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, encoding="utf-8") as stream:
+    policy = json.load(stream)
+
+expected = {
+    "DeveloperToolsAvailability": 2,
+    "BrowserGuestModeEnabled": False,
+    "IncognitoModeAvailability": 1,
+    "BrowserSignin": 0,
+    "PasswordManagerEnabled": False,
+    "AutofillAddressEnabled": False,
+    "AutofillCreditCardEnabled": False,
+    "PrintingEnabled": False,
+    "DownloadRestrictions": 3,
+}
+for key, value in expected.items():
+    if policy.get(key) != value or type(policy.get(key)) is not type(value):
+        raise SystemExit(f"invalid Chromium policy {key}")
+if policy.get("URLBlocklist") != ["*", "view-source:*"]:
+    raise SystemExit("invalid URLBlocklist")
+if policy.get("URLAllowlist") != [
+    "https://.sushida.net:443",
+    "file:///usr/share/sushida-os/offline.html",
+]:
+    raise SystemExit("invalid URLAllowlist")
+PY
+
+# Volatile runtime and log configuration.
+tmpfiles=/usr/lib/tmpfiles.d/sushida-os.conf
+journal=/etc/systemd/journald.conf.d/90-sushida-os.conf
+require_file "$tmpfiles"
+require_file "$journal"
+for path in home chromium cache tmp downloads xdg-runtime; do
+    grep -Eq "^d[[:space:]]+/run/sushida-os/${path}[[:space:]]+0700[[:space:]]+kiosk[[:space:]]+kiosk" "$tmpfiles" || \
+        fail "missing volatile runtime path: $path"
+done
+grep -Eq '^d[[:space:]]+/run/sushida-os[[:space:]]+0750[[:space:]]+kiosk[[:space:]]+kiosk' "$tmpfiles" || \
+    fail "missing volatile runtime parent"
+grep -qx 'Storage=volatile' "$journal" || fail "journald is not volatile"
+[ ! -e /persistence.conf ] || fail "persistence.conf must not be present"
+
+# Optional embedded Wi-Fi credentials must remain root-only.
+wifi=/etc/NetworkManager/system-connections/sushida-os-wifi.nmconnection
+if [ -e "$wifi" ]; then
+    if [ ! -f "$wifi" ] || [ -L "$wifi" ]; then
+        fail "Wi-Fi path is not a regular file"
+    fi
+    [ "$(stat -c '%U:%G:%a' "$wifi")" = "root:root:600" ] || \
+        fail "unsafe Wi-Fi owner or mode"
+fi
+
+# Reject unresolved markers in installed security-critical files.  Split the
+# patterns in source so the validator does not flag its own implementation.
+if grep -R -n -E 'TO''DO|FIX''ME|IMPLEMENT[[:space:]]+ME|REPLACE_WITH_' \
+    /usr/local/bin/sushida-launch \
+    /usr/local/bin/sushida-network-watch \
+    /usr/local/libexec/sushida-session \
+    /etc/systemd/system/sushida-kiosk.service \
+    /etc/systemd/system/sushida-network-watch.service \
+    /etc/chromium/policies/managed/sushida-os.json \
+    /etc/sushida-os/config.env; then
+    fail "unresolved marker in production configuration"
+fi
+
+echo "Image validation passed."

@@ -7,13 +7,44 @@ bootloader
   -> Debian live system
   -> systemd
   -> sushida-kiosk.service
-  -> Cage
+  -> sushida-launch
+  -> dbus-run-session
+  -> sushida-session
+  -> PipeWire + WirePlumber + Cage
   -> Chromium kiosk window
   -> official Sushi-da URL
 ```
 
-Mutable browser and session state is stored under `/run` (tmpfs).
-The root filesystem is planned to be read-only in production (Task 13).
+## Read-only live-system boundary
+
+The production ISO uses Debian live-boot without persistence.  Its source
+filesystem is an immutable SquashFS image.  live-boot supplies a volatile overlay
+so software can perform normal runtime writes, but that writable layer
+is held in memory and is discarded at shutdown or reboot.  This is not a claim
+that every path is mounted with the VFS `ro` flag after boot; the security and
+recovery property is that no writable persistent root layer is configured.
+
+The image does not enable a persistence label, persistence configuration file,
+or persistent home.  A sudden power loss therefore discards the volatile
+overlay and the next boot starts from the signed-off image contents.  Firmware,
+the ISO/USB medium, and physical storage remain outside this software boundary.
+
+Expected mutable kiosk state is placed explicitly under `/run`, which systemd
+mounts as tmpfs:
+
+| State | Runtime destination | Persistence |
+|---|---|---|
+| Chromium profile | `/run/sushida-os/chromium` | None |
+| Chromium cache | `/run/sushida-os/cache` | None |
+| Downloads/temp files | `/run/sushida-os/downloads`, `/run/sushida-os/tmp` | None |
+| Synthetic home | `/run/sushida-os/home` | None |
+| Wayland/PipeWire/session sockets | `/run/sushida-os/xdg-runtime` | None |
+| Network watcher state | `/run/sushida-os/network-state` | None |
+| system journal | `/run/log/journal` (`Storage=volatile`) | None |
+
+`systemd-tmpfiles` creates the kiosk directories as `kiosk:kiosk`, mode 0700
+(the parent is 0750).  The kiosk service also uses `RuntimeDirectory` as a
+startup safety net.  No persistent browser profile or kiosk home is created.
 
 ## Security boundaries
 
@@ -83,13 +114,9 @@ config.env path.
 
 ### offline.html
 
-The page at `file:///usr/share/sushida-os/offline.html` is intended for
-display by the network watcher (Task 11) when connectivity is lost.
-It is allowed in the managed policy pre-emptively because the offline
-flow will require it.
-
-The network watcher is currently a placeholder; the page is not yet
-displayed at runtime.
+The page at `file:///usr/share/sushida-os/offline.html` is displayed by the
+network watcher when NetworkManager reports that global connectivity is lost.
+The watcher returns Chromium to the validated configured URL after recovery.
 
 The page contains only a plain-text message in Japanese explaining that
 the network is unavailable.  It does not copy, imitate, or redistribute
