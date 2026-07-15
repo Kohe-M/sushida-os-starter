@@ -19,13 +19,12 @@ for path in "$BUILD_ROOT" "$ARTIFACT_DIR"; do
     [ ! -L "$path" ] || fail "refusing symlinked repository path: $path"
     mkdir -p "$path"
 done
-for cmd in git jq lb sha256sum sort; do
+for cmd in git jq lb mktemp sha256sum sort; do
     command -v "$cmd" > /dev/null 2>&1 || fail "required build command not found: $cmd"
 done
 
-STAGING="$ARTIFACT_DIR/.build-staging.$$"
-[ ! -e "$STAGING" ] || fail "staging path already exists: $STAGING"
-mkdir -m 0700 "$STAGING"
+STAGING="$(mktemp -d "$ARTIFACT_DIR/.build-staging.XXXXXX")"
+chmod 0700 "$STAGING"
 cleanup() {
     rm -rf -- "$STAGING"
 }

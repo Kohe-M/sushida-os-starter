@@ -36,7 +36,7 @@ def test_build_produces_exact_required_artifacts() -> None:
         "build-info.json",
     ):
         assert name in text
-    assert ".build-staging.$$" in text
+    assert 'mktemp -d "$ARTIFACT_DIR/.build-staging.XXXXXX"' in text
     assert "verify-iso.sh" in text
 
 
