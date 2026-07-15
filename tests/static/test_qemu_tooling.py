@@ -88,8 +88,10 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
 
     assert marker in isolinux
     assert marker in grub
-    assert "menu default" in isolinux.split("label qemu-smoke-amd64", 1)[0]
-    assert marker not in isolinux.split("label qemu-smoke-amd64", 1)[0]
+    assert sum(line.startswith("label ") for line in isolinux.splitlines()) == 1
+    assert "label qemu-smoke-amd64" in isolinux
+    assert "menu default" not in isolinux
+    assert marker not in GRUB.read_text().split("menuentry \"QEMU smoke", 1)[0]
     assert "--hotkey=q" in grub
     assert "--qemu-smoke" in runner
     assert "sendkey q" in runner
