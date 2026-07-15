@@ -178,17 +178,49 @@ done
 
 if [ "$QEMU_SMOKE" = true ]; then
     # Both bootloaders expose a q hotkey for the isolated QEMU entry. UEFI
-    # firmware can take tens of seconds under TCG, so repeat until the serial
-    # kernel command line proves that the intended entry was selected.
+    # firmware can take tens of seconds under TCG. Send short waves followed
+    # by a quiet period so key repetition cannot interfere with kernel load.
     QEMU_BOOT_MARKER="systemd.setenv=WLR_RENDERER=pixman"
-    for _ in $(seq 1 90); do
-        {
-            printf 'sendkey q\n'
-            printf 'sendkey ret\n'
-        } | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
-        if grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG"; then break; fi
-        sleep 1
-    done
+    if [ "$FIRMWARE" = uefi ]; then
+        # Synchronize on OVMF handing control to the DVD. Esc stops GRUB's
+        # short countdown; Up moves from production entry 1 to QEMU entry 0.
+        for _ovmf in $(seq 1 90); do
+            grep -Fq 'BdsDxe: starting Boot' "$SERIAL_LOG" && break
+            sleep 1
+        done
+        grep -Fq 'BdsDxe: starting Boot' "$SERIAL_LOG" || \
+            fail "UEFI firmware did not start the release ISO"
+        for _esc in $(seq 1 15); do
+            printf 'sendkey esc\n' | \
+                socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
+            sleep 1
+        done
+        for _key in $(seq 1 5); do
+            {
+                printf 'sendkey up\n'
+                printf 'sendkey ret\n'
+            } | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
+            sleep 1
+        done
+        for _kernel in $(seq 1 90); do
+            grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG" && break
+            sleep 1
+        done
+    else
+        for _wave in $(seq 1 6); do
+            for _key in $(seq 1 5); do
+                {
+                    printf 'sendkey q\n'
+                    printf 'sendkey ret\n'
+                } | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
+                sleep 1
+            done
+            for _quiet in $(seq 1 30); do
+                if grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG"; then break 2; fi
+                sleep 1
+            done
+        done
+    fi
     grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG" || \
         fail "QEMU-only boot entry was not selected"
 fi

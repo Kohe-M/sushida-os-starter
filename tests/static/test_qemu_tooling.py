@@ -97,7 +97,12 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     assert marker not in GRUB.read_text().split("menuentry \"QEMU smoke", 1)[0]
     assert "--hotkey=q" in grub
     assert "--qemu-smoke" in runner
+    assert "BdsDxe: starting Boot" in runner
+    assert "sendkey esc" in runner
+    assert "sendkey up" in runner
     assert "sendkey q" in runner
     assert "QEMU_BOOT_MARKER" in runner
     assert 'grep -Fq "$QEMU_BOOT_MARKER"' in runner
+    assert "for _wave" in runner
+    assert "for _quiet" in runner
     assert smoke.count("--qemu-smoke") == 2
