@@ -120,7 +120,10 @@ credentials.
 | `make clean` | Remove disposable build/QEMU state |
 | `make distclean` | Also remove the four known release artifacts |
 
-QEMU evidence is written under `build/qemu/`. Automated checks prove only that
-QEMU remained alive for the observation interval, a PNG was captured, and no
-normal serial login prompt appeared. Screenshots and hardware behavior still
+QEMU evidence is written under `build/qemu/`. `make test-qemu` explicitly
+selects the non-default `QEMU smoke test` boot entry, which permits a software
+renderer and serial logging only for emulation. The normal production entry
+continues to require a hardware-capable renderer. Automated checks prove only
+that QEMU remained alive for the observation interval, a PNG was captured, and
+no normal serial login prompt appeared. Screenshots and hardware behavior still
 need explicit review.

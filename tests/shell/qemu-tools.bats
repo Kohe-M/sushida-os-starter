@@ -20,6 +20,13 @@
     [[ "$output" == *"OVMF_VARS.fd"* ]]
 }
 
+@test "QEMU smoke selection is explicit and keeps the ISO read-only" {
+    run scripts/run-qemu.sh --firmware bios --offline --headless --qemu-smoke --duration 1 --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"media=cdrom"* ]]
+    [[ "$output" == *"readonly=on"* ]]
+}
+
 @test "QEMU runner rejects invalid firmware" {
     run scripts/run-qemu.sh --firmware coreboot --dry-run
     [ "$status" -ne 0 ]

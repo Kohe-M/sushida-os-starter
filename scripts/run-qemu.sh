@@ -10,6 +10,7 @@ FIRMWARE="bios"
 NETWORK="online"
 HEADLESS=false
 DRY_RUN=false
+QEMU_SMOKE=false
 DURATION=0
 
 usage() {
@@ -19,6 +20,7 @@ Usage: scripts/run-qemu.sh [options]
   --offline             Do not create a guest network interface
   --headless            Disable the QEMU display window
   --duration SECONDS    Capture a screenshot and quit after a bounded interval
+  --qemu-smoke          Select the QEMU-only software-renderer boot entry
   --dry-run             Print the QEMU command without starting it
 EOF
 }
@@ -50,6 +52,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --dry-run)
             DRY_RUN=true
+            shift
+            ;;
+        --qemu-smoke)
+            QEMU_SMOKE=true
             shift
             ;;
         -h|--help)
@@ -169,6 +175,18 @@ for _ in $(seq 1 100); do
     sleep 0.1
 done
 [ -S "$MONITOR_SOCKET" ] || fail "QEMU monitor did not become ready"
+
+if [ "$QEMU_SMOKE" = true ]; then
+    # Both bootloaders expose a q hotkey for the isolated QEMU entry. Repeat
+    # during the firmware/menu window because TCG timing varies by host.
+    for _ in $(seq 1 15); do
+        {
+            printf 'sendkey q\n'
+            printf 'sendkey ret\n'
+        } | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
+        sleep 1
+    done
+fi
 
 sleep "$DURATION"
 kill -0 "$QEMU_PID" 2>/dev/null || fail "QEMU exited before the observation interval ended"

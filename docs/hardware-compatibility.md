@@ -11,8 +11,11 @@
 The image includes DRM, GBM, EGL/GLES, Wayland, Mesa DRI/VA, PipeWire,
 PipeWire-Pulse, and standard keyboard data. Production does not pass
 `--disable-gpu`, `--disable-webgl`, or `--no-sandbox`, and does not force
-software rendering. QEMU uses emulated `virtio-vga` and TCG when KVM is absent;
-that is not evidence for physical GPU performance.
+software rendering. The normal boot entry preserves that boundary. The bounded
+QEMU runner explicitly selects a separate `QEMU smoke test` boot entry that may
+fall back to software rendering and enables a serial console without a getty.
+QEMU uses emulated `virtio-vga` and TCG when KVM is absent; that is not evidence
+for physical GPU performance.
 
 NVIDIA proprietary drivers are not included or supported. Xwayland may appear
 as a Debian Cage dependency; no Xorg desktop, display manager, or ordinary X11

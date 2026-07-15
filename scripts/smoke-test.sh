@@ -11,9 +11,9 @@ DURATION="${SUSHIDA_QEMU_DURATION:-90}"
     exit 1
 }
 
-"$SCRIPT_DIR/run-qemu.sh" --firmware bios --offline --headless --duration "$DURATION"
+"$SCRIPT_DIR/run-qemu.sh" --firmware bios --offline --headless --qemu-smoke --duration "$DURATION"
 "$PROJECT_ROOT/tests/qemu/smoke-test.sh" bios-offline
-"$SCRIPT_DIR/run-qemu.sh" --firmware uefi --offline --headless --duration "$DURATION"
+"$SCRIPT_DIR/run-qemu.sh" --firmware uefi --offline --headless --qemu-smoke --duration "$DURATION"
 "$PROJECT_ROOT/tests/qemu/smoke-test.sh" uefi-offline
 
 echo "QEMU smoke observations completed. Review screenshots for manual-only checks."

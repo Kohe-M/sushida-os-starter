@@ -11,6 +11,7 @@ CHECK = Path("tests/qemu/smoke-test.sh")
 MAKEFILE = Path("Makefile")
 DOCKERFILE = Path("builder/Dockerfile")
 ISOLINUX = Path("live-build/config/bootloaders/isolinux/isolinux.cfg")
+ISOLINUX_LIVE = Path("live-build/config/bootloaders/isolinux/live.cfg")
 GRUB = Path("live-build/config/bootloaders/grub-pc/config.cfg")
 
 
@@ -73,6 +74,23 @@ def test_bios_and_uefi_boot_menus_have_bounded_autoboot() -> None:
     assert "default vesamenu.c32" in isolinux
     assert "timeout 30" in isolinux
     assert "timeout 0" not in isolinux
-    assert "set default=0" in grub
+    assert "set default=1" in grub
     assert "set timeout=3" in grub
     assert "set timeout=0" not in grub
+
+
+def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
+    isolinux = ISOLINUX_LIVE.read_text()
+    grub = GRUB.read_text()
+    runner = RUN.read_text()
+    smoke = SMOKE.read_text()
+    marker = "systemd.setenv=WLR_RENDERER_ALLOW_SOFTWARE=1"
+
+    assert marker in isolinux
+    assert marker in grub
+    assert "menu default" in isolinux.split("label qemu-smoke-amd64", 1)[0]
+    assert marker not in isolinux.split("label qemu-smoke-amd64", 1)[0]
+    assert "--hotkey=q" in grub
+    assert "--qemu-smoke" in runner
+    assert "sendkey q" in runner
+    assert smoke.count("--qemu-smoke") == 2
