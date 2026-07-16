@@ -52,9 +52,12 @@ def test_screenshot_checker_rejects_blank_frames(tmp_path: Path) -> None:
             text=True,
         )
 
-    dark = bytes((17, 17, 17)) * 9_900
-    bright = bytes((240, 240, 240)) * 100
-    assert check("offline-like.ppm", dark + bright).returncode == 0
+    offline_like = bytearray(bytes((17, 17, 17)) * 10_000)
+    for y in range(45, 55):
+        for x in range(30, 70):
+            offset = (y * 100 + x) * 3
+            offline_like[offset : offset + 3] = bytes((240, 240, 240))
+    assert check("offline-like.ppm", bytes(offline_like)).returncode == 0
     assert check("white.ppm", bytes((255, 255, 255)) * 10_000).returncode != 0
     assert check("black.ppm", bytes((0, 0, 0)) * 10_000).returncode != 0
 
@@ -136,6 +139,8 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     assert 'QEMU_ACCEL="tcg"' in runner
     assert 'QEMU_ACCEL="kvm:tcg"' in runner
     assert "SCREENSHOT_PPM" in runner
+    assert "for _capture in $(seq 1 6)" in runner
+    assert "partial scanout" in SCREENSHOT_CHECK.read_text()
     assert "check-screenshot.py" in CHECK.read_text()
     assert smoke.count("--qemu-smoke") == 2
     assert "SUSHIDA_QEMU_BIOS_DURATION" in smoke

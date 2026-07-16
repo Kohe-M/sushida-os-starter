@@ -242,11 +242,31 @@ fi
 
 sleep "$DURATION"
 kill -0 "$QEMU_PID" 2>/dev/null || fail "QEMU exited before the observation interval ended"
-{
-    printf 'screendump "%s" -f ppm\n' "$SCREENSHOT_PPM"
-    printf 'screendump "%s" -f png\n' "$SCREENSHOT"
-    printf 'quit\n'
-} | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
+if [ "$QEMU_SMOKE" = true ]; then
+    SCREENSHOT_CHECK="$PROJECT_ROOT/tests/qemu/check-screenshot.py"
+    [ -f "$SCREENSHOT_CHECK" ] || fail "screenshot checker not found"
+    screenshot_ready=false
+    for _capture in $(seq 1 6); do
+        {
+            printf 'screendump "%s" -f ppm\n' "$SCREENSHOT_PPM"
+            printf 'screendump "%s" -f png\n' "$SCREENSHOT"
+        } | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
+        if python3 "$SCREENSHOT_CHECK" "$SCREENSHOT_PPM" > /dev/null 2>&1; then
+            screenshot_ready=true
+            break
+        fi
+        sleep 10
+        kill -0 "$QEMU_PID" 2>/dev/null || \
+            fail "QEMU exited while waiting for a complete screenshot"
+    done
+    [ "$screenshot_ready" = true ] || fail "QEMU did not render a complete kiosk screenshot"
+else
+    {
+        printf 'screendump "%s" -f ppm\n' "$SCREENSHOT_PPM"
+        printf 'screendump "%s" -f png\n' "$SCREENSHOT"
+    } | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
+fi
+printf 'quit\n' | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
 set +e
 wait "$QEMU_PID"
 qemu_status=$?

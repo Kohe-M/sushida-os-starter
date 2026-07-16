@@ -41,12 +41,23 @@ if len(pixels) != expected:
 total = width * height
 dark = 0
 bright = 0
+bright_left = width
+bright_right = -1
+bright_top = height
+bright_bottom = -1
 for offset in range(0, len(pixels), 3):
     red, green, blue = pixels[offset : offset + 3]
     if max(red, green, blue) <= 32:
         dark += 1
     if min(red, green, blue) >= 180:
         bright += 1
+        pixel = offset // 3
+        x = pixel % width
+        y = pixel // width
+        bright_left = min(bright_left, x)
+        bright_right = max(bright_right, x)
+        bright_top = min(bright_top, y)
+        bright_bottom = max(bright_bottom, y)
 
 # The expected offline kiosk capture has a dark full-screen background plus
 # bright explanatory text. These deliberately broad bounds reject uniform
@@ -56,7 +67,13 @@ if dark * 100 < total * 70:
 if bright * 1000 < total:
     fail("capture lacks visible bright foreground content")
 
+bright_width = bright_right - bright_left + 1
+bright_height = bright_bottom - bright_top + 1
+if bright_width * 5 < width or bright_height * 20 < height:
+    fail("bright foreground is confined to a partial scanout")
+
 print(
     f"Screenshot contrast passed: {width}x{height}, "
-    f"dark={dark / total:.1%}, bright={bright / total:.1%}"
+    f"dark={dark / total:.1%}, bright={bright / total:.1%}, "
+    f"foreground={bright_width}x{bright_height}"
 )

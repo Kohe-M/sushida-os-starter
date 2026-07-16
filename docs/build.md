@@ -131,7 +131,9 @@ that the intended entry booted, QEMU remained alive for the observation
 interval, the kiosk services and graphical target were reached, PNG and PPM
 captures were created, the frame is neither blank white nor blank black, and no
 normal serial login prompt appeared. The contrast check does not recognize UI
-text, so screenshots and hardware behavior still need explicit review. The
+text, but it rejects bright foreground confined to a partial scanout and the
+runner retries incomplete captures at low frequency. Screenshots and hardware
+behavior still need explicit review. The
 default observation interval is 300 seconds for both BIOS and UEFI. Slow
 TCG-only builders need this bound for Chromium's first rendered frame; shorter
 intervals have produced intermittent blank captures after the kiosk service

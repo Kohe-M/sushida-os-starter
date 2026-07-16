@@ -45,7 +45,7 @@ python3 "$SCRIPT_DIR/check-screenshot.py" "$SCREENSHOT_PPM"
 {
     echo "AUTOMATED: QEMU stayed alive for the configured observation interval: PASS"
     echo "AUTOMATED: screenshot was captured as PNG: PASS"
-    echo "AUTOMATED: screenshot has nonblank dark/bright kiosk contrast: PASS"
+    echo "AUTOMATED: screenshot has nonblank, spatially complete kiosk contrast: PASS"
     echo "AUTOMATED: serial log contains no normal login/password prompt: PASS"
     echo "AUTOMATED: QEMU pixman boot entry reached kiosk services and graphical target: PASS"
     echo "MANUAL: boot reached the kiosk UI: UNVERIFIED"
