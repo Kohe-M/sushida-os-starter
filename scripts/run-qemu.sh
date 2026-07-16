@@ -249,9 +249,8 @@ if [ "$QEMU_SMOKE" = true ]; then
     for _capture in $(seq 1 6); do
         {
             printf 'screendump "%s" -f ppm\n' "$SCREENSHOT_PPM"
-            printf 'screendump "%s" -f png\n' "$SCREENSHOT"
         } | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
-        if python3 "$SCREENSHOT_CHECK" "$SCREENSHOT_PPM" > /dev/null 2>&1; then
+        if python3 "$SCREENSHOT_CHECK" "$SCREENSHOT_PPM" "$SCREENSHOT" > /dev/null 2>&1; then
             screenshot_ready=true
             break
         fi

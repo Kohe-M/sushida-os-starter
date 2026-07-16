@@ -42,11 +42,16 @@ def test_runner_supports_bios_uefi_offline_and_evidence() -> None:
 
 
 def test_screenshot_checker_rejects_blank_frames(tmp_path: Path) -> None:
-    def check(name: str, pixels: bytes) -> subprocess.CompletedProcess[str]:
+    def check(
+        name: str, pixels: bytes, png: Path | None = None
+    ) -> subprocess.CompletedProcess[str]:
         capture = tmp_path / name
         capture.write_bytes(b"P6\n100 100\n255\n" + pixels)
+        command = [str(SCREENSHOT_CHECK), str(capture)]
+        if png is not None:
+            command.append(str(png))
         return subprocess.run(
-            [str(SCREENSHOT_CHECK), str(capture)],
+            command,
             check=False,
             capture_output=True,
             text=True,
@@ -57,7 +62,9 @@ def test_screenshot_checker_rejects_blank_frames(tmp_path: Path) -> None:
         for x in range(30, 70):
             offset = (y * 100 + x) * 3
             offline_like[offset : offset + 3] = bytes((240, 240, 240))
-    assert check("offline-like.ppm", bytes(offline_like)).returncode == 0
+    png = tmp_path / "offline-like.png"
+    assert check("offline-like.ppm", bytes(offline_like), png).returncode == 0
+    assert png.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
     assert check("white.ppm", bytes((255, 255, 255)) * 10_000).returncode != 0
     assert check("black.ppm", bytes((0, 0, 0)) * 10_000).returncode != 0
 
@@ -141,6 +148,7 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     assert "SCREENSHOT_PPM" in runner
     assert "for _capture in $(seq 1 6)" in runner
     assert "partial scanout" in SCREENSHOT_CHECK.read_text()
+    assert "spatial coverage" in SCREENSHOT_CHECK.read_text()
     assert "check-screenshot.py" in CHECK.read_text()
     assert smoke.count("--qemu-smoke") == 2
     assert "SUSHIDA_QEMU_BIOS_DURATION" in smoke
