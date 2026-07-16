@@ -137,5 +137,4 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     assert smoke.count("--qemu-smoke") == 2
     assert "SUSHIDA_QEMU_BIOS_DURATION" in smoke
     assert "SUSHIDA_QEMU_UEFI_DURATION" in smoke
-    assert 'SUSHIDA_QEMU_DURATION:-180' in smoke
-    assert 'SUSHIDA_QEMU_DURATION:-300' in smoke
+    assert smoke.count('SUSHIDA_QEMU_DURATION:-300') == 2

@@ -132,8 +132,9 @@ interval, the kiosk services and graphical target were reached, PNG and PPM
 captures were created, the frame is neither blank white nor blank black, and no
 normal serial login prompt appeared. The contrast check does not recognize UI
 text, so screenshots and hardware behavior still need explicit review. The
-default observation intervals are 180 seconds for BIOS and 300 seconds for
-UEFI. OVMF plus Chromium's first SwiftShader frame needs the longer bound on
-TCG-only builders. Set `SUSHIDA_QEMU_BIOS_DURATION` or
+default observation interval is 300 seconds for both BIOS and UEFI. Slow
+TCG-only builders need this bound for Chromium's first rendered frame; shorter
+intervals have produced intermittent blank captures after the kiosk service
+started. Set `SUSHIDA_QEMU_BIOS_DURATION` or
 `SUSHIDA_QEMU_UEFI_DURATION` to override one path; the legacy
 `SUSHIDA_QEMU_DURATION` override still applies to both.

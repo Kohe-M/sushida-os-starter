@@ -5,7 +5,7 @@ BUILDER_IMAGE ?= sushida-os-builder
 BUILDER_TAG ?= trixie
 CONTAINER_ENGINE_NAME := $(notdir $(CONTAINER_ENGINE))
 CONTAINER_ENGINE_ARGS := $(if $(filter podman,$(CONTAINER_ENGINE_NAME)),--cgroup-manager=cgroupfs,)
-EXECUTABLE_SHELL_FILES := $(shell git ls-files --stage | awk '$$1 == "100755" {print $$4}')
+EXECUTABLE_SHELL_FILES := $(filter-out %.py,$(shell git ls-files --stage | awk '$$1 == "100755" {print $$4}'))
 
 .PHONY: builder configure iso test test-static test-shell test-qemu qemu verify clean distclean
 
