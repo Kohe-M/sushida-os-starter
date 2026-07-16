@@ -92,9 +92,14 @@ MONITOR_SOCKET="$RUN_DIR/monitor.sock"
 RESULT_FILE="$RUN_DIR/result.env"
 rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$SCREENSHOT_PPM" "$MONITOR_SOCKET" "$RESULT_FILE"
 
+QEMU_ACCEL="tcg"
+if [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+    QEMU_ACCEL="kvm:tcg"
+fi
+
 QEMU_ARGS=(
     -name "sushida-os-$FIRMWARE-$NETWORK"
-    -machine "q35,accel=kvm:tcg"
+    -machine "q35,accel=$QEMU_ACCEL"
     -m 2048
     -smp 2
     -boot order=d

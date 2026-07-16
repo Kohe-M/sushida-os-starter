@@ -123,9 +123,9 @@ credentials.
 QEMU evidence is written under `build/qemu/`. `make test-qemu` explicitly
 selects the non-default `QEMU smoke test` boot entry, which uses wlroots' pixman
 renderer and serial logging only for emulation. The normal production entry
-continues to require a hardware-capable renderer. The UEFI smoke entry also
-selects Chromium's bundled ANGLE SwiftShader backend because QEMU's capturable
-standard VGA adapter has no accelerated render node; this marker is absent from
+continues to require a hardware-capable renderer. Both smoke entries also
+select Chromium's bundled ANGLE SwiftShader backend because the capturable
+emulated adapters have no accelerated render node; this marker is absent from
 the production entry. Automated checks prove only
 that the intended entry booted, QEMU remained alive for the observation
 interval, the kiosk services and graphical target were reached, PNG and PPM

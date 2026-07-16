@@ -15,8 +15,8 @@ software rendering. The normal boot entry preserves that boundary. The bounded
 QEMU runner explicitly selects a separate `QEMU smoke test` boot entry that
 uses the pixman software renderer and enables a serial console without a getty.
 QEMU uses emulated `virtio-vga` for BIOS and standard VGA/bochs DRM for UEFI.
-The explicit UEFI smoke entry selects Chromium's bundled ANGLE SwiftShader
-backend because the emulated adapter has no accelerated render node. These
+The explicit smoke entries select Chromium's bundled ANGLE SwiftShader backend
+because the emulated adapters have no accelerated render node. These
 software-rendering settings are absent from the production entry. QEMU uses TCG
 when KVM is absent; that is not evidence for physical GPU performance.
 

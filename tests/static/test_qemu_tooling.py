@@ -114,7 +114,7 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     assert marker in grub
     assert renderer in isolinux
     assert renderer in grub
-    assert chromium_renderer not in isolinux
+    assert chromium_renderer in isolinux
     assert chromium_renderer in grub
     assert sum(line.startswith("label ") for line in isolinux.splitlines()) == 1
     assert "label qemu-smoke-amd64" in isolinux
@@ -132,6 +132,9 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     assert "for _quiet" in runner
     assert 'QEMU_ARGS+=(-vga std)' in runner
     assert 'QEMU_ARGS+=(-device virtio-vga)' in runner
+    assert "[ -c /dev/kvm ]" in runner
+    assert 'QEMU_ACCEL="tcg"' in runner
+    assert 'QEMU_ACCEL="kvm:tcg"' in runner
     assert "SCREENSHOT_PPM" in runner
     assert "check-screenshot.py" in CHECK.read_text()
     assert smoke.count("--qemu-smoke") == 2

@@ -129,10 +129,9 @@ CHROMIUM_ARGS=(
     --hide-crash-restore-bubble
 )
 
-# OVMF smoke tests use standard VGA so QEMU can capture the final scanout.
-# That adapter has no accelerated render node, so select Chromium's bundled
-# ANGLE SwiftShader backend only when the explicit QEMU boot entry set all
-# three markers. The normal production entry never sets these variables.
+# QEMU smoke adapters have no accelerated render node, so select Chromium's
+# bundled ANGLE SwiftShader backend only when the explicit QEMU boot entry set
+# all three markers. The normal production entry never sets these variables.
 case "${SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER:-0}" in
     0) ;;
     1)

@@ -382,7 +382,7 @@ reject_helper_url() {
     [ "$status" -eq 0 ]
 }
 
-@test "UEFI QEMU markers select Chromium SwiftShader without forbidden flags" {
+@test "QEMU markers select Chromium SwiftShader without forbidden flags" {
     run_helper SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1 \
         WLR_RENDERER=pixman WLR_RENDERER_ALLOW_SOFTWARE=1
     [ "$status" -eq 0 ]
