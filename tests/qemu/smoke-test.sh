@@ -10,11 +10,13 @@ RUN_DIR="$PROJECT_ROOT/build/qemu/$RUN_NAME"
 RESULT="$RUN_DIR/result.env"
 SERIAL="$RUN_DIR/serial.log"
 SCREENSHOT="$RUN_DIR/screenshot.png"
+SCREENSHOT_PPM="$RUN_DIR/screenshot.ppm"
 REPORT="$RUN_DIR/smoke-report.txt"
 
 [ -s "$RESULT" ] || { echo "ERROR: missing QEMU result: $RESULT" >&2; exit 1; }
 [ -f "$SERIAL" ] || { echo "ERROR: missing serial log: $SERIAL" >&2; exit 1; }
 [ -s "$SCREENSHOT" ] || { echo "ERROR: missing screenshot: $SCREENSHOT" >&2; exit 1; }
+[ -s "$SCREENSHOT_PPM" ] || { echo "ERROR: missing PPM screenshot: $SCREENSHOT_PPM" >&2; exit 1; }
 png_signature="$(head -c 8 "$SCREENSHOT" | od -An -tx1 | tr -d ' \n')"
 [ "$png_signature" = "89504e470d0a1a0a" ] || {
     echo "ERROR: screenshot is not a PNG image" >&2
@@ -38,10 +40,12 @@ for evidence in \
         exit 1
     }
 done
+python3 "$SCRIPT_DIR/check-screenshot.py" "$SCREENSHOT_PPM"
 
 {
     echo "AUTOMATED: QEMU stayed alive for the configured observation interval: PASS"
     echo "AUTOMATED: screenshot was captured as PNG: PASS"
+    echo "AUTOMATED: screenshot has nonblank dark/bright kiosk contrast: PASS"
     echo "AUTOMATED: serial log contains no normal login/password prompt: PASS"
     echo "AUTOMATED: QEMU pixman boot entry reached kiosk services and graphical target: PASS"
     echo "MANUAL: boot reached the kiosk UI: UNVERIFIED"

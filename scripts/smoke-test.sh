@@ -4,16 +4,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-DURATION="${SUSHIDA_QEMU_DURATION:-180}"
+BIOS_DURATION="${SUSHIDA_QEMU_BIOS_DURATION:-${SUSHIDA_QEMU_DURATION:-180}}"
+UEFI_DURATION="${SUSHIDA_QEMU_UEFI_DURATION:-${SUSHIDA_QEMU_DURATION:-300}}"
 
-[[ "$DURATION" =~ ^[1-9][0-9]*$ ]] || {
-    echo "ERROR: SUSHIDA_QEMU_DURATION must be a positive integer" >&2
-    exit 1
-}
+for duration in "$BIOS_DURATION" "$UEFI_DURATION"; do
+    [[ "$duration" =~ ^[1-9][0-9]*$ ]] || {
+        echo "ERROR: QEMU smoke durations must be positive integers" >&2
+        exit 1
+    }
+done
 
-"$SCRIPT_DIR/run-qemu.sh" --firmware bios --offline --headless --qemu-smoke --duration "$DURATION"
+"$SCRIPT_DIR/run-qemu.sh" --firmware bios --offline --headless --qemu-smoke --duration "$BIOS_DURATION"
 "$PROJECT_ROOT/tests/qemu/smoke-test.sh" bios-offline
-"$SCRIPT_DIR/run-qemu.sh" --firmware uefi --offline --headless --qemu-smoke --duration "$DURATION"
+"$SCRIPT_DIR/run-qemu.sh" --firmware uefi --offline --headless --qemu-smoke --duration "$UEFI_DURATION"
 "$PROJECT_ROOT/tests/qemu/smoke-test.sh" uefi-offline
 
 echo "QEMU smoke observations completed. Review screenshots for manual-only checks."

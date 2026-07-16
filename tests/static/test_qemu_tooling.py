@@ -2,12 +2,14 @@
 
 import os
 import stat
+import subprocess
 from pathlib import Path
 
 
 RUN = Path("scripts/run-qemu.sh")
 SMOKE = Path("scripts/smoke-test.sh")
 CHECK = Path("tests/qemu/smoke-test.sh")
+SCREENSHOT_CHECK = Path("tests/qemu/check-screenshot.py")
 MAKEFILE = Path("Makefile")
 DOCKERFILE = Path("builder/Dockerfile")
 ISOLINUX = Path("live-build/config/bootloaders/isolinux/isolinux.cfg")
@@ -16,12 +18,13 @@ GRUB = Path("live-build/config/bootloaders/grub-pc/config.cfg")
 
 
 def test_qemu_scripts_are_executable_and_strict() -> None:
-    for path in (RUN, SMOKE, CHECK):
+    for path in (RUN, SMOKE, CHECK, SCREENSHOT_CHECK):
         assert path.is_file()
         assert path.stat().st_mode & stat.S_IXUSR
         assert os.access(path, os.X_OK)
         text = path.read_text()
-        assert "set -euo pipefail" in text
+        if path.suffix == ".sh":
+            assert "set -euo pipefail" in text
         assert "TODO" not in text
         assert "eval" not in text
 
@@ -32,9 +35,28 @@ def test_runner_supports_bios_uefi_offline_and_evidence() -> None:
         assert token in text
     assert "serial.log" in text
     assert "screenshot.png" in text
+    assert "screenshot.ppm" in text
     assert "screendump" in text
     assert "-f png" in text
     assert "--duration" in text
+
+
+def test_screenshot_checker_rejects_blank_frames(tmp_path: Path) -> None:
+    def check(name: str, pixels: bytes) -> subprocess.CompletedProcess[str]:
+        capture = tmp_path / name
+        capture.write_bytes(b"P6\n100 100\n255\n" + pixels)
+        return subprocess.run(
+            [str(SCREENSHOT_CHECK), str(capture)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    dark = bytes((17, 17, 17)) * 9_900
+    bright = bytes((240, 240, 240)) * 100
+    assert check("offline-like.ppm", dark + bright).returncode == 0
+    assert check("white.ppm", bytes((255, 255, 255)) * 10_000).returncode != 0
+    assert check("black.ppm", bytes((0, 0, 0)) * 10_000).returncode != 0
 
 
 def test_runner_never_attaches_a_host_disk_or_debug_shell() -> None:
@@ -86,11 +108,14 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     smoke = SMOKE.read_text()
     marker = "systemd.setenv=WLR_RENDERER_ALLOW_SOFTWARE=1"
     renderer = "systemd.setenv=WLR_RENDERER=pixman"
+    chromium_renderer = "systemd.setenv=SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1"
 
     assert marker in isolinux
     assert marker in grub
     assert renderer in isolinux
     assert renderer in grub
+    assert chromium_renderer not in isolinux
+    assert chromium_renderer in grub
     assert sum(line.startswith("label ") for line in isolinux.splitlines()) == 1
     assert "label qemu-smoke-amd64" in isolinux
     assert "menu default" not in isolinux
@@ -105,4 +130,12 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     assert 'grep -Fq "$QEMU_BOOT_MARKER"' in runner
     assert "for _wave" in runner
     assert "for _quiet" in runner
+    assert 'QEMU_ARGS+=(-vga std)' in runner
+    assert 'QEMU_ARGS+=(-device virtio-vga)' in runner
+    assert "SCREENSHOT_PPM" in runner
+    assert "check-screenshot.py" in CHECK.read_text()
     assert smoke.count("--qemu-smoke") == 2
+    assert "SUSHIDA_QEMU_BIOS_DURATION" in smoke
+    assert "SUSHIDA_QEMU_UEFI_DURATION" in smoke
+    assert 'SUSHIDA_QEMU_DURATION:-180' in smoke
+    assert 'SUSHIDA_QEMU_DURATION:-300' in smoke

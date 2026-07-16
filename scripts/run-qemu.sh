@@ -87,9 +87,10 @@ fi
 mkdir -p "$RUN_DIR"
 SERIAL_LOG="$RUN_DIR/serial.log"
 SCREENSHOT="$RUN_DIR/screenshot.png"
+SCREENSHOT_PPM="$RUN_DIR/screenshot.ppm"
 MONITOR_SOCKET="$RUN_DIR/monitor.sock"
 RESULT_FILE="$RUN_DIR/result.env"
-rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$MONITOR_SOCKET" "$RESULT_FILE"
+rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$SCREENSHOT_PPM" "$MONITOR_SOCKET" "$RESULT_FILE"
 
 QEMU_ARGS=(
     -name "sushida-os-$FIRMWARE-$NETWORK"
@@ -98,7 +99,6 @@ QEMU_ARGS=(
     -smp 2
     -boot order=d
     -drive "file=$ISO,media=cdrom,readonly=on"
-    -device virtio-vga
     -audiodev "driver=none,id=sushida-audio"
     -device ich9-intel-hda
     -device "hda-duplex,audiodev=sushida-audio"
@@ -106,6 +106,16 @@ QEMU_ARGS=(
     -monitor "unix:$MONITOR_SOCKET,server=on,wait=off"
     -no-reboot
 )
+
+# virtio-vga provides a stable captured scanout for BIOS. Under OVMF/TCG its
+# post-GOP scanout can remain black even when the guest is running, so UEFI
+# uses standard VGA with bochs DRM. The isolated UEFI QEMU boot entry also
+# selects Chromium's software ANGLE backend; production hardware is unchanged.
+if [ "$FIRMWARE" = uefi ]; then
+    QEMU_ARGS+=(-vga std)
+else
+    QEMU_ARGS+=(-device virtio-vga)
+fi
 
 if [ "$NETWORK" = offline ]; then
     QEMU_ARGS+=(-nic none)
@@ -227,7 +237,11 @@ fi
 
 sleep "$DURATION"
 kill -0 "$QEMU_PID" 2>/dev/null || fail "QEMU exited before the observation interval ended"
-printf 'screendump "%s" -f png\nquit\n' "$SCREENSHOT" | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
+{
+    printf 'screendump "%s" -f ppm\n' "$SCREENSHOT_PPM"
+    printf 'screendump "%s" -f png\n' "$SCREENSHOT"
+    printf 'quit\n'
+} | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
 set +e
 wait "$QEMU_PID"
 qemu_status=$?
@@ -235,6 +249,7 @@ set -e
 QEMU_PID=""
 [ "$qemu_status" -eq 0 ] || fail "QEMU returned status $qemu_status"
 [ -s "$SCREENSHOT" ] || fail "QEMU did not create a screenshot"
+[ -s "$SCREENSHOT_PPM" ] || fail "QEMU did not create a PPM screenshot"
 
 {
     printf 'FIRMWARE=%s\n' "$FIRMWARE"
@@ -243,6 +258,7 @@ QEMU_PID=""
     printf 'QEMU_STATUS=%s\n' "$qemu_status"
     printf 'SERIAL_LOG=%s\n' "$SERIAL_LOG"
     printf 'SCREENSHOT=%s\n' "$SCREENSHOT"
+    printf 'SCREENSHOT_PPM=%s\n' "$SCREENSHOT_PPM"
 } > "$RESULT_FILE"
 
 echo "QEMU observation completed: $RUN_DIR"

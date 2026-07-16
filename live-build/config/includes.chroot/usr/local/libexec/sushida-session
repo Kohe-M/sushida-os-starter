@@ -129,6 +129,26 @@ CHROMIUM_ARGS=(
     --hide-crash-restore-bubble
 )
 
+# OVMF smoke tests use standard VGA so QEMU can capture the final scanout.
+# That adapter has no accelerated render node, so select Chromium's bundled
+# ANGLE SwiftShader backend only when the explicit QEMU boot entry set all
+# three markers. The normal production entry never sets these variables.
+case "${SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER:-0}" in
+    0) ;;
+    1)
+        if [ "${WLR_RENDERER:-}" != pixman ] || \
+           [ "${WLR_RENDERER_ALLOW_SOFTWARE:-}" != 1 ]; then
+            echo "ERROR: QEMU Chromium software rendering requires QEMU renderer markers" >&2
+            exit 1
+        fi
+        CHROMIUM_ARGS+=(--use-gl=angle --use-angle=swiftshader)
+        ;;
+    *)
+        echo "ERROR: invalid QEMU Chromium software-rendering marker" >&2
+        exit 1
+        ;;
+esac
+
 # cage (backgrounded; will exec chromium)
 cage -- chromium "${CHROMIUM_ARGS[@]}" "$SUSHIDA_URL" &
 SESSION_PIDS+=("$!")

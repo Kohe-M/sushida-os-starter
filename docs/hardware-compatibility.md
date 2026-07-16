@@ -14,8 +14,11 @@ PipeWire-Pulse, and standard keyboard data. Production does not pass
 software rendering. The normal boot entry preserves that boundary. The bounded
 QEMU runner explicitly selects a separate `QEMU smoke test` boot entry that
 uses the pixman software renderer and enables a serial console without a getty.
-QEMU uses emulated `virtio-vga` and TCG when KVM is absent; that is not evidence
-for physical GPU performance.
+QEMU uses emulated `virtio-vga` for BIOS and standard VGA/bochs DRM for UEFI.
+The explicit UEFI smoke entry selects Chromium's bundled ANGLE SwiftShader
+backend because the emulated adapter has no accelerated render node. These
+software-rendering settings are absent from the production entry. QEMU uses TCG
+when KVM is absent; that is not evidence for physical GPU performance.
 
 NVIDIA proprietary drivers are not included or supported. Xwayland may appear
 as a Debian Cage dependency; no Xorg desktop, display manager, or ordinary X11
@@ -47,9 +50,10 @@ diagnostics report and acceptance worksheet without Wi-Fi credentials.
 ## Current verification boundary
 
 Repository static/BATS/image checks confirm package/configuration presence and
-forbidden-flag absence. QEMU automation can capture BIOS/UEFI screenshots and
-serial logs, but effective Cage/Chromium/offline UI must be reviewed from those
-images. Audio playback, Chromium WebGL/GPU acceleration, Intel/AMD DRM/GBM/EGL,
+forbidden-flag absence. QEMU automation captures BIOS/UEFI screenshots and
+serial logs and rejects blank white/black frames, but effective
+Cage/Chromium/offline UI must still be reviewed from those images. Audio
+playback, Chromium WebGL/GPU acceleration, Intel/AMD DRM/GBM/EGL,
 HDMI/DP/analog audio, physical shortcut resistance, sudden-power-loss recovery,
 Secure Boot, and representative hardware are unverified until a completed
 worksheet records them.

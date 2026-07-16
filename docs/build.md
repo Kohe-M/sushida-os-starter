@@ -116,16 +116,24 @@ credentials.
 | `make iso` | Build, validate, verify, and publish four artifacts |
 | `make verify` | Recheck checksum, metadata, manifest, ISO, and SquashFS paths |
 | `make qemu` | Interactive BIOS boot of the release ISO |
-| `make test-qemu` | Bounded offline BIOS and UEFI runs with serial/PNG evidence |
+| `make test-qemu` | Bounded offline BIOS and UEFI runs with serial/PNG/PPM evidence |
 | `make clean` | Remove disposable build/QEMU state |
 | `make distclean` | Also remove the four known release artifacts |
 
 QEMU evidence is written under `build/qemu/`. `make test-qemu` explicitly
 selects the non-default `QEMU smoke test` boot entry, which uses wlroots' pixman
 renderer and serial logging only for emulation. The normal production entry
-continues to require a hardware-capable renderer. Automated checks prove only
+continues to require a hardware-capable renderer. The UEFI smoke entry also
+selects Chromium's bundled ANGLE SwiftShader backend because QEMU's capturable
+standard VGA adapter has no accelerated render node; this marker is absent from
+the production entry. Automated checks prove only
 that the intended entry booted, QEMU remained alive for the observation
-interval, the kiosk services and graphical target were reached, a PNG was
-captured, and no normal serial login prompt appeared. Screenshots and hardware
-behavior still need explicit review. The default observation interval is 180
-seconds so TCG-only builders have time to render Chromium.
+interval, the kiosk services and graphical target were reached, PNG and PPM
+captures were created, the frame is neither blank white nor blank black, and no
+normal serial login prompt appeared. The contrast check does not recognize UI
+text, so screenshots and hardware behavior still need explicit review. The
+default observation intervals are 180 seconds for BIOS and 300 seconds for
+UEFI. OVMF plus Chromium's first SwiftShader frame needs the longer bound on
+TCG-only builders. Set `SUSHIDA_QEMU_BIOS_DURATION` or
+`SUSHIDA_QEMU_UEFI_DURATION` to override one path; the legacy
+`SUSHIDA_QEMU_DURATION` override still applies to both.

@@ -382,6 +382,22 @@ reject_helper_url() {
     [ "$status" -eq 0 ]
 }
 
+@test "UEFI QEMU markers select Chromium SwiftShader without forbidden flags" {
+    run_helper SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1 \
+        WLR_RENDERER=pixman WLR_RENDERER_ALLOW_SOFTWARE=1
+    [ "$status" -eq 0 ]
+    grep -qF 'CHROMIUM_ARG:[--use-gl=angle]' "$CHROMIUM_LOG"
+    grep -qF 'CHROMIUM_ARG:[--use-angle=swiftshader]' "$CHROMIUM_LOG"
+    ! grep -Eq 'CHROMIUM_ARG:\[--(no-sandbox|disable-gpu|disable-webgl)' "$CHROMIUM_LOG"
+}
+
+@test "QEMU Chromium software marker requires renderer markers" {
+    run_helper SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"requires QEMU renderer markers"* ]]
+    [ ! -s "$CHROMIUM_LOG" ]
+}
+
 # ── Readiness / audio failure ──────────────────────────────────────────────
 
 # shellcheck disable=SC2030,SC2031
