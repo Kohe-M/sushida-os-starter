@@ -333,7 +333,7 @@ def _check_chromium_kiosk() -> None:
     assert "*" in p["URLBlocklist"]
     expected = {
         "https://.sushida.net:443",
-        "file://localhost/usr/share/sushida-os/offline.html",
+        "file:///usr/share/sushida-os/offline.html",
         "http://127.0.0.1:8787",
     }
     assert set(p["URLAllowlist"]) == expected

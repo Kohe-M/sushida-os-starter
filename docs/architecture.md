@@ -89,7 +89,7 @@ The allowlist contains:
 | Entry | Purpose |
 |---|---|
 | `https://.sushida.net:443` | Sushi-da origin, port 443, all paths |
-| `file://localhost/usr/share/sushida-os/offline.html` | Local offline page |
+| `file:///usr/share/sushida-os/offline.html` | Local offline page policy pattern |
 | `http://127.0.0.1:8787` | Constrained on-device Wi-Fi setup origin, port fixed |
 
 `https://.sushida.net:443` uses the following Chromium URL filter
@@ -99,9 +99,11 @@ conventions (see [Chromium URL filter format][url-filter-format]):
 - Explicit port (`:443`) — restricts to the standard HTTPS port only.
 - Omitted path component — matches any path under the origin.
 
-The explicit `localhost` host satisfies Chromium's required filter grammar,
-while the case-sensitive path limits the exception to the single packaged
-offline file. Chromium is launched with the same fully specified URL.
+Chromium's file URL policy grammar requires an empty authority and three
+slashes after `file:`. This pattern matches the runtime URL
+`file://localhost/usr/share/sushida-os/offline.html` while the case-sensitive
+path limits the exception to the single packaged offline file. Chromium is
+launched with the fully specified runtime URL.
 
 The blocklist entries are `*` (default deny) and `view-source:*`
 (prevents source viewing even when DevTools are disabled).

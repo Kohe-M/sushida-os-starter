@@ -32,7 +32,7 @@ REQUIRED_POLICIES: dict[str, tuple] = {
 
 EXPECTED_ALLOWLIST = {
     "https://.sushida.net:443",
-    "file://localhost/usr/share/sushida-os/offline.html",
+    "file:///usr/share/sushida-os/offline.html",
     "http://127.0.0.1:8787",
 }
 
@@ -242,10 +242,11 @@ def test_only_fixed_loopback_setup_origin_uses_http() -> None:
             assert entry == "http://127.0.0.1:8787"
 
 
-def test_file_filter_has_required_host_and_exact_path() -> None:
+def test_file_filter_has_empty_authority_and_exact_path() -> None:
     for entry in _policy()["URLAllowlist"]:
         if entry.startswith("file://"):
-            assert entry == "file://localhost/usr/share/sushida-os/offline.html"
+            assert entry == "file:///usr/share/sushida-os/offline.html"
+            assert not entry.startswith("file://localhost/")
 
 
 def test_https_filter_has_exact_host_dot() -> None:

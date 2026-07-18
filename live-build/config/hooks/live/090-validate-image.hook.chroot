@@ -158,7 +158,7 @@ if policy.get("URLBlocklist") != ["*", "view-source:*"]:
     raise SystemExit("invalid URLBlocklist")
 if policy.get("URLAllowlist") != [
     "https://.sushida.net:443",
-    "file://localhost/usr/share/sushida-os/offline.html",
+    "file:///usr/share/sushida-os/offline.html",
     "http://127.0.0.1:8787",
 ]:
     raise SystemExit("invalid URLAllowlist")

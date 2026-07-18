@@ -92,7 +92,7 @@ def test_hook_parses_and_checks_policy() -> None:
     ):
         assert policy in text
     assert "https://.sushida.net:443" in text
-    assert "file://localhost/usr/share/sushida-os/offline.html" in text
+    assert "file:///usr/share/sushida-os/offline.html" in text
     assert '"http://127.0.0.1:8787"' in text
 
 
