@@ -139,18 +139,20 @@ def test_auto_config_noauto() -> None:
     assert "--no-auto" not in content
 
 
-def test_auto_config_copies_config_with_cp_a() -> None:
+def test_auto_config_copies_only_tracked_config_files() -> None:
     content = AUTO_CONFIG.read_text()
-    assert "cp -a" in content
-    assert '"$SOURCE_DIR/config/."' in content or \
-           '"$SOURCE_DIR/config"/.' in content
+    assert "copy_tracked_tree \"live-build/config\"" in content
+    assert 'git -C "$PROJECT_ROOT" ls-files -z' in content
+    assert "cp -p --" in content
+    assert "cp -a" not in content
 
 
-def test_auto_config_copies_auto_with_cp_a() -> None:
+def test_auto_config_copies_only_tracked_auto_files() -> None:
     content = AUTO_CONFIG.read_text()
-    assert "cp -a" in content
-    assert '"$SOURCE_DIR/auto/."' in content or \
-           '"$SOURCE_DIR/auto"/.' in content
+    assert "copy_tracked_tree \"live-build/auto\"" in content
+    assert 'git -C "$PROJECT_ROOT" ls-files -z' in content
+    assert "cp -p --" in content
+    assert "cp -a" not in content
 
 
 def test_auto_config_no_symlinks() -> None:

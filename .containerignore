@@ -1,0 +1,7 @@
+# Keep Podman/Buildah context identical to Docker and exclude secrets/artifacts.
+**
+!builder/
+!builder/Dockerfile
+!builder/entrypoint.sh
+!.dockerignore
+!.containerignore

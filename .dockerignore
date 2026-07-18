@@ -1,0 +1,9 @@
+# The builder image only needs the Dockerfile and entrypoint.  Never send
+# repository history, generated images, build trees, or local secrets to the
+# container engine as build context.
+**
+!builder/
+!builder/Dockerfile
+!builder/entrypoint.sh
+!.dockerignore
+!.containerignore

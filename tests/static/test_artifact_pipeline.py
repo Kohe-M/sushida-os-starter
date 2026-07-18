@@ -53,6 +53,7 @@ def test_build_info_contains_required_fields() -> None:
         "iso_sha256",
     ):
         assert field in text
+    assert "git_dirty=false" in text
 
 
 def test_build_uses_live_build_output_and_manifest() -> None:
@@ -71,6 +72,8 @@ def test_verify_checks_checksum_metadata_and_manifest() -> None:
     assert "metadata ISO checksum mismatch" in text
     assert "package-manifest.txt" in text
     assert "chromium" in text and "cage" in text
+    assert "artifact was built from a different Git commit" in text
+    assert "dirty Git worktree" in text
 
 
 def test_verify_checks_iso_and_squashfs_contents() -> None:

@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 BUILD_ROOT="$PROJECT_ROOT/build"
-SOURCE_DIR="$PROJECT_ROOT/live-build"
 
 # Reject a symlinked build root; all removal logic depends on physical paths.
 if [ -L "$BUILD_ROOT" ]; then
@@ -37,9 +36,28 @@ fi
 mkdir -p "$BUILD_DIR/config"
 mkdir -p "$BUILD_DIR/auto"
 
-# Copy tracked source configuration and auto scripts into the build directory.
-cp -a "$SOURCE_DIR/config/." "$BUILD_DIR/config/"
-cp -a "$SOURCE_DIR/auto/." "$BUILD_DIR/auto/"
+# Copy only Git-tracked source files.  Test imports can leave ignored Python
+# bytecode under includes.chroot; copying the whole directory would place that
+# bytecode in the next ISO.
+copy_tracked_tree() {
+    local source_tree="$1"
+    local destination_tree="$2"
+    local source_file relative destination
+
+    while IFS= read -r -d '' source_file; do
+        [ ! -L "$PROJECT_ROOT/$source_file" ] || {
+            echo "ERROR: tracked build source must not be a symlink: $source_file" >&2
+            exit 1
+        }
+        relative="${source_file#"$source_tree/"}"
+        destination="$destination_tree/$relative"
+        mkdir -p "$(dirname "$destination")"
+        cp -p -- "$PROJECT_ROOT/$source_file" "$destination"
+    done < <(git -C "$PROJECT_ROOT" ls-files -z -- "$source_tree")
+}
+
+copy_tracked_tree "live-build/config" "$BUILD_DIR/config"
+copy_tracked_tree "live-build/auto" "$BUILD_DIR/auto"
 
 # Conditionally stage local Wi-Fi credentials into the build tree.
 # The file is NOT copied to the tracked source tree.

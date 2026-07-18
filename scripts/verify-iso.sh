@@ -24,7 +24,7 @@ case "$resolved_dir" in
     *) fail "artifact directory is outside the repository artifact root" ;;
 esac
 
-for cmd in awk blkid cmp dd grep jq sha256sum unsquashfs wc xorriso; do
+for cmd in awk blkid cmp dd git grep jq sha256sum unsquashfs wc xorriso; do
     command -v "$cmd" > /dev/null 2>&1 || fail "required command not found: $cmd"
 done
 for file in "$ISO_NAME" SHA256SUMS package-manifest.txt build-info.json; do
@@ -54,6 +54,14 @@ jq -e '
     (.live_build_version | type == "string" and length > 0) and
     (.iso_sha256 | type == "string" and test("^[0-9a-f]{64}$"))
 ' "$resolved_dir/build-info.json" > /dev/null || fail "invalid build-info.json"
+
+current_commit="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD 2>/dev/null)" || \
+    fail "cannot determine current Git commit"
+metadata_commit="$(jq -r '.git_commit' "$resolved_dir/build-info.json")"
+[ "$metadata_commit" = "$current_commit" ] || \
+    fail "artifact was built from a different Git commit"
+[ "$(jq -r '.git_dirty' "$resolved_dir/build-info.json")" = false ] || \
+    fail "artifact metadata records a dirty Git worktree"
 
 computed_sha="$(sha256sum "$resolved_dir/$ISO_NAME" | awk '{print $1}')"
 metadata_sha="$(jq -r '.iso_sha256' "$resolved_dir/build-info.json")"

@@ -4,6 +4,8 @@ from pathlib import Path
 DOCKERFILE = Path("builder/Dockerfile")
 ENTRYPOINT = Path("builder/entrypoint.sh")
 MAKEFILE = Path("Makefile")
+DOCKERIGNORE = Path(".dockerignore")
+CONTAINERIGNORE = Path(".containerignore")
 
 
 def test_dockerfile_uses_debian_trixie() -> None:
@@ -93,3 +95,14 @@ def test_makefile_adds_required_podman_cgroup_manager() -> None:
     content = MAKEFILE.read_text()
     assert "--cgroup-manager=cgroupfs" in content
     assert "CONTAINER_ENGINE_ARGS" in content
+
+
+def test_builder_context_excludes_generated_state_and_local_secrets() -> None:
+    for path in (DOCKERIGNORE, CONTAINERIGNORE):
+        content = path.read_text()
+        assert "build/" in content or "**" in content
+        assert "artifacts/" in content or "**" in content
+        assert ".git" in content or "**" in content
+        assert "local/" in content or "**" in content
+        assert "!builder/Dockerfile" in content
+        assert "!builder/entrypoint.sh" in content

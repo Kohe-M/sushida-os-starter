@@ -23,6 +23,10 @@ for cmd in git jq lb mkfs.ext4 mktemp sha256sum sort truncate xorriso; do
     command -v "$cmd" > /dev/null 2>&1 || fail "required build command not found: $cmd"
 done
 
+git_status="$(git -C "$PROJECT_ROOT" status --porcelain --untracked-files=all)"
+[ -z "$git_status" ] || \
+    fail "release ISO build requires a clean Git worktree; commit source changes first"
+
 STAGING="$(mktemp -d "$ARTIFACT_DIR/.build-staging.XXXXXX")"
 chmod 0700 "$STAGING"
 cleanup() {
@@ -91,11 +95,7 @@ iso_sha256="$(sha256sum "$STAGING/$ISO_NAME" | awk '{print $1}')"
 printf '%s  %s\n' "$iso_sha256" "$ISO_NAME" > "$STAGING/SHA256SUMS"
 
 git_commit="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD)"
-if [ -n "$(git -C "$PROJECT_ROOT" status --porcelain --untracked-files=normal)" ]; then
-    git_dirty=true
-else
-    git_dirty=false
-fi
+git_dirty=false
 build_timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 live_build_version="$(lb --version | head -n 1)"
 
