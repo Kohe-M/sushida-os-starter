@@ -6,9 +6,11 @@ setup() {
     mkdir -p "$TEST_ROOT"
     export PATH="$TEST_ROOT/bin:$PATH"
     export SUSHIDA_OS_TEST_MODE=1
+    export SUSHIDA_OS_NETWORK_SETUP_GRACE_SECONDS=0
     export SUSHIDA_OS_CONFIG="$TEST_ROOT/config.env"
     export SUSHIDA_OS_RUNTIME="$TEST_ROOT/run"
     export SUSHIDA_OS_AUDIO_TIMEOUT=1
+    export SUSHIDA_OS_SETUP_ACTIVE=1
     # Portable path to the real helper (works in container / CI)
     export SUSHIDA_OS_SESSION="${BATS_TEST_DIRNAME}/../../live-build/config/includes.chroot/usr/local/libexec/sushida-session"
     mkdir -p "$TEST_ROOT/run" "$TEST_ROOT/bin" "$TEST_ROOT/run/xdg-runtime"
@@ -139,6 +141,16 @@ printf '%s\n' "${SUSHIDA_OS_NM_STATE:-connected}"
 SHIM
     chmod +x "$TEST_ROOT/bin/nmcli"
 
+    cat > "$TEST_ROOT/bin/systemctl" << 'SHIM'
+#!/bin/bash
+case " $* " in
+    *" is-active sushida-wifi-setup.service "*)
+        [ "${SUSHIDA_OS_SETUP_ACTIVE:-0}" = 1 ] ;;
+    *) exit 1 ;;
+esac
+SHIM
+    chmod +x "$TEST_ROOT/bin/systemctl"
+
     cat > "$TEST_ROOT/bin/sleep" << 'SHIM'
 #!/bin/bash
 case "$1" in 0.1|0.2|0.3|0.5|1) exec /usr/bin/sleep "$1" ;; *) exec /usr/bin/sleep 2 ;; esac
@@ -209,30 +221,59 @@ run_launcher() {
     grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[https://sushida.net/play.html]"
 }
 
-@test "disconnected state selects fixed offline page and records offline route" {
+@test "QEMU smoke markers force offline route even with a connected test NIC" {
+    export SUSHIDA_OS_NM_STATE=connected
+    export SUSHIDA_QEMU_FORCE_OFFLINE=1
+    export SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1
+    export WLR_RENDERER=pixman
+    export WLR_RENDERER_ALLOW_SOFTWARE=1
+    run_launcher
+    [ "$status" -eq 0 ]
+    [ "$(cat "$SUSHIDA_OS_RUNTIME/active-route")" = offline ]
+    grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | \
+        grep -qF "CHROMIUM_ARG:[file://localhost/usr/share/sushida-os/offline.html]"
+}
+
+@test "QEMU force-offline marker is rejected without renderer markers" {
+    export SUSHIDA_QEMU_FORCE_OFFLINE=1
+    run_launcher
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"requires all QEMU renderer markers"* ]]
+}
+
+@test "disconnected state selects setup page and records setup route" {
     export SUSHIDA_OS_NM_STATE=disconnected
     run_launcher
     [ "$status" -eq 0 ]
-    [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = offline ]
-    grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[file:///usr/share/sushida-os/offline.html]"
+    [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = setup ]
+    grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[http://127.0.0.1:8787/]"
 }
 
-@test "NetworkManager query failure fails closed to offline page" {
+@test "NetworkManager query failure selects constrained setup page" {
     export SUSHIDA_OS_NM_FAIL=1
     run_launcher
     [ "$status" -eq 0 ]
-    [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = offline ]
-    grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[file:///usr/share/sushida-os/offline.html]"
+    [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = setup ]
+    grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[http://127.0.0.1:8787/]"
 }
 
-@test "limited connectivity states fail closed to offline page" {
+@test "limited connectivity states select setup page" {
     local state
     for state in connected.local connected.site connecting unknown; do
         export SUSHIDA_OS_NM_STATE="$state"
         run_launcher
         [ "$status" -eq 0 ]
-        [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = offline ]
+        [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = setup ]
     done
+}
+
+@test "unavailable setup backend falls back to fixed offline page" {
+    export SUSHIDA_OS_NM_STATE=disconnected
+    export SUSHIDA_OS_SETUP_ACTIVE=0
+    run_launcher
+    [ "$status" -eq 0 ]
+    [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = offline ]
+    grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[file://localhost/usr/share/sushida-os/offline.html]"
 }
 
 @test "URL is last chromium argument" {
@@ -306,7 +347,7 @@ reject_url() {
 @test "launcher rejects userinfo" { reject_url "https://user:pass@sushida.net/play.html"; }
 @test "launcher rejects alternate port" { reject_url "https://sushida.net:8080/play.html"; }
 @test "launcher rejects http" { reject_url "http://sushida.net/play.html"; }
-@test "launcher rejects file" { reject_url "file:///usr/share/sushida-os/offline.html"; }
+@test "launcher rejects file" { reject_url "file://localhost/usr/share/sushida-os/offline.html"; }
 @test "launcher rejects javascript" { reject_url "javascript:alert(1)"; }
 # shellcheck disable=SC2030  # BATS helper invokes run in this test subshell.
 @test "launcher rejects data" { reject_url "data:text/html,<script>alert(1)</script>"; }
@@ -331,9 +372,16 @@ reject_helper_url() {
 @test "helper accepts the exact offline page" {
     run env XDG_RUNTIME_DIR="$TEST_ROOT/run/xdg-runtime" HOME="$TEST_ROOT/run/home" \
         SUSHIDA_OS_TEST_MODE=1 SUSHIDA_OS_AUDIO_TIMEOUT=1 \
-        "$HELPER" "file:///usr/share/sushida-os/offline.html"
+        "$HELPER" "file://localhost/usr/share/sushida-os/offline.html"
     [ "$status" -eq 0 ]
-    grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[file:///usr/share/sushida-os/offline.html]"
+    grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[file://localhost/usr/share/sushida-os/offline.html]"
+}
+
+@test "helper accepts only the fixed loopback setup page" {
+    run env XDG_RUNTIME_DIR="$SUSHIDA_OS_RUNTIME/xdg-runtime" \
+        "$HELPER" "http://127.0.0.1:8787/"
+    [ "$status" -eq 0 ]
+    grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[http://127.0.0.1:8787/]"
 }
 @test "helper rejects another file URL" { reject_helper_url "file:///etc/passwd"; }
 @test "helper rejects javascript" { reject_helper_url "javascript:alert(1)"; }

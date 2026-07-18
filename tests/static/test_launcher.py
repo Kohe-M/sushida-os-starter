@@ -88,7 +88,11 @@ def test_url_rejects_http_in_accepted_patterns() -> None:
     for line in content.splitlines():
         stripped = line.strip()
         if "http://" in stripped and not stripped.startswith("#"):
-            assert "ERROR" in stripped or "disallowed" in stripped
+            assert (
+                stripped == 'readonly SETUP_URL="http://127.0.0.1:8787/"'
+                or "ERROR" in stripped
+                or "disallowed" in stripped
+            )
 
 def test_command_v_loop() -> None:
     content = LAUNCHER.read_text()
@@ -122,7 +126,7 @@ def test_launcher_selects_route_from_nm_global_state() -> None:
 
 def test_launcher_offline_url_is_fixed() -> None:
     content = LAUNCHER.read_text()
-    assert 'readonly OFFLINE_URL="file:///usr/share/sushida-os/offline.html"' in content
+    assert 'readonly OFFLINE_URL="file://localhost/usr/share/sushida-os/offline.html"' in content
     assert 'START_URL="$OFFLINE_URL"' in content
 
 def test_launcher_writes_atomic_active_route_marker() -> None:
@@ -178,7 +182,7 @@ def test_helper_url_validation() -> None:
 
 def test_helper_allows_only_fixed_offline_file_url() -> None:
     content = SESSION_HELPER.read_text()
-    assert 'readonly OFFLINE_URL="file:///usr/share/sushida-os/offline.html"' in content
+    assert 'readonly OFFLINE_URL="file://localhost/usr/share/sushida-os/offline.html"' in content
     assert '"$OFFLINE_URL"' in content
 
 def test_helper_starts_pipewire() -> None:

@@ -19,7 +19,7 @@ for path in "$BUILD_ROOT" "$ARTIFACT_DIR"; do
     [ ! -L "$path" ] || fail "refusing symlinked repository path: $path"
     mkdir -p "$path"
 done
-for cmd in git jq lb mktemp sha256sum sort; do
+for cmd in git jq lb mkfs.ext4 mktemp sha256sum sort truncate xorriso; do
     command -v "$cmd" > /dev/null 2>&1 || fail "required build command not found: $cmd"
 done
 
@@ -40,7 +40,22 @@ mapfile -t iso_candidates < <(
 )
 [ "${#iso_candidates[@]}" -eq 1 ] || \
     fail "expected exactly one live-build ISO, found ${#iso_candidates[@]}"
-install -m 0644 "${iso_candidates[0]}" "$STAGING/$ISO_NAME"
+base_iso="$STAGING/.base.iso"
+config_image="$STAGING/.sushida-config.ext4"
+install -m 0600 "${iso_candidates[0]}" "$base_iso"
+truncate -s 64M "$config_image"
+mkfs.ext4 -q -F \
+    -L SUSHIDA-CFG \
+    -U 3b8c6880-2a56-4cb2-9a30-b7ac47fc29f1 \
+    "$config_image"
+xorriso \
+    -indev "$base_iso" \
+    -outdev "$STAGING/$ISO_NAME" \
+    -boot_image any replay \
+    -append_partition 3 0x83 "$config_image" \
+    -commit
+chmod 0644 "$STAGING/$ISO_NAME"
+rm -f -- "$base_iso" "$config_image"
 
 mapfile -t manifest_candidates < <(
     find "$BUILD_DIR" -maxdepth 2 -type f \

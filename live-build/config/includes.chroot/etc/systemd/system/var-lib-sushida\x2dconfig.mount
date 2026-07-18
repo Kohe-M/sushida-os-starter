@@ -1,0 +1,13 @@
+[Unit]
+Description=Sushi-da persistent configuration filesystem
+Before=sushida-config-prepare.service
+JobTimeoutSec=20s
+
+[Mount]
+What=/dev/disk/by-label/SUSHIDA-CFG
+Where=/var/lib/sushida-config
+Type=ext4
+Options=rw,nodev,nosuid,noexec,noatime
+
+[Install]
+WantedBy=multi-user.target

@@ -14,6 +14,7 @@ chromium
 network-manager
 wpasupplicant
 wireless-regdb
+polkitd
 
 # Audio stack (minimal PipeWire + PulseAudio compat + session mgmt)
 pipewire
@@ -57,4 +58,6 @@ ca-certificates
 
 # Image-internal policy validation during the live-build chroot stage
 python3-minimal
+# Wi-Fi setup backend uses the complete Python standard library
+python3
 pciutils

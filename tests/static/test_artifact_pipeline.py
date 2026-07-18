@@ -84,10 +84,24 @@ def test_verify_checks_iso_and_squashfs_contents() -> None:
         "sushida-os.json",
         "sushida-kiosk.service",
         "sushida-network-watch.service",
+        "sushida-wifi-setup.service",
+        "sushida-config-prepare",
+        "SUSHIDA-CFG",
         "sushida-session",
         "offline.html",
     ):
         assert path in text
+
+
+def test_verify_rejects_stale_wifi_runtime_files() -> None:
+    text = VERIFY.read_text()
+    assert "cmp -s" in text
+    assert "ISO contains a stale Wi-Fi setup backend" in text
+    assert "ISO contains a stale Wi-Fi setup service" in text
+    assert "ISO contains a stale configuration prepare helper" in text
+    assert "ISO contains a stale configuration prepare service" in text
+    assert "ISO contains a stale configuration mount unit" in text
+    assert "unsquashfs -cat" in text
 
 
 def test_verify_restricts_selected_directory() -> None:

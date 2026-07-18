@@ -24,7 +24,7 @@ case "$resolved_dir" in
     *) fail "artifact directory is outside the repository artifact root" ;;
 esac
 
-for cmd in jq sha256sum awk grep xorriso unsquashfs; do
+for cmd in awk blkid cmp dd grep jq sha256sum unsquashfs wc xorriso; do
     command -v "$cmd" > /dev/null 2>&1 || fail "required command not found: $cmd"
 done
 for file in "$ISO_NAME" SHA256SUMS package-manifest.txt build-info.json; do
@@ -86,6 +86,24 @@ grep -Eq "^'?/live/vmlinuz([.-][^/]*)?'?$" "$iso_listing" || \
 grep -Eq "^'?/live/initrd\.img([.-][^/]*)?'?$" "$iso_listing" || \
     fail "live initrd missing from ISO"
 
+system_area="$VERIFY_ROOT/system-area.txt"
+xorriso -indev "$iso" -report_system_area plain > "$system_area" \
+    2>> "$VERIFY_ROOT/xorriso.log" || fail "cannot inspect hybrid partition table"
+grep -Eq '^MBR partition[[:space:]]+:[[:space:]]+3[[:space:]]+0x00[[:space:]]+0x83[[:space:]]+[0-9]+[[:space:]]+131072$' \
+    "$system_area" || fail "missing fixed 64 MiB Linux config partition"
+grep -Fq 'GPT partname local :   3  Appended3' "$system_area" || \
+    fail "missing appended GPT config partition"
+config_start="$(awk '$1 == "MBR" && $2 == "partition" && $3 == ":" && $4 == "3" {print $(NF-1)}' "$system_area")"
+case "$config_start" in ''|*[!0-9]*) fail "invalid config partition start" ;; esac
+dd if="$iso" of="$VERIFY_ROOT/sushida-config.ext4" bs=512 \
+    skip="$config_start" count=131072 status=none
+config_label="$(blkid -p -s LABEL -o value "$VERIFY_ROOT/sushida-config.ext4")" || \
+    fail "cannot identify config filesystem"
+[ "$config_label" = SUSHIDA-CFG ] || fail "unexpected config filesystem label"
+config_type="$(blkid -p -s TYPE -o value "$VERIFY_ROOT/sushida-config.ext4")" || \
+    fail "cannot identify config filesystem type"
+[ "$config_type" = ext4 ] || fail "config filesystem is not ext4"
+
 xorriso -osirrox on -indev "$iso" \
     -extract /live/filesystem.squashfs "$VERIFY_ROOT/filesystem.squashfs" \
     > /dev/null 2>> "$VERIFY_ROOT/xorriso.log" || fail "cannot extract SquashFS"
@@ -95,12 +113,61 @@ for path in \
     etc/chromium/policies/managed/sushida-os.json \
     etc/systemd/system/sushida-kiosk.service \
     etc/systemd/system/sushida-network-watch.service \
+    etc/systemd/system/sushida-config-prepare.service \
+    etc/systemd/system/sushida-wifi-setup.service \
+    'etc/systemd/system/var-lib-sushida\x2dconfig.mount' \
+    etc/polkit-1/rules.d/60-sushida-wifi-setup.rules \
     usr/local/bin/sushida-launch \
     usr/local/bin/sushida-network-watch \
     usr/local/libexec/sushida-session \
+    usr/local/libexec/sushida-config-prepare \
+    usr/local/libexec/sushida-wifi-setup \
     usr/share/sushida-os/offline.html; do
-    grep -Eq "squashfs-root/${path}$" "$VERIFY_ROOT/squashfs-files.txt" || \
+    grep -Fq "squashfs-root/$path" "$VERIFY_ROOT/squashfs-files.txt" || \
         fail "required image path missing: /$path"
 done
+
+# These files control the exact real-hardware failure mode of the on-device
+# Wi-Fi UI. Presence alone is insufficient: reject a stale ISO built from an
+# older worktree revision.
+embedded_wifi="$VERIFY_ROOT/sushida-wifi-setup"
+unsquashfs -cat "$VERIFY_ROOT/filesystem.squashfs" \
+    usr/local/libexec/sushida-wifi-setup > "$embedded_wifi" || \
+    fail "cannot extract Wi-Fi setup backend from SquashFS"
+cmp -s \
+    "$PROJECT_ROOT/live-build/config/includes.chroot/usr/local/libexec/sushida-wifi-setup" \
+    "$embedded_wifi" || fail "ISO contains a stale Wi-Fi setup backend"
+
+embedded_wifi_service="$VERIFY_ROOT/sushida-wifi-setup.service"
+unsquashfs -cat "$VERIFY_ROOT/filesystem.squashfs" \
+    etc/systemd/system/sushida-wifi-setup.service > "$embedded_wifi_service" || \
+    fail "cannot extract Wi-Fi setup service from SquashFS"
+cmp -s \
+    "$PROJECT_ROOT/live-build/config/includes.chroot/etc/systemd/system/sushida-wifi-setup.service" \
+    "$embedded_wifi_service" || fail "ISO contains a stale Wi-Fi setup service"
+
+embedded_config_prepare="$VERIFY_ROOT/sushida-config-prepare"
+unsquashfs -cat "$VERIFY_ROOT/filesystem.squashfs" \
+    usr/local/libexec/sushida-config-prepare > "$embedded_config_prepare" || \
+    fail "cannot extract configuration prepare helper from SquashFS"
+cmp -s \
+    "$PROJECT_ROOT/live-build/config/includes.chroot/usr/local/libexec/sushida-config-prepare" \
+    "$embedded_config_prepare" || fail "ISO contains a stale configuration prepare helper"
+
+embedded_config_prepare_service="$VERIFY_ROOT/sushida-config-prepare.service"
+unsquashfs -cat "$VERIFY_ROOT/filesystem.squashfs" \
+    etc/systemd/system/sushida-config-prepare.service > "$embedded_config_prepare_service" || \
+    fail "cannot extract configuration prepare service from SquashFS"
+cmp -s \
+    "$PROJECT_ROOT/live-build/config/includes.chroot/etc/systemd/system/sushida-config-prepare.service" \
+    "$embedded_config_prepare_service" || fail "ISO contains a stale configuration prepare service"
+
+embedded_mount="$VERIFY_ROOT/sushida-config.mount"
+unsquashfs -cat "$VERIFY_ROOT/filesystem.squashfs" \
+    'etc/systemd/system/*config.mount' > "$embedded_mount" || \
+    fail "cannot extract configuration mount unit from SquashFS"
+cmp -s \
+    "$PROJECT_ROOT/live-build/config/includes.chroot/etc/systemd/system/var-lib-sushida\x2dconfig.mount" \
+    "$embedded_mount" || fail "ISO contains a stale configuration mount unit"
 
 echo "Artifact verification passed."

@@ -58,15 +58,28 @@ for group in root sudo adm wheel disk shadow; do
     fi
 done
 
+getent passwd wifi-setup > /dev/null || fail "wifi-setup account is missing"
+IFS=: read -r _name _password setup_uid setup_gid _gecos setup_home setup_shell < <(getent passwd wifi-setup)
+[ "$setup_uid" -ne 0 ] || fail "wifi-setup UID must not be zero"
+[ "$setup_gid" -ne 0 ] || fail "wifi-setup primary GID must not be zero"
+[ "$setup_home" = "/nonexistent" ] || fail "unexpected wifi-setup home: $setup_home"
+[ "$setup_shell" = "/usr/sbin/nologin" ] || fail "unexpected wifi-setup shell: $setup_shell"
+[ "$(id -nG wifi-setup)" = "wifi-setup" ] || fail "wifi-setup has supplementary groups"
+setup_shadow_password="$(getent shadow wifi-setup | cut -d: -f2)"
+case "$setup_shadow_password" in !*|\**) ;; *) fail "wifi-setup password is not locked" ;; esac
+
 # Required production packages.
 for package in \
     linux-image-amd64 live-boot live-config systemd-sysv cage chromium \
-    network-manager wpasupplicant pipewire pipewire-pulse wireplumber \
+    network-manager wpasupplicant polkitd pipewire pipewire-pulse wireplumber \
     libspa-0.2-modules dbus-user-session libgl1-mesa-dri mesa-va-drivers \
     libegl1 libgles2 libgbm1 libdrm2 libwayland-client0 \
-    libwayland-server0 python3-minimal pciutils; do
+    libwayland-server0 python3-minimal python3 pciutils; do
     require_package "$package"
 done
+
+python3 -c 'import hashlib, hmac, html, http.server, json, secrets, threading, urllib.parse' || \
+    fail "Wi-Fi setup Python standard library is incomplete"
 
 # Production image must not expose a shell, desktop, display manager, remote
 # administration service, proprietary NVIDIA stack, or persistence tooling.
@@ -86,10 +99,14 @@ for file in \
     /usr/local/bin/sushida-launch \
     /usr/local/bin/sushida-network-watch \
     /usr/local/bin/sushida-diagnostics \
-    /usr/local/libexec/sushida-session; do
+    /usr/local/libexec/sushida-session \
+    /usr/local/libexec/sushida-config-prepare \
+    /usr/local/libexec/sushida-wifi-setup; do
     require_executable "$file"
 done
-for unit in sushida-kiosk.service sushida-network-watch.service; do
+for unit in sushida-kiosk.service sushida-network-watch.service \
+    sushida-config-prepare.service sushida-wifi-setup.service \
+    'var-lib-sushida\x2dconfig.mount'; do
     require_file "/etc/systemd/system/$unit"
     systemctl is-enabled "$unit" > /dev/null 2>&1 || fail "$unit is not enabled"
 done
@@ -100,7 +117,15 @@ for unit in getty@.service autovt@.service serial-getty@.service \
 done
 systemd-analyze verify \
     /etc/systemd/system/sushida-kiosk.service \
-    /etc/systemd/system/sushida-network-watch.service
+    /etc/systemd/system/sushida-network-watch.service \
+    /etc/systemd/system/sushida-config-prepare.service \
+    /etc/systemd/system/sushida-wifi-setup.service \
+    '/etc/systemd/system/var-lib-sushida\x2dconfig.mount'
+
+polkit_rule=/etc/polkit-1/rules.d/60-sushida-wifi-setup.rules
+require_file "$polkit_rule"
+[ "$(stat -c '%U:%G:%a' "$polkit_rule")" = "root:root:644" ] || \
+    fail "unsafe owner or mode for Wi-Fi polkit rule"
 
 # Chromium policy: syntax, types, exact security values, and minimal origins.
 policy=/etc/chromium/policies/managed/sushida-os.json
@@ -131,7 +156,8 @@ if policy.get("URLBlocklist") != ["*", "view-source:*"]:
     raise SystemExit("invalid URLBlocklist")
 if policy.get("URLAllowlist") != [
     "https://.sushida.net:443",
-    "file:///usr/share/sushida-os/offline.html",
+    "file://localhost/usr/share/sushida-os/offline.html",
+    "http://127.0.0.1:8787",
 ]:
     raise SystemExit("invalid URLAllowlist")
 PY
@@ -167,8 +193,12 @@ if grep -R -n -E 'TO''DO|FIX''ME|IMPLEMENT[[:space:]]+ME|REPLACE_WITH_' \
     /usr/local/bin/sushida-network-watch \
     /usr/local/bin/sushida-diagnostics \
     /usr/local/libexec/sushida-session \
+    /usr/local/libexec/sushida-config-prepare \
+    /usr/local/libexec/sushida-wifi-setup \
     /etc/systemd/system/sushida-kiosk.service \
     /etc/systemd/system/sushida-network-watch.service \
+    /etc/systemd/system/sushida-config-prepare.service \
+    /etc/systemd/system/sushida-wifi-setup.service \
     /etc/chromium/policies/managed/sushida-os.json \
     /etc/sushida-os/config.env; then
     fail "unresolved marker in production configuration"

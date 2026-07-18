@@ -9,11 +9,13 @@ set -euo pipefail
 readonly PROD_CONFIG="/etc/sushida-os/config.env"
 readonly PROD_RUNTIME="/run/sushida-os"
 readonly PROD_SESSION="/usr/local/libexec/sushida-session"
-readonly OFFLINE_URL="file:///usr/share/sushida-os/offline.html"
+readonly OFFLINE_URL="file://localhost/usr/share/sushida-os/offline.html"
+readonly SETUP_URL="http://127.0.0.1:8787/"
 
 CONFIG_FILE="${SUSHIDA_OS_CONFIG:-$PROD_CONFIG}"
 BASE_RUNTIME="${SUSHIDA_OS_RUNTIME:-$PROD_RUNTIME}"
 SESSION_HELPER="${SUSHIDA_OS_SESSION:-$PROD_SESSION}"
+FORCE_OFFLINE=false
 
 if [ "$CONFIG_FILE" != "$PROD_CONFIG" ] && \
    [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
@@ -30,6 +32,18 @@ if [ "$SESSION_HELPER" != "$PROD_SESSION" ] && \
     echo "ERROR: SUSHIDA_OS_SESSION override requires SUSHIDA_OS_TEST_MODE=1" >&2
     exit 1
 fi
+case "${SUSHIDA_QEMU_FORCE_OFFLINE:-0}" in
+    0) ;;
+    1)
+        if [ "${SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER:-0}" != 1 ] || \
+           [ "${WLR_RENDERER:-}" != pixman ] || \
+           [ "${WLR_RENDERER_ALLOW_SOFTWARE:-0}" != 1 ]; then
+            echo "ERROR: QEMU force-offline requires all QEMU renderer markers" >&2
+            exit 1
+        fi
+        FORCE_OFFLINE=true ;;
+    *) echo "ERROR: Invalid SUSHIDA_QEMU_FORCE_OFFLINE value" >&2; exit 1 ;;
+esac
 
 # ── Runtime directories ───────────────────────────────────────────────────
 umask 077
@@ -43,7 +57,7 @@ export TMPDIR="$BASE_RUNTIME/tmp"
 
 # ── Executable pre-check ─────────────────────────────────────────────────
 for cmd in cage chromium pipewire pipewire-pulse wireplumber dbus-run-session \
-    nmcli mktemp mv; do
+    nmcli mktemp mv sleep systemctl; do
     if ! command -v "$cmd" > /dev/null 2>&1; then
         echo "ERROR: Required command not found: $cmd" >&2
         exit 1
@@ -60,7 +74,9 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 1
 fi
 SUSHIDA_URL=""
+NETWORK_SETUP_GRACE_SECONDS=15
 seen_url=false
+seen_setup_grace=false
 while IFS= read -r line || [ -n "$line" ]; do
     line="${line%$'\r'}"
     if [ -z "$line" ] || [[ "$line" == "#"* ]]; then continue; fi
@@ -72,11 +88,36 @@ while IFS= read -r line || [ -n "$line" ]; do
         SUSHIDA_URL)
             if $seen_url; then echo "ERROR: Duplicate SUSHIDA_URL" >&2; exit 1; fi
             seen_url=true; SUSHIDA_URL="$value" ;;
+        NETWORK_SETUP_GRACE_SECONDS)
+            if $seen_setup_grace; then
+                echo "ERROR: Duplicate NETWORK_SETUP_GRACE_SECONDS" >&2; exit 1
+            fi
+            seen_setup_grace=true; NETWORK_SETUP_GRACE_SECONDS="$value" ;;
         NETWORK_CHECK_INTERVAL_SECONDS|KIOSK_RESTART_SECONDS) ;;
         *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;
     esac
 done < "$CONFIG_FILE"
 if [ -z "$SUSHIDA_URL" ]; then echo "ERROR: SUSHIDA_URL not set" >&2; exit 1; fi
+case "$NETWORK_SETUP_GRACE_SECONDS" in
+    ''|*[!0-9]*)
+        echo "ERROR: NETWORK_SETUP_GRACE_SECONDS must be an integer" >&2
+        exit 1 ;;
+esac
+if [ "$NETWORK_SETUP_GRACE_SECONDS" -gt 60 ]; then
+    echo "ERROR: NETWORK_SETUP_GRACE_SECONDS exceeds maximum 60" >&2
+    exit 1
+fi
+
+if [ -n "${SUSHIDA_OS_NETWORK_SETUP_GRACE_SECONDS:-}" ]; then
+    if [ "${SUSHIDA_OS_TEST_MODE:-0}" != 1 ]; then
+        echo "ERROR: setup grace override requires SUSHIDA_OS_TEST_MODE=1" >&2
+        exit 1
+    fi
+    NETWORK_SETUP_GRACE_SECONDS="$SUSHIDA_OS_NETWORK_SETUP_GRACE_SECONDS"
+    case "$NETWORK_SETUP_GRACE_SECONDS" in
+        ''|*[!0-9]*) echo "ERROR: invalid test setup grace" >&2; exit 1 ;;
+    esac
+fi
 
 # ── URL validation ────────────────────────────────────────────────────────
 case "$SUSHIDA_URL" in
@@ -91,12 +132,29 @@ if [ "$(id -un)" != "kiosk" ]; then
 fi
 
 # ── Launch session helper inside dbus-run-session ─────────────────────────
-START_URL="$OFFLINE_URL"
-ACTIVE_ROUTE="offline"
-if nm_state=$(LC_ALL=C nmcli -t -f STATE general 2>/dev/null) && \
-   [ "$nm_state" = "connected" ]; then
-    START_URL="$SUSHIDA_URL"
-    ACTIVE_ROUTE="online"
+if [ "$FORCE_OFFLINE" = true ]; then
+    START_URL="$OFFLINE_URL"
+    ACTIVE_ROUTE="offline"
+else
+    START_URL="$SETUP_URL"
+    ACTIVE_ROUTE="setup"
+    waited=0
+    while true; do
+        if nm_state=$(LC_ALL=C nmcli -t -f STATE general 2>/dev/null) && \
+           [ "$nm_state" = "connected" ]; then
+            START_URL="$SUSHIDA_URL"
+            ACTIVE_ROUTE="online"
+            break
+        fi
+        [ "$waited" -lt "$NETWORK_SETUP_GRACE_SECONDS" ] || break
+        sleep 1
+        waited=$((waited + 1))
+    done
+    if [ "$ACTIVE_ROUTE" = setup ] && \
+       ! systemctl -q is-active sushida-wifi-setup.service 2>/dev/null; then
+        START_URL="$OFFLINE_URL"
+        ACTIVE_ROUTE="offline"
+    fi
 fi
 readonly START_URL ACTIVE_ROUTE
 

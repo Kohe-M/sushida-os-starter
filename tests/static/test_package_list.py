@@ -141,7 +141,7 @@ def test_ca_certificates() -> None:
 
 
 def test_image_validation_runtime() -> None:
-    assert "python3-minimal" in _package_set()
+    assert {"python3-minimal", "python3"} <= _package_set()
 
 
 def test_diagnostics_runtime() -> None:

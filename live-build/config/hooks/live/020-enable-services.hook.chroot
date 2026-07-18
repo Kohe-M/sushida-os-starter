@@ -6,3 +6,6 @@ set -euo pipefail
 
 systemctl enable sushida-kiosk.service
 systemctl enable sushida-network-watch.service
+systemctl enable 'var-lib-sushida\x2dconfig.mount'
+systemctl enable sushida-config-prepare.service
+systemctl enable sushida-wifi-setup.service

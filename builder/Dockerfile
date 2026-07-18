@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     debootstrap \
     dosfstools \
+    e2fsprogs \
     git \
     grub-efi-amd64-bin \
     grub-pc-bin \
@@ -23,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     squashfs-tools \
     syslinux-common \
     systemd \
+    udev \
     ovmf \
     xorriso \
     && rm -rf /var/lib/apt/lists/*

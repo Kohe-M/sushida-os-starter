@@ -32,7 +32,8 @@ REQUIRED_POLICIES: dict[str, tuple] = {
 
 EXPECTED_ALLOWLIST = {
     "https://.sushida.net:443",
-    "file:///usr/share/sushida-os/offline.html",
+    "file://localhost/usr/share/sushida-os/offline.html",
+    "http://127.0.0.1:8787",
 }
 
 EXPECTED_BLOCKLIST = {"*", "view-source:*"}
@@ -235,15 +236,16 @@ def test_no_loading_html() -> None:
         assert "loading.html" not in entry
 
 
-def test_no_http_in_allowlist() -> None:
+def test_only_fixed_loopback_setup_origin_uses_http() -> None:
     for entry in _policy()["URLAllowlist"]:
-        assert not entry.startswith("http://")
+        if entry.startswith("http://"):
+            assert entry == "http://127.0.0.1:8787"
 
 
-def test_no_broad_file_scheme() -> None:
+def test_file_filter_has_required_host_and_exact_path() -> None:
     for entry in _policy()["URLAllowlist"]:
         if entry.startswith("file://"):
-            assert entry == "file:///usr/share/sushida-os/offline.html"
+            assert entry == "file://localhost/usr/share/sushida-os/offline.html"
 
 
 def test_https_filter_has_exact_host_dot() -> None:

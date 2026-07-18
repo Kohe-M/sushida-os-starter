@@ -289,7 +289,7 @@ def test_hook_no_todo() -> None:
 
 
 def test_hook_enables_kiosk_and_watcher() -> None:
-    """Hook must enable exactly 2 services: sushida-kiosk and sushida-network-watch."""
+    """Hook enables the kiosk, watcher, and constrained setup services."""
     exec_lines = _hook_exec_lines()
     enable_lines = [line for line in exec_lines if "systemctl enable" in line]
     assert len(enable_lines) >= 1, "No systemctl enable command found"
@@ -298,11 +298,15 @@ def test_hook_enables_kiosk_and_watcher() -> None:
     for cmd in enable_lines:
         parts = cmd.split()
         services_found.extend(p for p in parts if p.endswith(".service"))
-    # Must be exactly 2 tokens (rejects duplicates and extra services)
-    assert len(services_found) == 2, (
-        f"Expected exactly 2 .service tokens, got {len(services_found)}: {services_found}"
+    assert len(services_found) == 4, (
+        f"Expected exactly 4 .service tokens, got {len(services_found)}: {services_found}"
     )
-    expected = {"sushida-kiosk.service", "sushida-network-watch.service"}
+    expected = {
+        "sushida-kiosk.service",
+        "sushida-network-watch.service",
+        "sushida-config-prepare.service",
+        "sushida-wifi-setup.service",
+    }
     assert set(services_found) == expected, (
         f"Expected enabled services {expected}, got {set(services_found)}"
     )

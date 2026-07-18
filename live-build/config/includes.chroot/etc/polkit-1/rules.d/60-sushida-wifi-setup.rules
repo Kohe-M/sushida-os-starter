@@ -1,0 +1,13 @@
+// The dedicated backend may only control NetworkManager and create/replace a
+// system connection. It receives no general administrative authorization.
+polkit.addRule(function(action, subject) {
+    const allowed = [
+        "org.freedesktop.NetworkManager.network-control",
+        "org.freedesktop.NetworkManager.settings.modify.system",
+        "org.freedesktop.NetworkManager.enable-disable-wifi"
+    ];
+
+    if (subject.user == "wifi-setup" && allowed.indexOf(action.id) >= 0) {
+        return polkit.Result.YES;
+    }
+});

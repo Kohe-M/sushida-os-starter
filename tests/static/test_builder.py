@@ -15,6 +15,16 @@ def test_dockerfile_no_todo() -> None:
     assert "TODO" not in DOCKERFILE.read_text()
 
 
+def test_dockerfile_includes_udevadm_for_flash_validation() -> None:
+    content = DOCKERFILE.read_text()
+    assert re.search(r"^\s*udev\s*\\$", content, re.MULTILINE)
+
+
+def test_dockerfile_includes_ext4_config_image_tools() -> None:
+    content = DOCKERFILE.read_text()
+    assert re.search(r"^\s*e2fsprogs\s*\\$", content, re.MULTILINE)
+
+
 def test_dockerfile_chmod_entrypoint() -> None:
     content = DOCKERFILE.read_text()
     assert re.search(r"chmod\s+0?755\s+/entrypoint\.sh", content), (

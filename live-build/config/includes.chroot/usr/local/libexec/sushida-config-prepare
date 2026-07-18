@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Prepare only the dedicated configuration filesystem. Missing or damaged
+# storage is non-fatal: the setup UI remains available but refuses persistence.
+set -euo pipefail
+
+CONFIG_MOUNT="/var/lib/sushida-config"
+STATUS_DIR="/run/sushida-config"
+OWNER=wifi-setup
+GROUP=wifi-setup
+
+if [ "${SUSHIDA_CONFIG_TEST_MODE:-0}" = 1 ]; then
+    TEST_ROOT="${SUSHIDA_CONFIG_TEST_ROOT:-}"
+    case "$TEST_ROOT" in /tmp/*) ;; *) echo "ERROR: unsafe config test root" >&2; exit 1 ;; esac
+    [ -d "$TEST_ROOT" ] && [ ! -L "$TEST_ROOT" ] || {
+        echo "ERROR: invalid config test root" >&2
+        exit 1
+    }
+    CONFIG_MOUNT="$TEST_ROOT/config"
+    STATUS_DIR="$TEST_ROOT/run"
+    OWNER="$(id -un)"
+    GROUP="$(id -gn)"
+elif [ -n "${SUSHIDA_CONFIG_TEST_ROOT:-}" ]; then
+    echo "ERROR: config test override requires test mode" >&2
+    exit 1
+fi
+
+readonly CONFIG_MOUNT STATUS_DIR OWNER GROUP
+readonly CONFIG_DIR="$CONFIG_MOUNT/network"
+readonly STATUS_FILE="$STATUS_DIR/config-storage"
+
+install -d -m 0755 "$STATUS_DIR"
+
+write_status() {
+    local value="$1"
+    local temporary
+
+    temporary="$(mktemp "$STATUS_DIR/.config-storage.XXXXXXXX")"
+    if ! chmod 0644 "$temporary" ||
+        ! printf '%s\n' "$value" > "$temporary" ||
+        ! mv -f -- "$temporary" "$STATUS_FILE"; then
+        rm -f -- "$temporary"
+        return 1
+    fi
+}
+
+mounted=false
+if [ "${SUSHIDA_CONFIG_TEST_MODE:-0}" = 1 ]; then
+    [ "${SUSHIDA_CONFIG_TEST_MOUNTED:-0}" = 1 ] && mounted=true
+elif mountpoint -q "$CONFIG_MOUNT"; then
+    mounted=true
+fi
+if [ "$mounted" = false ]; then
+    write_status unavailable
+    exit 0
+fi
+
+if [ "${SUSHIDA_CONFIG_TEST_MODE:-0}" = 1 ]; then
+    fstype="${SUSHIDA_CONFIG_TEST_FSTYPE:-ext4}"
+else
+    fstype="$(findmnt -nro FSTYPE --target "$CONFIG_MOUNT")"
+fi
+[ "$fstype" = ext4 ] || {
+    write_status unavailable
+    exit 0
+}
+
+# Never follow attacker-controlled or corrupt directory entries from the
+# writable configuration filesystem while this helper still runs as root.
+if [ -L "$CONFIG_DIR" ] || { [ -e "$CONFIG_DIR" ] && [ ! -d "$CONFIG_DIR" ]; }; then
+    write_status unavailable
+    exit 0
+fi
+install -d -m 0700 -o "$OWNER" -g "$GROUP" "$CONFIG_DIR"
+write_status ready

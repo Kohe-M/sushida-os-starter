@@ -13,12 +13,13 @@ setup() {
     export NM_STATE=connected
     export NM_FAIL=0
     export SERVICE_ACTIVE=1
+    export SETUP_SERVICE_ACTIVE=1
     export SYSTEMCTL_SHOW_FAIL=0
     export TEST_MAIN_PID=0
     WATCHER="live-build/config/includes.chroot/usr/local/bin/sushida-network-watch"
     FIXTURE_PID=""
 
-    printf 'SUSHIDA_URL=https://sushida.net/play.html\nNETWORK_CHECK_INTERVAL_SECONDS=30\nKIOSK_RESTART_SECONDS=2\n' > "$SUSHIDA_OS_CONFIG"
+    printf 'SUSHIDA_URL=https://sushida.net/play.html\nNETWORK_SETUP_GRACE_SECONDS=15\nNETWORK_CHECK_INTERVAL_SECONDS=30\nKIOSK_RESTART_SECONDS=2\n' > "$SUSHIDA_OS_CONFIG"
     printf 'online\n' > "$SUSHIDA_OS_RUNTIME/active-route"
     printf '0::/system.slice/sushida-kiosk.service\n' > "$SUSHIDA_OS_TEST_CGROUP_FILE"
     : > "$TEST_ROOT/sleep.log"
@@ -33,7 +34,8 @@ SHIM
     cat > "$TEST_ROOT/bin/systemctl" <<'SHIM'
 #!/bin/bash
 case " $* " in
-    *" is-active "*) [ "${SERVICE_ACTIVE:-0}" = 1 ] ;;
+    *" is-active sushida-wifi-setup.service "*) [ "${SETUP_SERVICE_ACTIVE:-0}" = 1 ] ;;
+    *" is-active sushida-kiosk.service "*) [ "${SERVICE_ACTIVE:-0}" = 1 ] ;;
     *" show "*)
         [ "${SYSTEMCTL_SHOW_FAIL:-0}" = 0 ] || exit 1
         printf '%s\n' "${TEST_MAIN_PID:-0}"
@@ -94,8 +96,8 @@ run_watcher() { run "$WATCHER"; }
     assert_fixture_alive
 }
 
-@test "same offline route does not restart kiosk" {
-    printf 'offline\n' > "$SUSHIDA_OS_RUNTIME/active-route"
+@test "same setup route does not restart kiosk" {
+    printf 'setup\n' > "$SUSHIDA_OS_RUNTIME/active-route"
     export NM_STATE=disconnected
     start_kiosk_fixture
     run_watcher
@@ -103,7 +105,26 @@ run_watcher() { run "$WATCHER"; }
     assert_fixture_alive
 }
 
-@test "online to offline transition terminates validated MainPID" {
+@test "QEMU smoke markers keep offline route despite connected test NIC" {
+    printf 'offline\n' > "$SUSHIDA_OS_RUNTIME/active-route"
+    export SUSHIDA_QEMU_FORCE_OFFLINE=1
+    export SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1
+    export WLR_RENDERER=pixman
+    export WLR_RENDERER_ALLOW_SOFTWARE=1
+    start_kiosk_fixture
+    run_watcher
+    [ "$status" -eq 0 ]
+    assert_fixture_alive
+}
+
+@test "watcher rejects QEMU force-offline marker without renderer markers" {
+    export SUSHIDA_QEMU_FORCE_OFFLINE=1
+    run_watcher
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"requires all QEMU renderer markers"* ]]
+}
+
+@test "online to setup transition terminates validated MainPID" {
     export NM_STATE=disconnected
     start_kiosk_fixture
     run_watcher
@@ -111,15 +132,15 @@ run_watcher() { run "$WATCHER"; }
     assert_fixture_terminated
 }
 
-@test "offline to online transition terminates validated MainPID" {
-    printf 'offline\n' > "$SUSHIDA_OS_RUNTIME/active-route"
+@test "setup to online transition terminates validated MainPID" {
+    printf 'setup\n' > "$SUSHIDA_OS_RUNTIME/active-route"
     start_kiosk_fixture
     run_watcher
     [ "$status" -eq 0 ]
     assert_fixture_terminated
 }
 
-@test "nmcli failure is offline and triggers a validated transition" {
+@test "nmcli failure selects setup and triggers a validated transition" {
     export NM_FAIL=1
     start_kiosk_fixture
     run_watcher
@@ -127,7 +148,7 @@ run_watcher() { run "$WATCHER"; }
     assert_fixture_terminated
 }
 
-@test "limited connectivity states are offline" {
+@test "limited connectivity states select setup" {
     local state
     for state in connected.local connected.site connecting unknown disconnected; do
         export NM_STATE="$state"
@@ -136,6 +157,15 @@ run_watcher() { run "$WATCHER"; }
         [ "$status" -eq 0 ]
         assert_fixture_terminated
     done
+}
+
+@test "setup backend failure preserves matching offline fallback" {
+    printf 'offline\n' > "$SUSHIDA_OS_RUNTIME/active-route"
+    export NM_STATE=disconnected SETUP_SERVICE_ACTIVE=0
+    start_kiosk_fixture
+    run_watcher
+    [ "$status" -eq 0 ]
+    assert_fixture_alive
 }
 
 @test "missing active route marker fails closed without signal" {

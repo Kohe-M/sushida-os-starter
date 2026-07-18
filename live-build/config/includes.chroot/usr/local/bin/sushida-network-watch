@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Restart the managed kiosk session when its selected route no longer matches
-# NetworkManager. This watcher never starts or controls the browser directly.
+# NetworkManager. Disconnected state selects the constrained local setup UI.
 set -euo pipefail
 
 readonly PROD_CONFIG="/etc/sushida-os/config.env"
@@ -12,6 +12,7 @@ CONFIG_FILE="${SUSHIDA_OS_CONFIG:-$PROD_CONFIG}"
 RUNTIME_DIR="${SUSHIDA_OS_RUNTIME:-$PROD_RUNTIME}"
 MAX_ITER="${SUSHIDA_OS_MAX_ITERATIONS:-0}"
 TEST_CGROUP_FILE="${SUSHIDA_OS_TEST_CGROUP_FILE:-}"
+FORCE_OFFLINE=false
 
 if [ "$CONFIG_FILE" != "$PROD_CONFIG" ] && [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
     echo "ERROR: CONFIG_FILE override requires SUSHIDA_OS_TEST_MODE=1" >&2; exit 1
@@ -25,6 +26,17 @@ fi
 if [ -n "$TEST_CGROUP_FILE" ] && [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
     echo "ERROR: SUSHIDA_OS_TEST_CGROUP_FILE requires SUSHIDA_OS_TEST_MODE=1" >&2; exit 1
 fi
+case "${SUSHIDA_QEMU_FORCE_OFFLINE:-0}" in
+    0) ;;
+    1)
+        if [ "${WLR_RENDERER:-}" != pixman ] || \
+           [ "${WLR_RENDERER_ALLOW_SOFTWARE:-0}" != 1 ]; then
+            echo "ERROR: QEMU force-offline requires all QEMU renderer markers" >&2
+            exit 1
+        fi
+        FORCE_OFFLINE=true ;;
+    *) echo "ERROR: Invalid SUSHIDA_QEMU_FORCE_OFFLINE value" >&2; exit 1 ;;
+esac
 readonly ACTIVE_ROUTE_FILE="$RUNTIME_DIR/active-route"
 
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -47,7 +59,7 @@ while IFS= read -r line || [ -n "$line" ]; do
                 echo "ERROR: Duplicate NETWORK_CHECK_INTERVAL_SECONDS" >&2; exit 1
             fi
             seen_interval=true; INTERVAL="$value" ;;
-        KIOSK_RESTART_SECONDS) ;;
+        KIOSK_RESTART_SECONDS|NETWORK_SETUP_GRACE_SECONDS) ;;
         *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;
     esac
 done < "$CONFIG_FILE"
@@ -80,8 +92,12 @@ done
 
 desired_route() {
     local state
-    if state=$(LC_ALL=C nmcli -t -f STATE general 2>/dev/null) && [ "$state" = connected ]; then
+    if [ "$FORCE_OFFLINE" = true ]; then
+        printf '%s\n' offline
+    elif state=$(LC_ALL=C nmcli -t -f STATE general 2>/dev/null) && [ "$state" = connected ]; then
         printf '%s\n' online
+    elif systemctl -q is-active sushida-wifi-setup.service 2>/dev/null; then
+        printf '%s\n' setup
     else
         printf '%s\n' offline
     fi
@@ -91,7 +107,7 @@ read_active_route() {
     [ -f "$ACTIVE_ROUTE_FILE" ] || return 1
     local route
     IFS= read -r route < "$ACTIVE_ROUTE_FILE" || return 1
-    case "$route" in online|offline) printf '%s\n' "$route" ;; *) return 1 ;; esac
+    case "$route" in online|setup|offline) printf '%s\n' "$route" ;; *) return 1 ;; esac
 }
 
 restart_kiosk() {

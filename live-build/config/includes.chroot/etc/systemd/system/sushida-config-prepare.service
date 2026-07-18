@@ -1,0 +1,21 @@
+[Unit]
+Description=Prepare isolated Sushi-da persistent configuration
+Wants=var-lib-sushida\x2dconfig.mount
+After=var-lib-sushida\x2dconfig.mount
+Before=sushida-wifi-setup.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/sushida-config-prepare
+RemainAfterExit=yes
+RuntimeDirectory=sushida-config
+RuntimeDirectoryMode=0755
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sushida-config
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

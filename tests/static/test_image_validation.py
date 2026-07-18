@@ -47,11 +47,22 @@ def test_hook_validates_kiosk_account_boundary() -> None:
         assert value in text
 
 
+def test_hook_validates_dedicated_setup_account_boundary() -> None:
+    text = _text()
+    for value in (
+        "getent passwd wifi-setup",
+        "getent shadow wifi-setup",
+        'id -nG wifi-setup)" = "wifi-setup"',
+        "wifi-setup has supplementary groups",
+    ):
+        assert value in text
+
+
 def test_hook_validates_required_packages() -> None:
     text = _text()
     for package in (
-        "live-boot", "cage", "chromium", "network-manager", "pipewire",
-        "wireplumber", "libgl1-mesa-dri", "libgbm1", "python3-minimal",
+        "live-boot", "cage", "chromium", "network-manager", "polkitd", "pipewire",
+        "wireplumber", "libgl1-mesa-dri", "libgbm1", "python3-minimal", "python3",
     ):
         assert package in text
     assert "dpkg-query" in text
@@ -81,7 +92,8 @@ def test_hook_parses_and_checks_policy() -> None:
     ):
         assert policy in text
     assert "https://.sushida.net:443" in text
-    assert "file:///usr/share/sushida-os/offline.html" in text
+    assert "file://localhost/usr/share/sushida-os/offline.html" in text
+    assert '"http://127.0.0.1:8787"' in text
 
 
 def test_hook_validates_units_and_lockdown() -> None:
@@ -91,6 +103,9 @@ def test_hook_validates_units_and_lockdown() -> None:
     for unit in (
         "sushida-kiosk.service",
         "sushida-network-watch.service",
+        "sushida-config-prepare.service",
+        "sushida-wifi-setup.service",
+        "var-lib-sushida\\x2dconfig.mount",
         "getty@.service",
         "serial-getty@.service",
         "ctrl-alt-del.target",
@@ -115,6 +130,8 @@ def test_hook_validates_executable_ownership_and_wifi_mode() -> None:
     assert "sushida-network-watch" in text
     assert "sushida-diagnostics" in text
     assert "sushida-session" in text
+    assert "sushida-config-prepare" in text
+    assert "sushida-wifi-setup" in text
 
 
 def test_hook_rejects_unresolved_markers() -> None:

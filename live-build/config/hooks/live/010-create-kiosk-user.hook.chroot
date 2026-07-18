@@ -8,6 +8,9 @@ KIOSK_USER="kiosk"
 KIOSK_SHELL="/usr/sbin/nologin"
 KIOSK_HOME="/nonexistent"
 KIOSK_GROUPS="audio,video,render,input"
+SETUP_USER="wifi-setup"
+SETUP_SHELL="/usr/sbin/nologin"
+SETUP_HOME="/nonexistent"
 
 # Create dedicated primary group if it does not exist.
 if ! getent group "$KIOSK_USER" > /dev/null 2>&1; then
@@ -55,3 +58,36 @@ fi
 
 # Ensure the account has no usable password.
 passwd -l "$KIOSK_USER"
+
+# The setup backend is separate from the browser account. It receives no
+# supplementary groups; narrowly-scoped NetworkManager authorization is
+# granted by polkit instead.
+if ! getent group "$SETUP_USER" > /dev/null 2>&1; then
+    groupadd --system "$SETUP_USER"
+fi
+SETUP_GID="$(getent group "$SETUP_USER" | cut -d: -f3)"
+if [ -z "$SETUP_GID" ] || [ "$SETUP_GID" -eq 0 ]; then
+    echo "ERROR: setup group has invalid GID: $SETUP_GID" >&2
+    exit 1
+fi
+
+if getent passwd "$SETUP_USER" > /dev/null 2>&1; then
+    SETUP_UID="$(getent passwd "$SETUP_USER" | cut -d: -f3)"
+    if [ -z "$SETUP_UID" ] || [ "$SETUP_UID" -eq 0 ]; then
+        echo "ERROR: setup user has invalid UID: $SETUP_UID" >&2
+        exit 1
+    fi
+    usermod --gid "$SETUP_USER" \
+        --home "$SETUP_HOME" \
+        --shell "$SETUP_SHELL" \
+        -G "" \
+        "$SETUP_USER"
+else
+    useradd --system \
+        --gid "$SETUP_USER" \
+        --no-create-home \
+        --home-dir "$SETUP_HOME" \
+        --shell "$SETUP_SHELL" \
+        "$SETUP_USER"
+fi
+passwd -l "$SETUP_USER"
