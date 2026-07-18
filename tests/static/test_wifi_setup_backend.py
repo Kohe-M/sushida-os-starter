@@ -58,11 +58,11 @@ def backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "  *' radio wifi on '*) printf 'radio-on\\n' >> '" + str(command_log) + "' ;;\n"
         "  *' connection delete id sushida-os-wifi '*) printf 'profile-delete\\n' >> '" + str(command_log) + "'; exit 10 ;;\n"
         "  *'-f NAME connection show '*) printf 'profile-list\\n' >> '" + str(command_log) + "'; exit 0 ;;\n"
-        "  *' connection load /proc/self/fd/'*) printf 'profile-create\\n' >> '" + str(command_log) + "'; test -r \"$3\" ;;\n"
+        "  *' connection add type wifi '*) printf 'profile-create\\n' >> '" + str(command_log) + "' ;;\n"
         "  *' connection modify sushida-os-wifi '*) printf 'profile-configure\\n' >> '" + str(command_log) + "' ;;\n"
         "  *' passwd-file /proc/self/fd/'*) printf 'activation-passwd-file\\n' >> '" + str(command_log) + "'; test -r \"$8\" ;;\n"
         "  *' --wait 30 connection up id sushida-os-wifi '*) printf 'activation-open\\n' >> '" + str(command_log) + "' ;;\n"
-        "  *' connection show id sushida-os-wifi '*) printf 'connection.autoconnect:yes\\n'; printf 'autoconnect-check\\n' >> '" + str(command_log) + "' ;;\n"
+        "  *' connection show id sushida-os-wifi '*) printf 'connection.autoconnect:yes\\n802-11-wireless-security.psk-flags:0\\n'; printf 'autoconnect-check\\n' >> '" + str(command_log) + "' ;;\n"
         "  *' DEVICE,TYPE device status '*) printf 'wlan0:wifi\\n' ;;\n"
         "  *' GENERAL.REASON device show '*) printf 'GENERAL.REASON:0\\n' ;;\n"
         "  *' NAME,TYPE connection show --active '*) printf 'sushida-os-wifi:wifi\\n' ;;\n"
@@ -103,6 +103,7 @@ def test_scan_skips_undecodable_ssid_bytes(backend) -> None:
         ("", "open"),
         ("WPA2", "wpa-personal"),
         ("WPA1 WPA2", "wpa-personal"),
+        ("WPA2 WPA3", "wpa-personal"),
         ("WEP", "wep"),
         ("WPA2 802.1X", "enterprise"),
         ("WPA2 OWE", "owe"),
@@ -246,7 +247,6 @@ def test_activation_failure_does_not_update_setup_json(backend, monkeypatch: pyt
     assert "タイムアウト" in message
     assert backend.load_credentials() is None
     assert all(TEST_PASSWORD not in arg for call in calls for arg in call)
-    assert all(TEST_SSID not in arg for call in calls for arg in call)
 
 
 @pytest.mark.parametrize("connection_type", ["wifi", "802-11-wireless"])
@@ -349,7 +349,10 @@ def test_connect_passes_password_only_over_a_private_inherited_fd(
         calls.append((args, pass_fds, payload))
         if "connection" in args and "show" in args and "id" in args:
             return subprocess.CompletedProcess(
-                args, 0, "connection.autoconnect:yes\n", ""
+                args, 0,
+                "connection.autoconnect:yes\n"
+                "802-11-wireless-security.psk-flags:0\n",
+                "",
             )
         if args[:3] == ("-t", "--escape", "yes") and "device" in args:
             return subprocess.CompletedProcess(args, 0, "Fixture\\:Guest:90:WPA2\n", "")
@@ -364,14 +367,18 @@ def test_connect_passes_password_only_over_a_private_inherited_fd(
     connect_args, connect_fds, connect_payload = next(
         (args, fds, payload)
         for args, fds, payload in calls
-        if "connect" in args
+        if "up" in args
     )
     assert connect_args == (
         "--wait", "30", "connection", "up", "id", backend.CONNECTION_NAME,
         "passwd-file", connect_args[-1],
     )
     assert all(TEST_PASSWORD not in argument for argument in connect_args)
-    assert all(TEST_SSID not in argument for argument in connect_args)
+    profile_args = next(
+        args for args, _fds, _payload in calls
+        if "connection" in args and "add" in args
+    )
+    assert TEST_SSID in profile_args
     assert connect_fds
     assert connect_payload == (
         f"802-11-wireless-security.psk:{TEST_PASSWORD}\n".encode()

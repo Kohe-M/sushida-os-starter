@@ -116,7 +116,8 @@ def test_backend_constrains_http_and_persists_atomically() -> None:
     assert 'pass_fds=tuple(pass_fds)' in text
     assert "TemporaryFile" in text
     assert "802-11-wireless-security.psk:" in text
-    assert '"connection", "load"' in text
+    assert '"connection", "add"' in text
+    assert '"connection", "load"' not in text
     assert '"passwd-file"' in text
     assert "--" + "ask" not in text
     assert "classify_security" in text
@@ -129,6 +130,8 @@ def test_backend_constrains_http_and_persists_atomically() -> None:
     assert "nmcli_exit=" in text
     assert "reason=" in text
     assert 'command.extend(["password", password])' not in text
+    assert '"802-11-wireless-security.psk-flags", "0"' in text
+    assert '"802-11-wireless-security.key-mgmt", "wpa-psk"' in text
     assert "REQUEST_READ_TIMEOUT_SECONDS" in text
     assert "self.connection.settimeout" in text
     assert "managed_wifi_active()" in text

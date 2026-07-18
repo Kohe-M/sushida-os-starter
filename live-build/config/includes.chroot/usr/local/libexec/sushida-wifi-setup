@@ -269,6 +269,7 @@ def scan_networks() -> list[tuple[str, int, str]]:
 def classify_security(security: str) -> str:
     """Classify only the two Wi-Fi modes this kiosk can provision safely."""
     normalized = " ".join(security.upper().split())
+    tokens = set(normalized.split())
     if normalized in ("", "--"):
         return "open"
     if "WEP" in normalized:
@@ -282,12 +283,15 @@ def classify_security(security: str) -> str:
         return "enterprise"
     if "OWE" in normalized:
         return "owe"
-    # The profile deliberately uses wpa-psk.  SAE-only WPA3 and any unknown
-    # security advertisement must not be silently downgraded to WPA-PSK.
-    if "WPA3" in normalized or "SAE" in normalized:
+    # The profile deliberately uses wpa-psk.  A WPA2/WPA3 transition
+    # advertisement remains compatible because it contains a WPA2 fallback;
+    # SAE-only WPA3 must not be silently downgraded to WPA-PSK.
+    if "SAE" in tokens and not tokens.intersection({"WPA", "WPA1", "WPA2"}):
         return "unsupported"
-    if "WPA" in normalized:
+    if tokens.intersection({"WPA", "WPA1", "WPA2"}):
         return "wpa-personal"
+    if "WPA3" in tokens:
+        return "unsupported"
     return "unsupported"
 
 
@@ -343,42 +347,6 @@ def _temporary_fd(payload: bytes) -> Iterator[tuple[str, int]]:
         stream.seek(0)
         descriptor = stream.fileno()
         yield f"/proc/self/fd/{descriptor}", descriptor
-
-
-def _keyfile_escape(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
-
-
-def _profile_keyfile(ssid: str, security_mode: str) -> bytes:
-    wifi_lines = [
-        "[wifi]",
-        f"ssid={_keyfile_escape(ssid)}",
-        "mode=infrastructure",
-    ]
-    if security_mode == "wpa-personal":
-        wifi_lines.append("security=802-11-wireless-security")
-    lines = [
-        "[connection]",
-        f"id={CONNECTION_NAME}",
-        "type=wifi",
-        "autoconnect=true",
-        "",
-        *wifi_lines,
-        "",
-        "[ipv4]",
-        "method=auto",
-        "",
-        "[ipv6]",
-        "method=auto",
-    ]
-    if security_mode == "wpa-personal":
-        lines.extend([
-            "",
-            "[wifi-security]",
-            "key-mgmt=wpa-psk",
-            "psk-flags=1",
-        ])
-    return ("\n".join(lines) + "\n").encode("utf-8")
 
 
 def _log_stage(stage: str, exit_code: int, reason: int | None) -> None:
@@ -515,10 +483,13 @@ def _cleanup_profile() -> None:
         _log_stage("profile-cleanup", result.returncode, _wifi_reason())
 
 
-def _verify_autoconnect() -> str | None:
+def _verify_autoconnect(security_mode: str) -> str | None:
+    fields = ["connection.autoconnect"]
+    if security_mode == "wpa-personal":
+        fields.append("802-11-wireless-security.psk-flags")
     try:
         result = run_nmcli(
-            "-t", "--escape", "yes", "-f", "connection.autoconnect",
+            "-t", "--escape", "yes", "-f", ",".join(fields),
             "connection", "show", "id", CONNECTION_NAME, timeout=8,
         )
     except subprocess.TimeoutExpired:
@@ -531,9 +502,20 @@ def _verify_autoconnect() -> str | None:
         reason = _wifi_reason()
         _log_stage("autoconnect-check", result.returncode, reason)
         return _failure_message(result.returncode, reason)
-    if not any(line.rstrip().endswith("yes") for line in result.stdout.splitlines()):
+    values: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        key, separator, value = line.partition(":")
+        if separator:
+            values[key] = value.strip()
+    if values.get("connection.autoconnect") != "yes":
         _log_stage("autoconnect-check", 0, None)
         return "NetworkManagerの自動再接続を確認できませんでした。もう一度接続してください。"
+    if (
+        security_mode == "wpa-personal"
+        and values.get("802-11-wireless-security.psk-flags") != "0"
+    ):
+        _log_stage("autoconnect-check", 0, None)
+        return "現在の起動中に自動再接続用のWi-Fi秘密情報を保持できませんでした。もう一度接続してください。"
     return None
 
 
@@ -572,12 +554,16 @@ def _connect_wifi(ssid: str, password: str) -> tuple[bool, str]:
         if deleted is not None:
             return False, deleted
 
-        profile_payload = _profile_keyfile(ssid, security_mode)
-        with _temporary_fd(profile_payload) as (profile_path, profile_fd):
-            created_result = _run_nmcli_stage(
-                "profile-create", "connection", "load", profile_path,
-                timeout=10, pass_fds=(profile_fd,),
-            )
+        # LoadConnections is root-only and asks the NetworkManager daemon to
+        # open the path itself, so neither a non-root caller nor /proc/self/fd
+        # can safely be used for profile creation.  `connection add` is the
+        # Polkit-authorized API; the SSID is not a credential and may be an
+        # argument, while the PSK remains exclusively in the passwd-file FD.
+        created_result = _run_nmcli_stage(
+            "profile-create", "connection", "add", "type", "wifi",
+            "ifname", "*", "con-name", CONNECTION_NAME, "ssid", ssid,
+            timeout=10,
+        )
         if created_result is not None:
             return False, created_result
         profile_created = True
@@ -589,7 +575,11 @@ def _connect_wifi(ssid: str, password: str) -> tuple[bool, str]:
         if security_mode == "wpa-personal":
             modify_args.extend([
                 "802-11-wireless-security.key-mgmt", "wpa-psk",
-                "802-11-wireless-security.psk-flags", "1",
+                # Keep the secret in NetworkManager's current-boot runtime
+                # profile so autoconnect can recover after a link flap.  The
+                # profile disappears with the read-only live boot; setup.json
+                # is the separate, explicitly protected reboot recovery path.
+                "802-11-wireless-security.psk-flags", "0",
             ])
         modified = _run_nmcli_stage(
             "profile-configure", *modify_args, timeout=10,
@@ -615,7 +605,7 @@ def _connect_wifi(ssid: str, password: str) -> tuple[bool, str]:
             failure = activated
 
         if failure is None:
-            autoconnect = _verify_autoconnect()
+            autoconnect = _verify_autoconnect(security_mode)
             if autoconnect is not None:
                 failure = autoconnect
     except (OSError, subprocess.TimeoutExpired):
@@ -844,7 +834,7 @@ class SetupHandler(BaseHTTPRequestHandler):
         if not self._allowed_browser_origin():
             self._log_rejection("origin")
             self._setup_error(
-                "接続要求を確認できませんでした。SSIDとパスワードを再入力してください。",
+                "ブラウザからの接続要求を検証できませんでした。設定画面から再送信してください。",
                 HTTPStatus.FORBIDDEN,
             )
             return
@@ -909,7 +899,7 @@ class SetupHandler(BaseHTTPRequestHandler):
         if not hmac.compare_digest(token[0], csrf_token()):
             self._log_rejection("csrf")
             self._setup_error(
-                "設定画面の有効期限が切れました。SSIDとパスワードを再入力してください。",
+                "設定画面の有効期限が切れました。画面を再読み込みして再送信してください。",
                 HTTPStatus.FORBIDDEN,
             )
             return
