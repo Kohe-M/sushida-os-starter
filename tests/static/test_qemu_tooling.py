@@ -61,7 +61,8 @@ def test_powerdown_mode_is_monitor_only_and_bounded() -> None:
     assert "POWERDOWN_SENT" in runner
     assert "NATURAL_POWERDOWN" in runner
     assert r"poweroff\.target" in checker
-    assert "var-lib-sushida\\x2dconfig.mount" in checker
+    assert "var-lib-sushida\\x2dconfig" in checker
+    assert "SUSHIDA-CFG mount has a shutdown failure" in checker
     assert "GIT_COMMIT" in runner
     assert "build-info.json" in checker
     assert "SHA256SUMS" in checker

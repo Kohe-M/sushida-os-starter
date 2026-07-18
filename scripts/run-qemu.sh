@@ -332,11 +332,11 @@ if [ "$POWERDOWN" = true ]; then
     config_mount_seen=false
     config_unmount_seen=false
     if serial_matches \
-        'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)'; then
+        'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig)'; then
         config_mount_seen=true
     fi
     if serial_matches \
-        'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)'; then
+        'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig)'; then
         config_unmount_seen=true
     fi
     RUN_FINISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"

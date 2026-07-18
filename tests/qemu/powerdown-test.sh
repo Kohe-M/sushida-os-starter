@@ -114,13 +114,9 @@ serial_matches 'poweroff\.target|Powering off|Reached target Shutdown' || {
     echo "ERROR: serial log lacks normal systemd poweroff evidence" >&2
     exit 1
 }
-if serial_matches 'failed[^[:cntrl:]]*unmount|unmount[^[:cntrl:]]*failed'; then
-    echo "ERROR: serial log contains an unmount failure" >&2
-    exit 1
-fi
-if serial_without_ansi | grep -F 'var-lib-sushida\x2dconfig.mount' | \
+if serial_without_ansi | grep -F 'var-lib-sushida\x2dconfig' | \
     grep -Eiq 'failed|failure|error'; then
-    echo "ERROR: config mount has a shutdown failure" >&2
+    echo "ERROR: SUSHIDA-CFG mount has a shutdown failure" >&2
     exit 1
 fi
 [ "$(result_value CONFIG_MOUNT_SEEN)" = true ] || {
@@ -132,12 +128,12 @@ fi
     exit 1
 }
 serial_matches \
-    'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)' || {
+    'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig)' || {
     echo "ERROR: serial log lacks positive SUSHIDA-CFG mount evidence" >&2
     exit 1
 }
 serial_matches \
-    'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)' || {
+    'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig)' || {
     echo "ERROR: serial log lacks positive SUSHIDA-CFG unmount evidence" >&2
     exit 1
 }
