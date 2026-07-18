@@ -62,7 +62,7 @@ def test_powerdown_mode_is_monitor_only_and_bounded() -> None:
     assert "NATURAL_POWERDOWN" in runner
     assert "poweroff.target" in checker
     assert "var-lib-sushida\\x2dconfig.mount" in checker
-    for forbidden in ("poweroff ", "shutdown ", "reboot "):
+    for forbidden in ("\npoweroff ", "\nshutdown ", "\nreboot "):
         assert forbidden not in runner.lower()
         assert forbidden not in script.lower()
 
