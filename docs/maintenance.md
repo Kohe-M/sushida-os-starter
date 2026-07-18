@@ -76,9 +76,12 @@ make test-qemu-powerdown
 
 This starts BIOS and UEFI guests from private writable-media copies, waits for
 kiosk startup, sends monitor `system_powerdown`, and requires natural guest
-exit. It never calls host `poweroff`, `shutdown`, or `reboot`. Review each
-`build/qemu/*-powerdown/serial.log` and confirm `SUSHIDA-CFG` has no unmount
-failure before treating the test as passed.
+exit. It never calls host `poweroff`, `shutdown`, or `reboot`. The checker
+requires the run's Git commit, ISO SHA-256, `SHA256SUMS`, and `build-info.json`
+to describe the current clean checkout. Review each
+`build/qemu/*-powerdown/serial.log` for explicit `Mounted` and `Unmounted`
+evidence for `SUSHIDA-CFG`, as well as the absence of unmount failures, before
+treating the test as passed.
 
 ## Volatile diagnostics
 

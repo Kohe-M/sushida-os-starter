@@ -51,8 +51,9 @@
 | K38 | Boot with missing/damaged config partition | Boot continues; setup refuses persistent save |  |  | Static offline fallback remains available |
 | K38a | Select an SSID with the config partition unavailable | Controls remain interactive and Wi-Fi connects for the current boot with a non-persistence warning |  |  | Must not silently claim that credentials were saved |
 | K38b | Submit an open SSID with a non-empty password | Backend rejects it before changing NetworkManager and asks for an empty password |  |  | Open mode never creates a passwd-file |
-| K38c | Submit WEP, 802.1X/Enterprise, OWE, hidden, or unknown security | A specific unsupported-mode Japanese message appears and no profile/radio change occurs |  |  | Backend re-scan owns the security decision |
+| K38c | Submit WEP, 802.1X/Enterprise, OWE, SAE-only WPA3, hidden, or unknown security | A specific unsupported-mode Japanese message appears and no profile/radio change occurs |  |  | Backend re-scan owns the security decision; WPA2/WPA3 transition mode is supported as WPA Personal |
 | K38d | Submit a WPA Personal password containing spaces, a colon, and symbols | Association succeeds without the password appearing in argv, logs, or the HTTP response |  |  | Confirm with redacted diagnostics only |
+| K38e | Stop and restart the test AP after a successful WPA Personal setup | NetworkManager reconnects during the same boot without a second password entry |  |  | Confirm the runtime profile uses `psk-flags=0`; reboot recovery remains through `setup.json` |
 
 ## Gameplay input
 
@@ -80,7 +81,7 @@
 | P05 | Normal shutdown | `SUSHIDA-CFG` unmounts without failure |  |  | Record exact unit if any unmount warning appears |
 | P06 | Press the physical power button once | systemd-logind reaches the normal `poweroff.target` path and the guest/host test ends naturally |  |  | No acpid or custom event monitor is installed |
 | P07 | Hold the physical power button | Long press is ignored; only the normal short-press action is supported |  |  | Confirm with firmware/ACPI behavior |
-| P08 | QEMU monitor `system_powerdown` | Dedicated BIOS/UEFI test exits naturally, serial logs show normal poweroff, and `SUSHIDA-CFG` unmounts cleanly |  |  | Monitor socket must be below `build/qemu` only |
+| P08 | QEMU monitor `system_powerdown` | Dedicated BIOS/UEFI test exits naturally, serial logs show normal poweroff, and explicit `SUSHIDA-CFG` mount plus unmount evidence is present |  |  | Monitor socket must be below `build/qemu`; result is bound to current Git commit and release checksums |
 
 ## Audio
 

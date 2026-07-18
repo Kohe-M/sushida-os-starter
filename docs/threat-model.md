@@ -73,15 +73,16 @@ attack surface. Same-origin/CSRF checks, bounded inputs, argv-based process
 execution without a shell, HTML escaping, service sandboxing, and a default-deny
 Chromium policy reduce but do not eliminate vulnerabilities. Wi-Fi setup
 re-scans the selected SSID in the backend and accepts only open or WPA Personal
-networks. SSID and PSK data are carried by separate mode-`0600` temporary
-descriptors (`/proc/self/fd/N`); WPA uses the exact
+networks (including WPA2/WPA3 transition mode, but not SAE-only WPA3). The
+profile is created through `nmcli connection add`; the SSID is not a secret.
+WPA uses the exact
 `802-11-wireless-security.psk:<password>` passwd-file record. They are not
 placed in process arguments, HTTP responses, or the setup service's
 stage/exit/reason logs. The profile is deleted after a failed activation and
-its `psk-flags=1` setting prevents a password-bearing persistent NetworkManager
-profile. This reduces local observation of secrets but does not protect the
-plaintext credential stored in `SUSHIDA-CFG` from someone who can read the
-device.
+uses `psk-flags=0` so NetworkManager can reconnect during this boot; that
+profile is volatile and is not included in SquashFS or Git. This reduces local
+observation of secrets but does not protect the plaintext credential stored in
+`SUSHIDA-CFG` from someone who can read the device.
 
 ## Evidence interpretation
 

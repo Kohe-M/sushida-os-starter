@@ -162,19 +162,23 @@ symbolic link. Connection creation is serialized so boot-time credential
 restoration cannot race an interactive submission.
 
 Wi-Fi provisioning re-scans and classifies the requested SSID in the backend;
-only open and WPA Personal networks are accepted. WEP, Enterprise/802.1X, OWE,
-hidden, and unknown modes are rejected before profile changes. A temporary
-mode-`0600` keyfile carries the SSID through an inherited `/proc/self/fd/N`
-descriptor, while WPA activation receives exactly one
+only open and WPA Personal networks are accepted. WPA2/WPA3 transition mode is
+accepted as WPA Personal, while SAE-only WPA3 remains unsupported. WEP,
+Enterprise/802.1X, OWE, hidden, and unknown modes are rejected before profile
+changes. `nmcli connection add` creates the profile with the scanned SSID; the
+SSID is not secret. WPA activation receives exactly one
 `802-11-wireless-security.psk:<password>` line through the separate
 `passwd-file` descriptor. Neither value is placed in process arguments or
 service logs. The descriptor contexts close on every path, and the temporary
 NetworkManager profile is removed after activation/configuration failure.
 Saved Wi-Fi restoration uses the same path and checks the managed Wi-Fi profile
 itself rather than general connectivity, allowing Ethernet and the fallback
-Wi-Fi association to coexist. The backend verifies `connection.autoconnect=yes`
-before persisting `setup.json`; that file is the reboot recovery input, not a
-password-bearing image profile.
+Wi-Fi association to coexist. WPA profiles use `psk-flags=0`, so the secret is
+held only by NetworkManager's volatile current-boot profile and can be used for
+automatic reconnect after a link flap. The backend verifies
+`connection.autoconnect=yes` and the volatile secret flag before persisting
+`setup.json`; that file is the reboot recovery input, not a password-bearing
+image profile.
 
 ### offline.html
 

@@ -31,26 +31,31 @@ popups because they are not reliable across all Cage/Wayland hardware paths.
 the page does not refresh automatically while a credential is being entered.
 The backend performs a new scan immediately before any profile or radio change
 and classifies the selected SSID itself. Only open networks and WPA Personal
-(`wpa-psk`) are supported. WEP, 802.1X/Enterprise, OWE, WPA3/SAE, unknown
-security advertisements, and hidden SSIDs are rejected with a specific Japanese
-message before NetworkManager is changed. Open networks accept only an empty
-password. A WPA Personal passphrase is accepted at 8–63 UTF-8 bytes, and a
-64-digit hexadecimal raw PSK is also accepted.
+(`wpa-psk`) are supported. WPA2/WPA3 transition advertisements are treated as
+WPA Personal because they retain a WPA2 fallback; SAE-only WPA3, WEP,
+802.1X/Enterprise, OWE, unknown security advertisements, and hidden SSIDs are
+rejected with a specific Japanese message before NetworkManager is changed.
+Open networks accept only an empty password. A WPA Personal passphrase is
+accepted at 8–63 UTF-8 bytes, and a 64-digit hexadecimal raw PSK is also
+accepted.
 
-The connection profile is first loaded from a mode-`0600` anonymous temporary
-keyfile. Its `/proc/self/fd/N` path is the only profile argument, so the SSID
-does not enter the `nmcli` argument vector. WPA activation uses
+The connection profile is first created with the Polkit-authorized
+`nmcli connection add type wifi ... ssid <SSID>` API. The SSID is not a
+credential and may appear in that argument vector; the PSK is the protected
+boundary and never does. WPA activation uses
 `nmcli --wait 30 connection up id sushida-os-wifi passwd-file /proc/self/fd/N`;
 the passwd file contains exactly
 `802-11-wireless-security.psk:<password>\n`, is inherited only by that child,
 and is closed on every success, failure, timeout, and exception path. No
 password is put in a process argument, HTTP response, service log, or
-source-controlled fixture. The profile sets `connection.autoconnect=yes` and
-`psk-flags=1`; the backend verifies auto-connect for this boot before saving
-`setup.json`, which is the reboot recovery path rather than a NetworkManager
-profile secret.
+source-controlled fixture. The profile sets `connection.autoconnect=yes`,
+`key-mgmt=wpa-psk`, and `psk-flags=0`. NetworkManager therefore retains the PSK
+only in its current-boot volatile profile, allowing a link flap to reconnect
+without input; the profile disappears with the live boot. The backend verifies
+both auto-connect and this volatile secret ownership before saving `setup.json`,
+which is the protected reboot recovery path.
 
-Radio enable, old-profile deletion, profile load/configuration, activation, and
+Radio enable, old-profile deletion, profile creation/configuration, activation, and
 the auto-connect check are separate checked stages. A missing old profile is the
 only tolerated delete failure. Activation or configuration failure deletes the
 temporary NetworkManager profile and never updates `setup.json`. Failure

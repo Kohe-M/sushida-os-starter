@@ -173,5 +173,7 @@ started. Set `SUSHIDA_QEMU_BIOS_DURATION` or
 The dedicated `make test-qemu-powerdown` path uses
 `SUSHIDA_QEMU_POWERDOWN_TIMEOUT` (180 seconds by default), starts from a private
 writable-media copy, and restricts the monitor socket to the selected
-`build/qemu/*-powerdown` run directory. It does not issue any power operation
-to the host.
+`build/qemu/*-powerdown` run directory. Its result is accepted only when
+`build-info.json`, `SHA256SUMS`, the ISO hash, and the current clean Git HEAD
+agree, and the serial log contains positive `Mounted` and `Unmounted` evidence
+for `SUSHIDA-CFG`. It does not issue any power operation to the host.
