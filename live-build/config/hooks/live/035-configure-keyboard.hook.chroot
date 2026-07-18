@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Generate the console-setup cache from the physical Japanese JIS layout.
+# Runs inside the target chroot during image build, NOT on the host.
+set -euo pipefail
+
+KEYBOARD=/etc/default/keyboard
+CACHE_DIR=/etc/console-setup
+
+[ -f "$KEYBOARD" ] || {
+    echo "ERROR: keyboard configuration is missing: $KEYBOARD" >&2
+    exit 1
+}
+grep -qx 'XKBMODEL="pc105"' "$KEYBOARD"
+grep -qx 'XKBLAYOUT="jp"' "$KEYBOARD"
+grep -qx 'XKBVARIANT="106"' "$KEYBOARD"
+grep -qx 'XKBOPTIONS=""' "$KEYBOARD"
+grep -qx 'BACKSPACE="guess"' "$KEYBOARD"
+
+command -v setupcon > /dev/null 2>&1 || {
+    echo "ERROR: setupcon is missing from the image" >&2
+    exit 1
+}
+mkdir -p "$CACHE_DIR"
+# Do not retain a cache generated from a distribution-default US layout.
+rm -f -- "$CACHE_DIR/cached.kmap.gz" "$CACHE_DIR/cached.kmap"
+find "$CACHE_DIR" -maxdepth 1 -type f -name 'cached*' -delete
+setupcon --save-only
+[ -f "$CACHE_DIR/cached.kmap.gz" ] || {
+    echo "ERROR: setupcon did not generate the console keymap cache" >&2
+    exit 1
+}

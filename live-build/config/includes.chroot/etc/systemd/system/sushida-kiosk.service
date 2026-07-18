@@ -8,6 +8,10 @@ StartLimitIntervalSec=0
 Type=simple
 User=kiosk
 Group=kiosk
+Environment=XKB_DEFAULT_MODEL=pc105
+Environment=XKB_DEFAULT_LAYOUT=jp
+Environment=XKB_DEFAULT_VARIANT=106
+Environment=XKB_DEFAULT_OPTIONS=
 RuntimeDirectory=sushida-os
 RuntimeDirectoryMode=0750
 ExecStart=/usr/local/bin/sushida-launch
