@@ -546,7 +546,7 @@ def test_http_requires_same_origin_and_csrf_and_never_reflects_password(backend)
         body = response.read().decode()
         assert response.status == 403
         assert "ネットワーク設定" in body
-        assert "接続要求を確認できませんでした" in body
+        assert "ブラウザからの接続要求を検証できませんでした" in body
         assert "Forbidden" not in body
 
         connection.request(
