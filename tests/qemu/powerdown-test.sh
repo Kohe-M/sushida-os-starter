@@ -37,6 +37,14 @@ result_value() {
     ' "$RESULT"
 }
 
+serial_without_ansi() {
+    sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g' "$SERIAL"
+}
+
+serial_matches() {
+    serial_without_ansi | grep -Eiq "$1"
+}
+
 [ "$(result_value POWERDOWN_MODE)" = true ] || {
     echo "ERROR: result is not a powerdown run" >&2
     exit 1
@@ -98,19 +106,19 @@ if metadata.get("iso_sha256") != expected_sha:
     raise SystemExit("build-info.json ISO checksum does not match the current ISO")
 PY
 
-grep -Eiq 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)' "$SERIAL" || {
+serial_matches 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)' || {
     echo "ERROR: serial log lacks kiosk startup evidence" >&2
     exit 1
 }
-grep -Eiq 'poweroff\.target|Powering off|Reached target Shutdown' "$SERIAL" || {
+serial_matches 'poweroff\.target|Powering off|Reached target Shutdown' || {
     echo "ERROR: serial log lacks normal systemd poweroff evidence" >&2
     exit 1
 }
-if grep -Eiq 'failed[^[:cntrl:]]*unmount|unmount[^[:cntrl:]]*failed' "$SERIAL"; then
+if serial_matches 'failed[^[:cntrl:]]*unmount|unmount[^[:cntrl:]]*failed'; then
     echo "ERROR: serial log contains an unmount failure" >&2
     exit 1
 fi
-if grep -F 'var-lib-sushida\x2dconfig.mount' "$SERIAL" | \
+if serial_without_ansi | grep -F 'var-lib-sushida\x2dconfig.mount' | \
     grep -Eiq 'failed|failure|error'; then
     echo "ERROR: config mount has a shutdown failure" >&2
     exit 1
@@ -123,15 +131,13 @@ fi
     echo "ERROR: serial log lacks successful SUSHIDA-CFG unmount evidence" >&2
     exit 1
 }
-grep -Eiq \
-    'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)' \
-    "$SERIAL" || {
+serial_matches \
+    'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)' || {
     echo "ERROR: serial log lacks positive SUSHIDA-CFG mount evidence" >&2
     exit 1
 }
-grep -Eiq \
-    'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)' \
-    "$SERIAL" || {
+serial_matches \
+    'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)' || {
     echo "ERROR: serial log lacks positive SUSHIDA-CFG unmount evidence" >&2
     exit 1
 }

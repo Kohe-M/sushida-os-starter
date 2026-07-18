@@ -34,6 +34,17 @@ fail() {
     exit 1
 }
 
+# systemd's serial console decorates status lines with ANSI colour sequences.
+# Strip those sequences before matching lifecycle evidence so the checks are
+# based on the actual unit messages rather than terminal presentation.
+serial_without_ansi() {
+    sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g' "$SERIAL_LOG"
+}
+
+serial_matches() {
+    serial_without_ansi | grep -Eiq "$1"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --firmware)
@@ -293,8 +304,7 @@ if [ "$POWERDOWN" = true ]; then
     # build/qemu; no host shutdown command is ever used.
     kiosk_ready=false
     for _boot in $(seq 1 "$DURATION"); do
-        if grep -Eiq 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)' \
-            "$SERIAL_LOG"; then
+        if serial_matches 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)'; then
             kiosk_ready=true
             break
         fi
@@ -321,14 +331,12 @@ if [ "$POWERDOWN" = true ]; then
     [ "$qemu_status" -eq 0 ] || fail "QEMU returned status $qemu_status after powerdown"
     config_mount_seen=false
     config_unmount_seen=false
-    if grep -Eiq \
-        'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)' \
-        "$SERIAL_LOG"; then
+    if serial_matches \
+        'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)'; then
         config_mount_seen=true
     fi
-    if grep -Eiq \
-        'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)' \
-        "$SERIAL_LOG"; then
+    if serial_matches \
+        'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)'; then
         config_unmount_seen=true
     fi
     RUN_FINISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
