@@ -41,7 +41,9 @@ def test_chroot_hook_generates_jis_console_cache() -> None:
     text = HOOK.read_text()
     assert "set -euo pipefail" in text
     assert "setupcon --save-only" in text
-    assert "cached.kmap.gz" in text
+    assert "-name 'cached_*.kmap.gz'" in text
+    assert "cache_file" in text
+    assert "cached_setup_keyboard.sh" in text
     assert "-name 'cached*' -delete" in text
     assert "XKBLAYOUT=\"jp\"" in text
     assert "XKBVARIANT=\"106\"" in text

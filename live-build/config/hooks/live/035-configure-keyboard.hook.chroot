@@ -25,7 +25,14 @@ mkdir -p "$CACHE_DIR"
 rm -f -- "$CACHE_DIR/cached.kmap.gz" "$CACHE_DIR/cached.kmap"
 find "$CACHE_DIR" -maxdepth 1 -type f -name 'cached*' -delete
 setupcon --save-only
-[ -f "$CACHE_DIR/cached.kmap.gz" ] || {
+cache_file="$(
+    find "$CACHE_DIR" -maxdepth 1 -type f -name 'cached_*.kmap.gz' -print -quit
+)"
+[ -n "$cache_file" ] || {
     echo "ERROR: setupcon did not generate the console keymap cache" >&2
+    exit 1
+}
+[ -x "$CACHE_DIR/cached_setup_keyboard.sh" ] || {
+    echo "ERROR: setupcon did not generate cached keyboard setup script" >&2
     exit 1
 }

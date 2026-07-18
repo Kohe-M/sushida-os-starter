@@ -114,7 +114,13 @@ grep -qx 'XKBLAYOUT="jp"' "$keyboard" || fail "unexpected XKBLAYOUT"
 grep -qx 'XKBVARIANT="106"' "$keyboard" || fail "unexpected XKBVARIANT"
 grep -qx 'XKBOPTIONS=""' "$keyboard" || fail "unexpected XKBOPTIONS"
 grep -qx 'BACKSPACE="guess"' "$keyboard" || fail "unexpected BACKSPACE"
-[ -f /etc/console-setup/cached.kmap.gz ] || fail "JIS console keymap cache is missing"
+cache_file="$(
+    find /etc/console-setup -maxdepth 1 -type f \
+        -name 'cached_*.kmap.gz' -print -quit
+)"
+[ -n "$cache_file" ] || fail "JIS console keymap cache is missing"
+[ -x /etc/console-setup/cached_setup_keyboard.sh ] || \
+    fail "cached keyboard setup script is missing"
 grep -qx 'Environment=XKB_DEFAULT_MODEL=pc105' \
     /etc/systemd/system/sushida-kiosk.service || fail "kiosk XKB model is not pc105"
 grep -qx 'Environment=XKB_DEFAULT_LAYOUT=jp' \
