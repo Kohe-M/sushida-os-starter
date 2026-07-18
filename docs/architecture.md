@@ -79,6 +79,13 @@ official URL, fixed loopback setup URL, or static offline fallback before
 passing it to Chromium. Only configured URLs
 matching the following patterns are accepted:
 
+This selection is repeated after startup whenever the low-frequency network
+watcher detects a route-state change and restarts only the managed kiosk
+session. The independently supervised loopback Wi-Fi backend remains available,
+so setup is not a first-boot-only path. There is intentionally no settings
+navigation from the official page while NetworkManager reports full
+connectivity.
+
 - `https://sushida.net` — bare domain
 - `https://sushida.net/` — bare domain with slash
 - `https://sushida.net/*` — any path under the official domain

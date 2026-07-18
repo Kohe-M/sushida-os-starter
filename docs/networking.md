@@ -21,6 +21,13 @@ unavailable query selects the setup/offline route. The watcher does not issue
 its own DNS, ping, or HTTP probe and never requests Sushi-da. When the desired
 route changes, it validates and terminates only the managed kiosk service
 `MainPID`; systemd then starts a fresh Cage/Chromium session on the new route.
+This is not limited to first boot: an online session that loses connectivity
+later returns to the constrained setup page. With default settings, detection
+takes up to about 30 seconds and the restarted launcher then allows up to 15
+seconds for connectivity to recover before selecting setup. Including the
+bounded systemd restart delay, allow roughly 50 seconds for the transition.
+The Wi-Fi backend is a separately enabled, continuously supervised service and
+is not stopped by kiosk restarts.
 
 ## On-device Wi-Fi setup
 
@@ -112,7 +119,10 @@ become stale. An explicit service stop or reboot still replaces the token. If
 a stale token or an invalid browser origin is received, the response remains a
 complete setup page with an actionable Japanese error instead of a plain white
 `Forbidden` page; the submitted password is never reflected. Chromium normally
-sends the exact loopback `Origin`. If it omits that header, the backend accepts
+sends the exact loopback `Origin`. Setup responses use
+`Referrer-Policy: same-origin`, preserving that same-origin POST metadata;
+the literal `Origin: null` and every cross-origin value are rejected. If
+Chromium omits the Origin header, the backend accepts
 only the fixed loopback `Host` combined with `Sec-Fetch-Site: same-origin`, and
 the CSRF token remains mandatory.
 

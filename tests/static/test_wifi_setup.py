@@ -134,6 +134,10 @@ def test_backend_constrains_http_and_persists_atomically() -> None:
     assert '"802-11-wireless-security.key-mgmt", "wpa-psk"' in text
     assert "REQUEST_READ_TIMEOUT_SECONDS" in text
     assert "self.connection.settimeout" in text
+    assert 'self.send_header("Referrer-Policy", "same-origin")' in text
+    assert 'self.send_header("Referrer-Policy", "no-referrer")' not in text
+    assert "if origin == ORIGIN:" in text
+    assert "if origin is not None:" in text
     assert "managed_wifi_active()" in text
     assert "saved is None or network_connected()" not in text
 
@@ -190,12 +194,19 @@ def test_watcher_transitions_between_setup_and_online() -> None:
     text = WATCHER.read_text()
     assert "online|setup" in text
     assert "printf '%s\\n' setup" in text
+    assert "sushida-wifi-setup.service" in text
+    assert "MIN_INTERVAL=30" in text
+    assert "kill -TERM" in text
 
 
 def test_services_and_required_packages_are_enabled() -> None:
     hook = ENABLE_HOOK.read_text()
     assert "sushida-config-prepare.service" in hook
     assert "sushida-wifi-setup.service" in hook
+    assert "sushida-network-watch.service" in hook
+    setup_unit = SETUP_UNIT.read_text()
+    assert "Restart=always" in setup_unit
+    assert "PartOf=sushida-kiosk.service" not in setup_unit
     packages = PACKAGES.read_text()
     assert "polkitd" in packages
 

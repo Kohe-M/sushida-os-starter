@@ -36,6 +36,7 @@
 | K30 | F11 | No full-screen toggle (already kiosk) |  |  | Chromium --kiosk mode |
 | K31 | F12 | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
 | K32 | Disconnect network | Local Wi-Fi setup screen appears |  |  | Low-frequency watcher restarts the managed kiosk session |
+| K32a | After using Sushi-da for several minutes, disconnect the active network and wait up to about 50 seconds | The constrained Wi-Fi setup screen reappears and accepts a new connection |  |  | 30-second watcher interval, bounded service restart, and up to 15-second launcher grace; confirms setup is not first-boot-only |
 | K33 | Restore network | Sushi-da page returns automatically |  |  | Fresh session selects the validated configured URL |
 | K34 | First boot without Ethernet | Wi-Fi networks appear after the 15-second grace period |  |  | Loopback setup UI; physical Wi-Fi required; NetworkManager wait-online is not on the kiosk dependency path |
 | K34a | Select each visible SSID row and press `再スキャン` | Radio selection works; rescan returns to the setup list without a white `Not found` page |  |  | Physical Cage/Wayland input required |

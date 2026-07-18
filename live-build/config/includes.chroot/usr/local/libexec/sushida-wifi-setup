@@ -783,7 +783,10 @@ class SetupHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Referrer-Policy", "no-referrer")
+        # Keep same-origin form navigation metadata available to Chromium so
+        # its POST carries the exact loopback Origin checked below.  A
+        # no-referrer policy turns that Origin into the literal value "null".
+        self.send_header("Referrer-Policy", "same-origin")
         self.end_headers()
 
     def _reply(self, body: bytes, status_code: HTTPStatus = HTTPStatus.OK) -> None:

@@ -494,7 +494,9 @@ def test_saved_wifi_restore_skips_an_already_active_managed_profile(
     backend.restore_saved_connection()
 
 
-def test_http_requires_same_origin_and_csrf_and_never_reflects_password(backend) -> None:
+def test_http_requires_same_origin_and_csrf_and_never_reflects_password(
+    backend, capsys: pytest.CaptureFixture[str],
+) -> None:
     server = backend.HTTPServer((backend.HOST, 0), backend.SetupHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -506,6 +508,7 @@ def test_http_requires_same_origin_and_csrf_and_never_reflects_password(backend)
         assert response.status == 200
         assert TEST_SSID in body
         assert "Content-Security-Policy" in response.headers
+        assert response.headers["Referrer-Policy"] == "same-origin"
         assert '<input type="radio" name="ssid"' in body
         assert "<select" not in body
         assert 'action="/"' in body
@@ -548,6 +551,32 @@ def test_http_requires_same_origin_and_csrf_and_never_reflects_password(backend)
         assert "ネットワーク設定" in body
         assert "ブラウザからの接続要求を検証できませんでした" in body
         assert "Forbidden" not in body
+        assert TEST_PASSWORD not in body
+
+        connection.request(
+            "POST", "/connect", payload,
+            {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Origin": "null",
+            },
+        )
+        response = connection.getresponse()
+        body = response.read().decode()
+        assert response.status == 403
+        assert "ブラウザからの接続要求を検証できませんでした" in body
+        assert TEST_PASSWORD not in body
+
+        connection.request(
+            "POST", "/connect", payload,
+            {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Host": f"{backend.HOST}:{backend.PORT}",
+            },
+        )
+        response = connection.getresponse()
+        body = response.read().decode()
+        assert response.status == 403
+        assert TEST_PASSWORD not in body
 
         connection.request(
             "POST", "/connect", payload,
@@ -601,6 +630,12 @@ def test_http_requires_same_origin_and_csrf_and_never_reflects_password(backend)
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+    captured = capsys.readouterr()
+    assert TEST_PASSWORD not in captured.out
+    assert TEST_PASSWORD not in captured.err
+    assert TEST_SSID not in captured.out
+    assert TEST_SSID not in captured.err
 
 
 def test_unavailable_storage_keeps_controls_enabled_and_allows_session_connection(

@@ -124,7 +124,7 @@ run_watcher() { run "$WATCHER"; }
     [[ "$output" == *"requires all QEMU renderer markers"* ]]
 }
 
-@test "online to setup transition terminates validated MainPID" {
+@test "post-start online loss selects running setup backend and restarts kiosk" {
     export NM_STATE=disconnected
     start_kiosk_fixture
     run_watcher
