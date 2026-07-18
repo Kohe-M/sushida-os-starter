@@ -42,8 +42,10 @@ diagnostics report and acceptance worksheet without Wi-Fi credentials.
 - **Power loss:** use sacrificial test hardware, interrupt power at documented
   phases, then record boot, filesystem, kiosk, and runtime-state outcome. Define
   the number of cycles before execution; do not infer durability from one boot.
-- **Networking:** record wired DHCP, optional Wi-Fi association, offline page,
-  and recovery without including SSID/PSK in public evidence.
+- **Networking:** record wired DHCP, Wi-Fi scan/association through the local
+  setup screen, clean-reboot credential survival, setup fallback, and recovery
+  without including SSID/PSK in public evidence. QEMU has no representative
+  Wi-Fi radio, so adapter/firmware combinations require physical testing.
 - **Escape controls:** execute every shortcut and gameplay-input row in
   `docs/acceptance-tests.md` with the actual keyboard/firmware.
 
@@ -51,8 +53,9 @@ diagnostics report and acceptance worksheet without Wi-Fi credentials.
 
 Repository static/BATS/image checks confirm package/configuration presence and
 forbidden-flag absence. QEMU automation captures BIOS/UEFI screenshots and
-serial logs and rejects blank white/black frames, but effective
-Cage/Chromium/offline UI must still be reviewed from those images. Audio
+serial logs and rejects blank white/black frames, but its dedicated entry shows
+the static offline page. The effective Cage/Chromium session and on-device
+Wi-Fi setup UI must still be reviewed on physical hardware. Audio
 playback, Chromium WebGL/GPU acceleration, Intel/AMD DRM/GBM/EGL,
 HDMI/DP/analog audio, physical shortcut resistance, sudden-power-loss recovery,
 Secure Boot, and representative hardware are unverified until a completed

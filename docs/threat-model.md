@@ -21,7 +21,9 @@ cannot prove keyboard/firmware/compositor behavior.
 
 Navigation is default-deny in managed policy and independently validated by the
 launcher and session helper. Mutable browser/session state is volatile. The
-kiosk service has no shell-facing UI, SSH, settings GUI, or second application.
+kiosk service has no shell-facing UI, SSH, general settings GUI, or second
+application. The local Wi-Fi page is restricted to scanning and connecting; it
+does not expose arbitrary NetworkManager settings, URLs, files, or commands.
 Residual risks include Chromium/Cage/kernel vulnerabilities, unverified policy
 runtime semantics, PID-reuse races in network recovery, USB/input
 firmware behavior, and shortcuts not caught by the selected components.
@@ -61,6 +63,18 @@ external probe requests.
 Optional Wi-Fi credentials are root-only in the image but are extractable by
 anyone who obtains the ISO. Use a dedicated low-privilege network credential
 and control distribution of the artifact.
+
+Credentials entered on-device persist in plaintext on the separate
+`SUSHIDA-CFG` partition and are likewise extractable by anyone with the medium.
+The unprivileged `wifi-setup` service can perform only three explicit
+NetworkManager polkit actions and write its private configuration directory.
+Its loopback HTTP surface still adds parser, NetworkManager, and local-browser
+attack surface. Same-origin/CSRF checks, bounded inputs, argv-based process
+execution without a shell, HTML escaping, service sandboxing, and a default-deny
+Chromium policy reduce but do not eliminate vulnerabilities. Wi-Fi secrets are
+delivered to `nmcli --ask` through a private stdin pipe rather than command-line
+arguments, preventing the ordinary `kiosk` account from reading a password from
+another process's command line during association.
 
 ## Evidence interpretation
 

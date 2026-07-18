@@ -10,9 +10,10 @@ installation. A successful static suite is not a substitute for QEMU and
 hardware acceptance after Chromium, kernel, Mesa, firmware, Cage, or PipeWire
 changes.
 
-Wi-Fi changes require replacing the ignored `local/wifi.nmconnection` and
-rebuilding. Credentials inside an ISO are extractable. Never commit the real
-profile.
+Build-time Wi-Fi changes can use the ignored `local/wifi.nmconnection` and a
+rebuild. On-device credentials can instead be replaced from the setup screen
+when the saved network cannot connect. Credentials in either the ISO or
+`SUSHIDA-CFG` partition are extractable. Never commit a real profile.
 
 ## Rollback
 
@@ -36,10 +37,19 @@ maintenance environment is available:
 
 ```bash
 journalctl -b --no-pager
-systemctl status sushida-kiosk.service sushida-network-watch.service --no-pager
+systemctl status sushida-kiosk.service sushida-network-watch.service \
+  sushida-wifi-setup.service sushida-config-prepare.service \
+  'var-lib-sushida\x2dconfig.mount' --no-pager
 ```
 
 These commands are not reachable from the kiosk UI.
+
+For a shutdown warning, collect the current-boot journal before reboot and look
+for the exact unit or mount path. Warnings about the live root/overlay do not by
+themselves prove corruption. A failure to unmount `/var/lib/sushida-config` is
+material because it is the only writable persistent filesystem. Verify its
+mount state and run clean reboot plus credential-survival acceptance before
+redeployment; do not run filesystem repair from the production kiosk UI.
 
 ## Volatile diagnostics
 

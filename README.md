@@ -15,10 +15,11 @@ https://sushida.net/play.html
 - Debian live-build hybrid ISO for legacy BIOS and UEFI
 - systemd-managed `kiosk` account with no password, shell, sudo, or persistent home
 - Cage single-application Wayland session and Debian Chromium managed policy
-- default-deny navigation with only the official origin and local offline page
-- NetworkManager wired DHCP, optional build-time Wi-Fi, and offline recovery
+- default-deny navigation with only the official origin and constrained local pages
+- NetworkManager wired DHCP and on-device Wi-Fi setup with low-frequency recovery
 - PipeWire, WirePlumber, Mesa, DRM/GBM, Wayland, Intel/AMD firmware
-- immutable SquashFS lower image with volatile runtime state and logs
+- immutable SquashFS lower image, volatile browser state, and an isolated
+  64 MiB credential partition
 - image-internal validation plus checksum, manifest, and metadata verification
 - bounded BIOS/UEFI QEMU evidence collection and guarded removable-media writing
 
@@ -50,10 +51,17 @@ artifacts/package-manifest.txt
 artifacts/build-info.json
 ```
 
+On first boot, wired networking is tried automatically. If no connection is
+available after 15 seconds, the kiosk displays a local Wi-Fi selection screen.
+Only the Wi-Fi credential persists; obtaining the ISO or USB device permits
+credential extraction. See [Networking](docs/networking.md) for the exact
+security and hardware-support boundary.
+
 Verify with `make verify` inside the builder. Never run the flash script until
 you have read [docs/installation.md](docs/installation.md), identified the
-exact removable whole disk, and accepted that all data on it will be destroyed.
-Codex and automated tests must not flash a real device.
+exact `/dev/disk/by-id/usb-*` symlink for a supported USB flash drive, and
+accepted that all data on it will be destroyed. Raw `/dev/sdX` paths and USB
+SSDs are not supported. Codex and automated tests must not flash a real device.
 
 ## Documentation
 

@@ -6,6 +6,7 @@
 bootloader
   -> Debian live system
   -> systemd
+  -> SUSHIDA-CFG mount + constrained Wi-Fi setup backend
   -> sushida-kiosk.service
   -> sushida-launch
   -> dbus-run-session
@@ -17,17 +18,20 @@ bootloader
 
 ## Read-only live-system boundary
 
-The production ISO uses Debian live-boot without persistence.  Its source
+The production ISO uses Debian live-boot without a persistent root. Its source
 filesystem is an immutable SquashFS image.  live-boot supplies a volatile overlay
 so software can perform normal runtime writes, but that writable layer
 is held in memory and is discarded at shutdown or reboot.  This is not a claim
 that every path is mounted with the VFS `ro` flag after boot; the security and
 recovery property is that no writable persistent root layer is configured.
 
-The image does not enable a persistence label, persistence configuration file,
-or persistent home.  A sudden power loss therefore discards the volatile
-overlay and the next boot starts from the signed-off image contents.  Firmware,
-the ISO/USB medium, and physical storage remain outside this software boundary.
+The image does not enable a live-boot persistence label, persistence
+configuration file, or persistent home. A sudden power loss therefore discards
+the volatile root overlay and the next boot starts from the signed-off image
+contents. A separate 64 MiB ext4 partition labelled `SUSHIDA-CFG` persists only
+the selected Wi-Fi credential; it is not an overlay and cannot modify the
+SquashFS root. Firmware, the ISO/USB medium, and physical storage remain outside
+this software boundary.
 
 Expected mutable kiosk state is placed explicitly under `/run`, which systemd
 mounts as tmpfs:
@@ -40,6 +44,8 @@ mounts as tmpfs:
 | Synthetic home | `/run/sushida-os/home` | None |
 | Wayland/PipeWire/session sockets | `/run/sushida-os/xdg-runtime` | None |
 | Selected network route | `/run/sushida-os/active-route` | None |
+| Config-storage readiness | `/run/sushida-config/config-storage` | None |
+| Wi-Fi credential | `/var/lib/sushida-config/network/setup.json` | `SUSHIDA-CFG` only |
 | system journal | `/run/log/journal` (`Storage=volatile`) | None |
 
 `systemd-tmpfiles` creates the kiosk directories as `kiosk:kiosk`, mode 0700
@@ -53,8 +59,9 @@ Navigation is restricted at two independent layers.
 ### Layer 1: Launcher (sushida-launch)
 
 The launcher parses `/etc/sushida-os/config.env`, validates the configured
-`SUSHIDA_URL`, and selects either that URL or the fixed local offline URL from
-NetworkManager's global state before passing it to Chromium. Only configured URLs
+`SUSHIDA_URL`, waits a bounded period for NetworkManager, and selects the
+official URL, fixed loopback setup URL, or static offline fallback before
+passing it to Chromium. Only configured URLs
 matching the following patterns are accepted:
 
 - `https://sushida.net` — bare domain
@@ -81,7 +88,8 @@ The allowlist contains:
 | Entry | Purpose |
 |---|---|
 | `https://.sushida.net:443` | Sushi-da origin, port 443, all paths |
-| `file:///usr/share/sushida-os/offline.html` | Local offline page |
+| `file://localhost/usr/share/sushida-os/offline.html` | Local offline page |
+| `http://127.0.0.1:8787` | Constrained on-device Wi-Fi setup origin, port fixed |
 
 `https://.sushida.net:443` uses the following Chromium URL filter
 conventions (see [Chromium URL filter format][url-filter-format]):
@@ -89,6 +97,10 @@ conventions (see [Chromium URL filter format][url-filter-format]):
 - Leading dot (`.sushida.net`) — exact host match, no subdomains.
 - Explicit port (`:443`) — restricts to the standard HTTPS port only.
 - Omitted path component — matches any path under the origin.
+
+The explicit `localhost` host satisfies Chromium's required filter grammar,
+while the case-sensitive path limits the exception to the single packaged
+offline file. Chromium is launched with the same fully specified URL.
 
 The blocklist entries are `*` (default deny) and `view-source:*`
 (prevents source viewing even when DevTools are disabled).
@@ -100,8 +112,8 @@ The blocklist entries are `*` (default deny) and `view-source:*`
 
 ## Configurable URL
 
-The environment file `/etc/sushida-os/config.env` contains a single
-`SUSHIDA_URL` variable.  Changing this value only changes the initial URL
+The environment file `/etc/sushida-os/config.env` contains `SUSHIDA_URL` and
+`NETWORK_SETUP_GRACE_SECONDS`. Changing the URL only changes the initial URL
 Chromium opens; it cannot bypass the launcher validation or the managed
 policy boundary.
 
@@ -113,9 +125,35 @@ config.env path.
 
 ## Local pages
 
+### Wi-Fi setup service
+
+The fixed `http://127.0.0.1:8787/` route is served by the unprivileged
+`wifi-setup` account. It scans and connects through narrowly authorized
+NetworkManager actions and atomically stores a mode-`0600` credential only on
+the mounted `SUSHIDA-CFG` filesystem. Loopback IP restrictions, same-origin and
+CSRF validation, request-size bounds, HTML escaping, and strict service
+sandboxing prevent it from becoming a general browser or network service. If
+the backend or persistent filesystem is unavailable, the launcher uses the
+static offline page or refuses saving without preventing boot.
+
+The root preparation service owns a separate `/run/sushida-config` runtime
+directory for its atomic readiness marker. It does not share the
+`/run/sushida-os` lifecycle: the latter is intentionally recreated with each
+kiosk restart. Existing configuration entries are accepted only as real
+directories with the expected ownership and private mode, never through a
+symbolic link. Connection creation is serialized so boot-time credential
+restoration cannot race an interactive submission.
+
+Wi-Fi secrets reach `nmcli --ask` only through a private stdin pipe, not its
+process arguments. Saved Wi-Fi restoration checks the managed Wi-Fi profile
+itself rather than general connectivity, allowing Ethernet and the fallback
+Wi-Fi association to coexist. The loopback HTTP handler bounds partial body
+reads, and a successful association bypasses the otherwise forced scan so the
+route watcher can move promptly to the online kiosk session.
+
 ### offline.html
 
-The page at `file:///usr/share/sushida-os/offline.html` is selected by the
+The page at `file://localhost/usr/share/sushida-os/offline.html` is selected by the
 launcher when NetworkManager does not report exact global connectivity. On a
 later transition, the watcher validates and terminates only the managed kiosk
 service MainPID; systemd restarts the whole session and the launcher selects
@@ -157,7 +195,7 @@ The following managed policies are applied:
 | `PrintingEnabled` | `false` | Printing disabled |
 | `DownloadRestrictions` | `3` (Block all) | All downloads blocked |
 | `URLBlocklist` | `["*", "view-source:*"]` | Default-deny navigation + view-source |
-| `URLAllowlist` | 2 entries | Minimal allowed origins |
+| `URLAllowlist` | 3 entries | Minimal allowed origins |
 
 ## What managed policy alone cannot prevent
 

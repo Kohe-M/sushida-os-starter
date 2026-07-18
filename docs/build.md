@@ -100,9 +100,12 @@ reject symlinked generated roots and preserve `local/` secrets.
 
 `make configure` creates repeatable live-build state without producing an ISO.
 If `local/wifi.nmconnection` exists, it is staged mode `0600`; otherwise the
-image contains no Wi-Fi profile. See `local/README.md` and
-`docs/networking.md`. Anyone who obtains an ISO can extract embedded Wi-Fi
-credentials.
+image contains no pre-provisioned Wi-Fi profile. Independently, `make iso`
+appends a blank fixed-size ext4 partition labelled `SUSHIDA-CFG` for credentials
+entered through the on-device setup screen. Artifact verification checks its
+partition number, size, type, label, and filesystem type. See `local/README.md`
+and `docs/networking.md`. Anyone who obtains an ISO or written medium can
+extract stored credentials.
 
 ## Targets and evidence
 
@@ -116,11 +119,20 @@ credentials.
 | `make iso` | Build, validate, verify, and publish four artifacts |
 | `make verify` | Recheck checksum, metadata, manifest, ISO, and SquashFS paths |
 | `make qemu` | Interactive BIOS boot of the release ISO |
-| `make test-qemu` | Bounded offline BIOS and UEFI runs with serial/PNG/PPM evidence |
+| `make test-qemu` | Bounded offline BIOS and UEFI writable-copy runs with serial/PNG/PPM evidence |
 | `make clean` | Remove disposable build/QEMU state |
 | `make distclean` | Also remove the four known release artifacts |
 
-QEMU evidence is written under `build/qemu/`. `make test-qemu` explicitly
+QEMU evidence is written under `build/qemu/`. Offline runs attach no guest
+network interface. The non-default QEMU entry forces the static local offline
+page because Chromium's network service is not reliable enough under slow
+TCG-only emulation to make the loopback setup UI a release gate. This marker is
+paired with the QEMU-only renderer markers and is absent from the production
+entry. `make test-qemu` copies the
+release ISO to a repository-local `writable-media.img`, boots that copy as a
+virtio disk, and never attaches a host block device. This permits the appended
+`SUSHIDA-CFG` filesystem to mount read-write without modifying the release
+artifact. It also explicitly
 selects the non-default `QEMU smoke test` boot entry, which uses wlroots' pixman
 renderer and serial logging only for emulation. The normal production entry
 continues to require a hardware-capable renderer. Both smoke entries also
@@ -128,14 +140,17 @@ select Chromium's bundled ANGLE SwiftShader backend because the capturable
 emulated adapters have no accelerated render node; this marker is absent from
 the production entry. Automated checks prove only
 that the intended entry booted, QEMU remained alive for the observation
-interval, the kiosk services and graphical target were reached, PNG and PPM
+interval, the config mount, Wi-Fi setup, kiosk services, and graphical target
+were reached, PNG and PPM
 captures were created, the frame is neither blank white nor blank black, and no
 normal serial login prompt appeared. The contrast check does not recognize UI
 text, but it rejects bright foreground confined to a partial scanout and the
 runner retries incomplete captures at low frequency. The reviewed PNG is
 derived from the exact validated PPM frame so the two evidence files cannot
-capture different display updates. Screenshots and hardware behavior still
-need explicit review. The
+capture different display updates. The on-device Wi-Fi setup UI, scanning,
+association, and recovery remain physical-hardware checks; QEMU only verifies
+that their config mount and services start without a detected error.
+Screenshots and hardware behavior still need explicit review. The
 default observation interval is 300 seconds for both BIOS and UEFI. Slow
 TCG-only builders need this bound for Chromium's first rendered frame; shorter
 intervals have produced intermittent blank captures after the kiosk service

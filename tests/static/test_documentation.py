@@ -69,7 +69,10 @@ def test_hardware_evidence_has_no_invented_threshold() -> None:
 
 def test_installation_requires_human_confirmation_and_system_disk_protection() -> None:
     text = (DOCS / "installation.md").read_text()
-    assert "WRITE /dev/sdX" in text
+    assert "/dev/disk/by-id/usb-*" in text
+    assert "ERASE USB <serial>" in text
+    assert "128 GiB" in text
+    assert "no `--force`" in text
     assert "does not bypass" in text
     assert "system-disk" in text
     assert "never" in text.lower() and "real device" in text.lower()

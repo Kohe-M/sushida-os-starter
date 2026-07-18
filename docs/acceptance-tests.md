@@ -35,8 +35,21 @@
 | K29 | Ctrl+Shift+I | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
 | K30 | F11 | No full-screen toggle (already kiosk) |  |  | Chromium --kiosk mode |
 | K31 | F12 | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
-| K32 | Disconnect network | Local offline screen appears |  |  | Low-frequency watcher restarts the managed kiosk session |
+| K32 | Disconnect network | Local Wi-Fi setup screen appears |  |  | Low-frequency watcher restarts the managed kiosk session |
 | K33 | Restore network | Sushi-da page returns automatically |  |  | Fresh session selects the validated configured URL |
+| K34 | First boot without Ethernet | Wi-Fi networks appear after the 15-second grace period |  |  | Loopback setup UI; physical Wi-Fi required |
+| K34a | Select each visible SSID row and press `再スキャン` | Radio selection works; rescan returns to the setup list without a white `Not found` page |  |  | Physical Cage/Wayland input required |
+| K34b | Let NetworkManager change state while the setup page remains visible | Visible SSID rows, password field, and connect button stay interactive until the watcher changes routes |  |  | Covers the launcher/render timing race |
+| K35 | Enter valid Wi-Fi credential | Association succeeds and Sushi-da opens |  |  | Credential is saved only after successful association |
+| K35a | Submit after an automatic Wi-Fi backend restart | The existing form remains valid and association proceeds; no plain `Forbidden` page appears |  |  | CSRF token is preserved only across automatic service restart |
+| K35b | Submit a stale or invalid setup form | A Japanese error appears inside the interactive setup page and the password is not reflected |  |  | Retrying requires password re-entry |
+| K35c | Disconnect after one successful setup, then enter a replacement credential | The replacement is saved persistently despite the intervening kiosk restart |  |  | Confirms config readiness is independent of `/run/sushida-os` |
+| K35d | Connect successfully while NetworkManager auto-connect modification is delayed or unavailable | The request stays on a valid transition page; no white error or traceback appears |  |  | Persistent setup credential remains the reboot recovery path |
+| K36 | Clean reboot after K35 | Saved Wi-Fi reconnects and Sushi-da opens |  |  | Verify `SUSHIDA-CFG` persistence |
+| K36a | Boot with saved Wi-Fi while Ethernet is connected, then unplug Ethernet | Managed Wi-Fi is already associated and online routing recovers without credential re-entry |  |  | General wired connectivity must not suppress Wi-Fi restoration |
+| K37 | Enter invalid Wi-Fi credential | Error remains inside setup UI and no credential is saved |  |  | No arbitrary browser navigation |
+| K38 | Boot with missing/damaged config partition | Boot continues; setup refuses persistent save |  |  | Static offline fallback remains available |
+| K38a | Select an SSID with the config partition unavailable | Controls remain interactive and Wi-Fi connects for the current boot with a non-persistence warning |  |  | Must not silently claim that credentials were saved |
 
 ## Gameplay input
 
@@ -56,6 +69,8 @@
 | P01 | Chromium crash | Cage exits; service restarts within 5 seconds |  |  | Restart=always + RestartSec=3 |
 | P02 | Cage crash | Service restarts within 5 seconds |  |  | Restart=always + RestartSec=3 |
 | P03 | Power loss | On next boot, system returns to known-good kiosk state |  |  | Immutable SquashFS plus volatile overlay |
+| P04 | Power loss during credential update | Root still boots; prior or new complete credential is present, never partial JSON |  |  | Sacrificial media; atomic replace does not prove ext4 durability |
+| P05 | Normal shutdown | `SUSHIDA-CFG` unmounts without failure |  |  | Record exact unit if any unmount warning appears |
 
 ## Audio
 
@@ -88,13 +103,13 @@ configuration evidence and manual runtime evidence are complementary.
 | D09 | Developer tools cannot open | Managed-policy test plus manual K29/K31 |
 | D10 | Arbitrary navigation blocked | JSON/launcher/helper URL tests plus controlled manual navigation attempts |
 | D11 | Chromium restarts within five seconds | Unit static check plus timed manual P01/K04/K27 observation |
-| D12 | Offline mode works | Watcher BATS plus reviewed offline QEMU/hardware K32 evidence |
+| D12 | Offline/setup mode works | Watcher BATS and writable-QEMU static fallback evidence, plus physical-hardware K32/K34 setup evidence |
 | D13 | Network recovery returns to configured page | Watcher BATS plus physical or controlled runtime K33 |
 | D14 | WebGL not deliberately disabled | Source/argv tests; actual WebGL backend requires V01 hardware evidence |
 | D15 | Audio packages/config present | Package/image validation; audible output requires A01 hardware evidence |
 | D16 | Kiosk user has no administrative privilege | Account hook, image validator, package and service static tests |
 | D17 | No SSH server installed | Package-list and image-internal prohibited-package validation |
-| D18 | Root filesystem is read-only design | live-build/SquashFS verification plus destructive P03 test on sacrificial hardware |
+| D18 | Root filesystem is read-only design | live-build/SquashFS and isolated config-partition verification plus destructive P03/P04 test on sacrificial hardware |
 | D19 | No secret committed | Git-aware secret tests and manual artifact distribution review |
 | D20 | `make test` succeeds | Retained full pytest/ShellCheck/BATS command output from the release commit |
 | D21 | Build, verification, installation, acceptance documented | Static documentation test plus operator review of all required docs |
