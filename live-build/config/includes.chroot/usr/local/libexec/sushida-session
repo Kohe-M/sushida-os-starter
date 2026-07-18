@@ -141,7 +141,14 @@ case "${SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER:-0}" in
             echo "ERROR: QEMU Chromium software rendering requires QEMU renderer markers" >&2
             exit 1
         fi
-        CHROMIUM_ARGS+=(--use-gl=angle --use-angle=swiftshader)
+        # Chromium 150 keeps SwiftShader behind an explicit opt-in. This
+        # marker exists only on the isolated QEMU smoke boot entry; production
+        # hardware keeps the normal accelerated path and Chromium sandbox.
+        CHROMIUM_ARGS+=(
+            --use-gl=angle
+            --use-angle=swiftshader
+            --enable-unsafe-swiftshader
+        )
         ;;
     *)
         echo "ERROR: invalid QEMU Chromium software-rendering marker" >&2

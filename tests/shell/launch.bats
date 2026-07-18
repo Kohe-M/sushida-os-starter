@@ -436,6 +436,7 @@ reject_helper_url() {
     [ "$status" -eq 0 ]
     grep -qF 'CHROMIUM_ARG:[--use-gl=angle]' "$CHROMIUM_LOG"
     grep -qF 'CHROMIUM_ARG:[--use-angle=swiftshader]' "$CHROMIUM_LOG"
+    grep -qF 'CHROMIUM_ARG:[--enable-unsafe-swiftshader]' "$CHROMIUM_LOG"
     ! grep -Eq 'CHROMIUM_ARG:\[--(no-sandbox|disable-gpu|disable-webgl)' "$CHROMIUM_LOG"
 }
 

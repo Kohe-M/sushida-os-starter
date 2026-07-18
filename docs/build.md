@@ -147,9 +147,10 @@ artifact. It also explicitly
 selects the non-default `QEMU smoke test` boot entry, which uses wlroots' pixman
 renderer and serial logging only for emulation. The normal production entry
 continues to require a hardware-capable renderer. Both smoke entries also
-select Chromium's bundled ANGLE SwiftShader backend because the capturable
-emulated adapters have no accelerated render node; this marker is absent from
-the production entry. Automated checks prove only
+select Chromium's bundled ANGLE SwiftShader backend with Chromium's explicit
+QEMU-only unsafe-SwiftShader opt-in because the capturable emulated adapters
+have no accelerated render node; this marker is absent from the production
+entry. Automated checks prove only
 that the intended entry booted, QEMU remained alive for the observation
 interval, the config mount, Wi-Fi setup, kiosk services, and graphical target
 were reached, PNG and PPM
