@@ -186,6 +186,9 @@ def test_kiosk_has_safe_sandboxing_without_private_devices() -> None:
     }.items():
         assert svc.get(key) == value
     assert "PrivateDevices" not in svc
+    assert set(svc.get("RestrictAddressFamilies", "").split()) == {
+        "AF_UNIX", "AF_INET", "AF_INET6", "AF_NETLINK",
+    }
 
 
 def test_kiosk_runtime_directory_sushida_os() -> None:
