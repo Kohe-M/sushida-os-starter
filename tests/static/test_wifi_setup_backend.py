@@ -379,6 +379,19 @@ def test_connect_passes_password_only_over_a_private_inherited_fd(
         if "connection" in args and "add" in args
     )
     assert TEST_SSID in profile_args
+    modify_args = next(
+        args for args, _fds, _payload in calls
+        if args[:2] == ("connection", "modify")
+    )
+    assert (
+        modify_args[modify_args.index("802-11-wireless-security.key-mgmt") + 1]
+        == "wpa-psk"
+    )
+    assert (
+        modify_args[modify_args.index("802-11-wireless-security.psk-flags") + 1]
+        == "0"
+    )
+    assert not any(fds for args, fds, _payload in calls if "add" in args)
     assert connect_fds
     assert connect_payload == (
         f"802-11-wireless-security.psk:{TEST_PASSWORD}\n".encode()
