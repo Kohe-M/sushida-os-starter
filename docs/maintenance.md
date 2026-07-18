@@ -3,7 +3,8 @@
 ## Update and rebuild
 
 The production image has no in-place persistent package update path. Update the
-repository, review the diff and dependency changes, run `make test`, rebuild
+repository, review the diff and dependency changes, run `make test`, commit the
+release source, rebuild
 with `make iso`, and retain all four artifacts together. Compare
 `package-manifest.txt` and `build-info.json` with the deployed release before
 installation. A successful static suite is not a substitute for QEMU and

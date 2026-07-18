@@ -247,7 +247,11 @@ Wi-Fi provisioning rules:
 - Keep `local/wifi.nmconnection.example` as a redacted template.
 - State clearly that credentials embedded in an ISO can be extracted by anyone
   who obtains the ISO.
-- Do not include a Wi-Fi settings GUI in production.
+- Do not include a general-purpose Wi-Fi settings GUI in production. A
+  narrowly constrained, loopback-only provisioning page is permitted when it
+  can only scan Wi-Fi, submit a credential to the fixed NetworkManager profile,
+  and display connection status. It must not expose arbitrary NetworkManager
+  settings, files, commands, URLs, or a route to a shell.
 
 When networking is unavailable:
 

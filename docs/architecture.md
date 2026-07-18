@@ -59,7 +59,8 @@ Navigation is restricted at two independent layers.
 ### Layer 1: Launcher (sushida-launch)
 
 The launcher parses `/etc/sushida-os/config.env`, validates the configured
-`SUSHIDA_URL`, waits a bounded period for NetworkManager, and selects the
+`SUSHIDA_URL`, waits a bounded period for NetworkManager's connectivity state,
+and selects the
 official URL, fixed loopback setup URL, or static offline fallback before
 passing it to Chromium. Only configured URLs
 matching the following patterns are accepted:

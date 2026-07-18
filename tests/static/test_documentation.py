@@ -78,6 +78,18 @@ def test_installation_requires_human_confirmation_and_system_disk_protection() -
     assert "never" in text.lower() and "real device" in text.lower()
 
 
+def test_contract_allows_only_constrained_wifi_provisioning() -> None:
+    contract = Path("AGENTS.md").read_text()
+    tasks = Path("TASKS.md").read_text()
+    local = Path("local/README.md").read_text()
+    for text in (contract, tasks, local):
+        assert "loopback" in text.lower()
+        assert "general" in text.lower()
+    assert "general-purpose Wi-Fi settings GUI" in contract
+    assert "general Wi-Fi settings GUI" in tasks
+    assert "not a general NetworkManager settings GUI" in local
+
+
 def test_acceptance_maps_every_definition_of_done_item() -> None:
     text = (DOCS / "acceptance-tests.md").read_text()
     for number in range(1, 22):

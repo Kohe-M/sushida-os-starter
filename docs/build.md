@@ -12,6 +12,13 @@ is the normal additional engine-managed state.
 
 Generated trees are below `build/`; release files are below `artifacts/`.
 Machine-local Wi-Fi configuration is below ignored `local/`.
+Release ISO builds require a clean Git worktree. Commit source and test changes
+before `make iso`; the artifact verifier records and checks the exact source
+commit and rejects dirty or stale metadata.
+
+The builder image context is restricted to `builder/Dockerfile` and
+`builder/entrypoint.sh` by `.dockerignore` and `.containerignore`; `.git`,
+`build/`, `artifacts/`, and `local/` secrets are never sent to Docker or Podman.
 
 ## Docker on Linux
 

@@ -37,7 +37,7 @@
 | K31 | F12 | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
 | K32 | Disconnect network | Local Wi-Fi setup screen appears |  |  | Low-frequency watcher restarts the managed kiosk session |
 | K33 | Restore network | Sushi-da page returns automatically |  |  | Fresh session selects the validated configured URL |
-| K34 | First boot without Ethernet | Wi-Fi networks appear after the 15-second grace period |  |  | Loopback setup UI; physical Wi-Fi required |
+| K34 | First boot without Ethernet | Wi-Fi networks appear after the 15-second grace period |  |  | Loopback setup UI; physical Wi-Fi required; NetworkManager wait-online is not on the kiosk dependency path |
 | K34a | Select each visible SSID row and press `再スキャン` | Radio selection works; rescan returns to the setup list without a white `Not found` page |  |  | Physical Cage/Wayland input required |
 | K34b | Let NetworkManager change state while the setup page remains visible | Visible SSID rows, password field, and connect button stay interactive until the watcher changes routes |  |  | Covers the launcher/render timing race |
 | K35 | Enter valid Wi-Fi credential | Association succeeds and Sushi-da opens |  |  | Credential is saved only after successful association |

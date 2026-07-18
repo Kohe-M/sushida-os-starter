@@ -3,9 +3,11 @@
 ## Startup behaviour
 
 NetworkManager manages both Ethernet and Wi-Fi. Wired Ethernet uses its default
-DHCP auto-connect profile and therefore needs no UI. At startup the launcher
-waits up to `NETWORK_SETUP_GRACE_SECONDS` (15 seconds by default) for
-`nmcli -t -f STATE general` to report the exact state `connected`.
+DHCP auto-connect profile and therefore needs no UI. NetworkManager's built-in
+connectivity check runs at most once every 300 seconds against its dedicated
+status endpoint. At startup the launcher waits up to
+`NETWORK_SETUP_GRACE_SECONDS` (15 seconds by default) for
+`nmcli -t -f STATE,CONNECTIVITY general` to report `connected:full`.
 
 - If connected, Chromium opens the configured official Sushi-da URL.
 - If not connected, Chromium opens the local Wi-Fi setup service at
@@ -13,10 +15,12 @@ waits up to `NETWORK_SETUP_GRACE_SECONDS` (15 seconds by default) for
 - If that service is unavailable, Chromium falls back to the static local
   network-unavailable page.
 
-The network watcher checks the same state every 30 seconds. It does not use
-DNS, ping, HTTP probes, or requests to Sushi-da. When the desired route changes,
-it validates and terminates only the managed kiosk service `MainPID`; systemd
-then starts a fresh Cage/Chromium session on the new route.
+The network watcher reads the cached NetworkManager connectivity state every 30
+seconds. `full` selects the official page; `portal`, `limited`, `none`, or an
+unavailable query selects the setup/offline route. The watcher does not issue
+its own DNS, ping, or HTTP probe and never requests Sushi-da. When the desired
+route changes, it validates and terminates only the managed kiosk service
+`MainPID`; systemd then starts a fresh Cage/Chromium session on the new route.
 
 ## On-device Wi-Fi setup
 
@@ -64,7 +68,9 @@ This is a constrained kiosk page, not a general network settings application:
   supplementary groups, no capabilities, and no access to the kiosk profile;
 - polkit grants that account only NetworkManager network control, system
   connection modification, and Wi-Fi radio control;
-- the service cannot bind or connect outside loopback directly.
+- the service cannot bind or connect outside loopback directly; NetworkManager's
+  separate low-frequency connectivity checker is the only configured external
+  status request.
 
 After connection, the watcher replaces the setup session with the official
 site. If a saved credential later fails, the setup screen returns and a new

@@ -212,7 +212,7 @@ Done when:
 - Static controls are tested.
 - Hardware-only shortcut behavior is explicitly left for acceptance testing.
 
-## Task 10: Configure networking and optional Wi-Fi
+## Task 10: Configure networking and constrained optional Wi-Fi
 
 Scope:
 
@@ -226,7 +226,9 @@ Work:
 - Enable automatic wired DHCP.
 - Include `local/wifi.nmconnection` only when it exists.
 - Enforce mode `0600` on an embedded Wi-Fi connection.
-- Keep Wi-Fi settings UI and real credentials out of production Git history.
+- Keep real credentials out of production Git history. A fixed loopback-only
+  provisioning page is allowed; a general Wi-Fi settings GUI remains
+  prohibited.
 
 Done when:
 

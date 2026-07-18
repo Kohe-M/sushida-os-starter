@@ -22,5 +22,8 @@ without any Wi-Fi profile (wired Ethernet only).
 Any credentials embedded in an ISO can be extracted by a person who obtains
 that ISO.  Use a dedicated network credential where possible.
 
-To update the Wi-Fi credentials, replace `local/wifi.nmconnection` and
-rebuild the ISO.  There is no Wi-Fi settings GUI in the production image.
+To update build-time Wi-Fi credentials, replace `local/wifi.nmconnection` and
+rebuild the ISO. Production images also include a fixed loopback-only
+provisioning page for entering a personal Wi-Fi credential when no connection
+is available. It is not a general NetworkManager settings GUI and exposes no
+files, commands, arbitrary URLs, or shell.
