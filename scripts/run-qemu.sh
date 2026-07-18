@@ -94,7 +94,7 @@ fi
 if [ ! -f "$ISO" ] || [ -L "$ISO" ] || [ ! -s "$ISO" ]; then
     fail "verified ISO not found: $ISO"
 fi
-for cmd in date qemu-system-x86_64 sha256sum; do
+for cmd in date git qemu-system-x86_64 sha256sum; do
     command -v "$cmd" > /dev/null 2>&1 || fail "required command not found: $cmd"
 done
 
@@ -204,6 +204,8 @@ if [ "$FIRMWARE" = uefi ]; then
 fi
 
 ISO_SHA256="$(sha256sum "$ISO" | awk '{print $1}')"
+GIT_COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD 2>/dev/null)" || \
+    fail "cannot determine current Git commit"
 RUN_STARTED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
 QEMU_PID=""
@@ -291,7 +293,8 @@ if [ "$POWERDOWN" = true ]; then
     # build/qemu; no host shutdown command is ever used.
     kiosk_ready=false
     for _boot in $(seq 1 "$DURATION"); do
-        if grep -Fq 'sushida-kiosk.service' "$SERIAL_LOG"; then
+        if grep -Eiq 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)' \
+            "$SERIAL_LOG"; then
             kiosk_ready=true
             break
         fi
@@ -316,6 +319,18 @@ if [ "$POWERDOWN" = true ]; then
     set -e
     QEMU_PID=""
     [ "$qemu_status" -eq 0 ] || fail "QEMU returned status $qemu_status after powerdown"
+    config_mount_seen=false
+    config_unmount_seen=false
+    if grep -Eiq \
+        'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)' \
+        "$SERIAL_LOG"; then
+        config_mount_seen=true
+    fi
+    if grep -Eiq \
+        'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dconfig\.mount)' \
+        "$SERIAL_LOG"; then
+        config_unmount_seen=true
+    fi
     RUN_FINISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
     {
         printf 'FIRMWARE=%s\n' "$FIRMWARE"
@@ -327,6 +342,9 @@ if [ "$POWERDOWN" = true ]; then
         printf 'DURATION=%s\n' "$DURATION"
         printf 'QEMU_STATUS=%s\n' "$qemu_status"
         printf 'ISO_SHA256=%s\n' "$ISO_SHA256"
+        printf 'GIT_COMMIT=%s\n' "$GIT_COMMIT"
+        printf 'CONFIG_MOUNT_SEEN=%s\n' "$config_mount_seen"
+        printf 'CONFIG_UNMOUNT_SEEN=%s\n' "$config_unmount_seen"
         printf 'RUN_STARTED_AT=%s\n' "$RUN_STARTED_AT"
         printf 'RUN_FINISHED_AT=%s\n' "$RUN_FINISHED_AT"
         printf 'SERIAL_LOG=%s\n' "$SERIAL_LOG"
@@ -380,6 +398,7 @@ RUN_FINISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
     printf 'DURATION=%s\n' "$DURATION"
     printf 'QEMU_STATUS=%s\n' "$qemu_status"
     printf 'ISO_SHA256=%s\n' "$ISO_SHA256"
+    printf 'GIT_COMMIT=%s\n' "$GIT_COMMIT"
     printf 'RUN_STARTED_AT=%s\n' "$RUN_STARTED_AT"
     printf 'RUN_FINISHED_AT=%s\n' "$RUN_FINISHED_AT"
     printf 'SERIAL_LOG=%s\n' "$SERIAL_LOG"

@@ -60,8 +60,14 @@ def test_powerdown_mode_is_monitor_only_and_bounded() -> None:
     assert "--powerdown" in script
     assert "POWERDOWN_SENT" in runner
     assert "NATURAL_POWERDOWN" in runner
-    assert "poweroff.target" in checker
+    assert r"poweroff\.target" in checker
     assert "var-lib-sushida\\x2dconfig.mount" in checker
+    assert "GIT_COMMIT" in runner
+    assert "build-info.json" in checker
+    assert "SHA256SUMS" in checker
+    assert "CONFIG_MOUNT_SEEN" in runner
+    assert "CONFIG_UNMOUNT_SEEN" in runner
+    assert "Started[[:space:]]+sushida-kiosk" in checker
     for forbidden in ("\npoweroff ", "\nshutdown ", "\nreboot "):
         assert forbidden not in runner.lower()
         assert forbidden not in script.lower()
