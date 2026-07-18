@@ -104,6 +104,12 @@ def test_smoke_report_distinguishes_automated_and_manual_checks() -> None:
     assert "ModuleNotFoundError" in text
     assert "Wi-Fi setup service failure" in text
     assert "Invalid pattern file://" in text
+    assert "result_value()" in text
+    assert "result_sha" in text
+    assert "current_sha" in text
+    assert "ISO SHA-256 matches the current release artifact" in text
+    assert "RUN_STARTED_AT=$run_started" in text
+    assert "RUN_FINISHED_AT=$run_finished" in text
 
 
 def test_make_qemu_targets_call_real_scripts() -> None:

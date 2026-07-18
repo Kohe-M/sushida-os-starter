@@ -74,6 +74,56 @@
     done
 }
 
+@test "QEMU smoke checker binds evidence to the current ISO" {
+    test_root="$BATS_TEST_TMPDIR/qemu-evidence"
+    run_dir="$test_root/build/qemu/bios-offline"
+    mkdir -p "$test_root/tests/qemu" "$test_root/artifacts" "$run_dir"
+    cp tests/qemu/smoke-test.sh "$test_root/tests/qemu/smoke-test.sh"
+    cp tests/qemu/check-screenshot.py "$test_root/tests/qemu/check-screenshot.py"
+    chmod 0755 "$test_root/tests/qemu/"*.sh "$test_root/tests/qemu/"*.py
+    printf 'fixture ISO\n' > "$test_root/artifacts/sushida-os-amd64.iso"
+    iso_sha="$(sha256sum "$test_root/artifacts/sushida-os-amd64.iso" | awk '{print $1}')"
+
+    printf '%s\n' \
+        'systemd.setenv=WLR_RENDERER=pixman' \
+        'var-lib-sushida\x2dconfig' \
+        'sushida-config-prepare' \
+        'sushida-wifi-setup' \
+        'sushida-kiosk' \
+        'sushida-network-watch' \
+        'graphical.target' > "$run_dir/serial.log"
+    printf '%s\n' \
+        'QEMU_STATUS=0' \
+        "ISO_SHA256=$iso_sha" \
+        'RUN_STARTED_AT=2026-07-18T00:00:00Z' \
+        'RUN_FINISHED_AT=2026-07-18T00:02:00Z' > "$run_dir/result.env"
+    python3 - "$run_dir" <<'PY'
+from pathlib import Path
+import sys
+
+run_dir = Path(sys.argv[1])
+width = height = 100
+pixels = bytearray([17, 17, 17]) * (width * height)
+for y in range(45, 55):
+    for x in range(20, 80):
+        offset = (y * width + x) * 3
+        pixels[offset : offset + 3] = bytes((240, 240, 240))
+(run_dir / "screenshot.ppm").write_bytes(
+    f"P6\n{width} {height}\n255\n".encode() + pixels
+)
+(run_dir / "screenshot.png").write_bytes(b"\x89PNG\r\n\x1a\nfixture")
+PY
+
+    run "$test_root/tests/qemu/smoke-test.sh" bios-offline
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ISO_SHA256=$iso_sha"* ]]
+
+    printf 'changed ISO\n' > "$test_root/artifacts/sushida-os-amd64.iso"
+    run "$test_root/tests/qemu/smoke-test.sh" bios-offline
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"does not match current ISO"* ]]
+}
+
 @test "QEMU runner rejects invalid firmware" {
     run scripts/run-qemu.sh --firmware coreboot --dry-run
     [ "$status" -ne 0 ]
