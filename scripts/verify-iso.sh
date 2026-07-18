@@ -57,6 +57,9 @@ jq -e '
 
 current_commit="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD 2>/dev/null)" || \
     fail "cannot determine current Git commit"
+git_status="$(git -C "$PROJECT_ROOT" status --porcelain --untracked-files=all)"
+[ -z "$git_status" ] || \
+    fail "current Git worktree is dirty; commit source changes before verification"
 metadata_commit="$(jq -r '.git_commit' "$resolved_dir/build-info.json")"
 [ "$metadata_commit" = "$current_commit" ] || \
     fail "artifact was built from a different Git commit"

@@ -74,6 +74,8 @@ def test_verify_checks_checksum_metadata_and_manifest() -> None:
     assert "chromium" in text and "cage" in text
     assert "artifact was built from a different Git commit" in text
     assert "dirty Git worktree" in text
+    assert 'status --porcelain --untracked-files=all' in text
+    assert "current Git worktree is dirty" in text
 
 
 def test_verify_checks_iso_and_squashfs_contents() -> None:

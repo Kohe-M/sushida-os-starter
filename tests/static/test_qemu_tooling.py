@@ -37,9 +37,13 @@ def test_runner_supports_bios_uefi_offline_and_evidence() -> None:
     assert "serial.log" in text
     assert "screenshot.png" in text
     assert "screenshot.ppm" in text
+    assert "smoke-report.txt" in text
     assert "screendump" in text
     assert "-f png" in text
     assert "--duration" in text
+    assert "ISO_SHA256" in text
+    assert "RUN_STARTED_AT" in text
+    assert "RUN_FINISHED_AT" in text
 
 
 def test_screenshot_checker_rejects_blank_frames(tmp_path: Path) -> None:
@@ -173,6 +177,10 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     assert "for _quiet" in runner
     assert 'QEMU_ARGS+=(-vga std)' in runner
     assert 'QEMU_ARGS+=(-device virtio-vga)' in runner
+    assert 'rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$SCREENSHOT_PPM" "$MONITOR_SOCKET"' in runner
+    assert '"$RESULT_FILE" "$REPORT"' in runner
+    assert runner.index('if [ "$DRY_RUN" = true ]; then') < runner.index('mkdir -p "$QEMU_ROOT" "$RUN_DIR"')
+    assert runner.index('if [ "$DRY_RUN" = true ]; then') < runner.index('cp -- "$OVMF_VARS" "$VARS_COPY"')
     assert "[ -c /dev/kvm ]" in runner
     assert 'QEMU_ACCEL="tcg"' in runner
     assert 'QEMU_ACCEL="kvm:tcg"' in runner

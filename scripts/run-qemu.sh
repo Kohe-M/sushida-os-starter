@@ -82,28 +82,22 @@ fi
 if [ ! -f "$ISO" ] || [ -L "$ISO" ] || [ ! -s "$ISO" ]; then
     fail "verified ISO not found: $ISO"
 fi
-command -v qemu-system-x86_64 > /dev/null 2>&1 || fail "qemu-system-x86_64 not found"
+for cmd in date qemu-system-x86_64 sha256sum; do
+    command -v "$cmd" > /dev/null 2>&1 || fail "required command not found: $cmd"
+done
 
 [ ! -L "$QEMU_ROOT" ] || fail "QEMU output root is a symlink"
-mkdir -p "$QEMU_ROOT"
 RUN_DIR="$QEMU_ROOT/$FIRMWARE-$NETWORK"
 if [ -e "$RUN_DIR" ] && [ -L "$RUN_DIR" ]; then
     fail "QEMU run directory is a symlink"
 fi
-mkdir -p "$RUN_DIR"
 SERIAL_LOG="$RUN_DIR/serial.log"
 SCREENSHOT="$RUN_DIR/screenshot.png"
 SCREENSHOT_PPM="$RUN_DIR/screenshot.ppm"
 MONITOR_SOCKET="$RUN_DIR/monitor.sock"
 RESULT_FILE="$RUN_DIR/result.env"
+REPORT="$RUN_DIR/smoke-report.txt"
 WRITABLE_MEDIA="$RUN_DIR/writable-media.img"
-rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$SCREENSHOT_PPM" "$MONITOR_SOCKET" "$RESULT_FILE"
-
-if [ "$WRITABLE_MEDIA_MODE" = true ] && [ "$DRY_RUN" = false ]; then
-    rm -f -- "$WRITABLE_MEDIA"
-    cp --reflink=auto -- "$ISO" "$WRITABLE_MEDIA"
-    chmod 0600 "$WRITABLE_MEDIA"
-fi
 
 QEMU_ACCEL="tcg"
 if [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
@@ -166,8 +160,6 @@ if [ "$FIRMWARE" = uefi ]; then
         fail "OVMF firmware files not found"
     fi
     VARS_COPY="$RUN_DIR/OVMF_VARS.fd"
-    cp -- "$OVMF_VARS" "$VARS_COPY"
-    chmod 0600 "$VARS_COPY"
     QEMU_ARGS+=(
         -drive "if=pflash,format=raw,unit=0,readonly=on,file=$OVMF_CODE"
         -drive "if=pflash,format=raw,unit=1,file=$VARS_COPY"
@@ -179,6 +171,24 @@ if [ "$DRY_RUN" = true ]; then
     printf '\n'
     exit 0
 fi
+
+mkdir -p "$QEMU_ROOT" "$RUN_DIR"
+rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$SCREENSHOT_PPM" "$MONITOR_SOCKET" \
+    "$RESULT_FILE" "$REPORT"
+
+if [ "$WRITABLE_MEDIA_MODE" = true ]; then
+    rm -f -- "$WRITABLE_MEDIA"
+    cp --reflink=auto -- "$ISO" "$WRITABLE_MEDIA"
+    chmod 0600 "$WRITABLE_MEDIA"
+fi
+
+if [ "$FIRMWARE" = uefi ]; then
+    cp -- "$OVMF_VARS" "$VARS_COPY"
+    chmod 0600 "$VARS_COPY"
+fi
+
+ISO_SHA256="$(sha256sum "$ISO" | awk '{print $1}')"
+RUN_STARTED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
 QEMU_PID=""
 cleanup() {
@@ -294,12 +304,17 @@ QEMU_PID=""
 [ -s "$SCREENSHOT" ] || fail "QEMU did not create a screenshot"
 [ -s "$SCREENSHOT_PPM" ] || fail "QEMU did not create a PPM screenshot"
 
+RUN_FINISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
 {
     printf 'FIRMWARE=%s\n' "$FIRMWARE"
     printf 'NETWORK=%s\n' "$NETWORK"
     printf 'WRITABLE_MEDIA=%s\n' "$WRITABLE_MEDIA_MODE"
     printf 'DURATION=%s\n' "$DURATION"
     printf 'QEMU_STATUS=%s\n' "$qemu_status"
+    printf 'ISO_SHA256=%s\n' "$ISO_SHA256"
+    printf 'RUN_STARTED_AT=%s\n' "$RUN_STARTED_AT"
+    printf 'RUN_FINISHED_AT=%s\n' "$RUN_FINISHED_AT"
     printf 'SERIAL_LOG=%s\n' "$SERIAL_LOG"
     printf 'SCREENSHOT=%s\n' "$SCREENSHOT"
     printf 'SCREENSHOT_PPM=%s\n' "$SCREENSHOT_PPM"
