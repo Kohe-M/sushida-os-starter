@@ -109,6 +109,10 @@ def test_hook_validates_units_and_lockdown() -> None:
         "getty@.service",
         "serial-getty@.service",
         "ctrl-alt-del.target",
+        "apt-daily.timer",
+        "apt-daily-upgrade.timer",
+        "apt-daily.service",
+        "apt-daily-upgrade.service",
     ):
         assert unit in text
 

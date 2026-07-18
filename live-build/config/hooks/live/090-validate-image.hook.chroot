@@ -111,7 +111,9 @@ for unit in sushida-kiosk.service sushida-network-watch.service \
     systemctl is-enabled "$unit" > /dev/null 2>&1 || fail "$unit is not enabled"
 done
 for unit in getty@.service autovt@.service serial-getty@.service \
-    console-getty.service container-getty@.service ctrl-alt-del.target; do
+    console-getty.service container-getty@.service ctrl-alt-del.target \
+    apt-daily.timer apt-daily-upgrade.timer apt-daily.service \
+    apt-daily-upgrade.service; do
     [ "$(systemctl is-enabled "$unit" 2>/dev/null || true)" = "masked" ] || \
         fail "$unit is not masked"
 done

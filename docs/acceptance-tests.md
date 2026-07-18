@@ -92,7 +92,7 @@ configuration evidence and manual runtime evidence are complementary.
 
 | ID | Definition of Done item | Required verification |
 |---|---|---|
-| D01 | `make iso` succeeds | Automated builder command exit 0 and retained build log |
+| D01 | `make iso` succeeds | Automated builder command exit 0 and `build/iso-build.log` ending in success with matching ISO SHA-256 |
 | D02 | ISO and checksums generated | Automated `make verify`, four exact artifact paths, matching SHA-256 |
 | D03 | QEMU boots image | Automated BIOS/UEFI bounded run plus reviewed final screenshots |
 | D04 | No ordinary login screen | Serial login-prompt scan plus BIOS/UEFI screenshot and physical boot review |

@@ -38,6 +38,8 @@ def test_build_produces_exact_required_artifacts() -> None:
         assert name in text
     assert 'mktemp -d "$ARTIFACT_DIR/.build-staging.XXXXXX"' in text
     assert "verify-iso.sh" in text
+    assert 'BUILD_LOG="$BUILD_ROOT/iso-build.log"' in text
+    assert 'BUILD_RESULT=success' in text
 
 
 def test_build_info_contains_required_fields() -> None:

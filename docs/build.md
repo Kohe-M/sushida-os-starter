@@ -15,6 +15,10 @@ Machine-local Wi-Fi configuration is below ignored `local/`.
 Release ISO builds require a clean Git worktree. Commit source and test changes
 before `make iso`; the artifact verifier records and checks the exact source
 commit and rejects dirty or stale metadata.
+Each `make iso` attempt starts a fresh `build/iso-build.log`. A successful log
+ends with `BUILD_RESULT=success`, the source commit, build timestamp, artifact
+path, and the ISO SHA-256. A failed attempt therefore cannot leave an older
+successful log beside newer or incomplete artifacts.
 
 The builder image context is restricted to `builder/Dockerfile` and
 `builder/entrypoint.sh` by `.dockerignore` and `.containerignore`; `.git`,
@@ -123,7 +127,7 @@ extract stored credentials.
 | `make test` | Run static pytest, ShellCheck, and all BATS; no QEMU |
 | `make test-static` | Run repository static tests |
 | `make test-shell` | Run ShellCheck and all BATS |
-| `make iso` | Build, validate, verify, and publish four artifacts |
+| `make iso` | Build, validate, verify, publish four artifacts, and retain `build/iso-build.log` |
 | `make verify` | Recheck checksum, metadata, manifest, ISO, and SquashFS paths |
 | `make qemu` | Interactive BIOS boot of the release ISO |
 | `make test-qemu` | Bounded offline BIOS and UEFI writable-copy runs with serial/PNG/PPM evidence |

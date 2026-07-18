@@ -180,11 +180,15 @@ EXPECTED_MASK_TARGETS = {
     "console-getty.service",
     "container-getty@.service",
     "ctrl-alt-del.target",
+    "apt-daily.timer",
+    "apt-daily-upgrade.timer",
+    "apt-daily.service",
+    "apt-daily-upgrade.service",
 }
 
 
-def test_hook_masks_exact_six_units() -> None:
-    """Hook must mask exactly the expected 6 units via systemctl mask."""
+def test_hook_masks_console_and_apt_units() -> None:
+    """Hook must mask login, reboot, and background APT units."""
     exec_lines = _hook_exec_lines()
     mask_cmds = [l for l in exec_lines if l.startswith("systemctl mask")]
     assert mask_cmds, "No systemctl mask command found in hook"

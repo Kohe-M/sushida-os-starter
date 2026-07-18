@@ -10,6 +10,12 @@ with `make iso`, and retain all four artifacts together. Compare
 installation. A successful static suite is not a substitute for QEMU and
 hardware acceptance after Chromium, kernel, Mesa, firmware, Cage, or PipeWire
 changes.
+The build masks `apt-daily.timer`, `apt-daily-upgrade.timer`, and their service
+units in the production image. Package updates are made by rebuilding the ISO;
+the live system does not perform background APT refreshes after boot.
+
+Retain `build/iso-build.log` with the four artifacts. Its successful footer
+records the build commit, timestamp, artifact path, and ISO SHA-256.
 
 Build-time Wi-Fi changes can use the ignored `local/wifi.nmconnection` and a
 rebuild. On-device credentials can instead be replaced from the setup screen

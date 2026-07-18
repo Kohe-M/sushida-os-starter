@@ -19,9 +19,14 @@ for path in "$BUILD_ROOT" "$ARTIFACT_DIR"; do
     [ ! -L "$path" ] || fail "refusing symlinked repository path: $path"
     mkdir -p "$path"
 done
-for cmd in git jq lb mkfs.ext4 mktemp sha256sum sort truncate xorriso; do
+for cmd in git jq lb mkfs.ext4 mktemp sha256sum sort tee truncate xorriso; do
     command -v "$cmd" > /dev/null 2>&1 || fail "required build command not found: $cmd"
 done
+
+BUILD_LOG="$BUILD_ROOT/iso-build.log"
+[ ! -L "$BUILD_LOG" ] || fail "refusing symlinked build log: $BUILD_LOG"
+: > "$BUILD_LOG"
+exec > >(tee "$BUILD_LOG") 2>&1
 
 git_status="$(git -C "$PROJECT_ROOT" status --porcelain --untracked-files=all)"
 [ -z "$git_status" ] || \
@@ -126,5 +131,13 @@ jq -n \
 for file in "$ISO_NAME" SHA256SUMS package-manifest.txt build-info.json; do
     mv -f -- "$STAGING/$file" "$ARTIFACT_DIR/$file"
 done
+
+{
+    printf 'BUILD_RESULT=success\n'
+    printf 'BUILD_TIMESTAMP=%s\n' "$build_timestamp"
+    printf 'GIT_COMMIT=%s\n' "$git_commit"
+    printf 'ISO_SHA256=%s\n' "$iso_sha256"
+    printf 'ARTIFACT=%s\n' "$ARTIFACT_DIR/$ISO_NAME"
+} | tee -a "$BUILD_LOG"
 
 echo "Published verified artifacts in $ARTIFACT_DIR"

@@ -13,3 +13,8 @@ systemctl mask container-getty@.service
 
 # Mask Ctrl+Alt+Delete target (single press).
 systemctl mask ctrl-alt-del.target
+
+# A read-only kiosk image is updated by rebuilding the ISO, not by running
+# Debian's package refreshers after boot and writing to the live overlay.
+systemctl mask apt-daily.timer apt-daily-upgrade.timer
+systemctl mask apt-daily.service apt-daily-upgrade.service
