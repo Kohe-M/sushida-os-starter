@@ -132,6 +132,8 @@ for file in "$ISO_NAME" SHA256SUMS package-manifest.txt build-info.json; do
     mv -f -- "$STAGING/$file" "$ARTIFACT_DIR/$file"
 done
 
+echo "Published verified artifacts in $ARTIFACT_DIR"
+
 {
     printf 'BUILD_RESULT=success\n'
     printf 'BUILD_TIMESTAMP=%s\n' "$build_timestamp"
@@ -139,5 +141,3 @@ done
     printf 'ISO_SHA256=%s\n' "$iso_sha256"
     printf 'ARTIFACT=%s\n' "$ARTIFACT_DIR/$ISO_NAME"
 } | tee -a "$BUILD_LOG"
-
-echo "Published verified artifacts in $ARTIFACT_DIR"

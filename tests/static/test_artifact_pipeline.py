@@ -40,6 +40,9 @@ def test_build_produces_exact_required_artifacts() -> None:
     assert "verify-iso.sh" in text
     assert 'BUILD_LOG="$BUILD_ROOT/iso-build.log"' in text
     assert 'BUILD_RESULT=success' in text
+    assert text.index('echo "Published verified artifacts in $ARTIFACT_DIR"') < text.index(
+        "BUILD_RESULT=success"
+    )
 
 
 def test_build_info_contains_required_fields() -> None:
