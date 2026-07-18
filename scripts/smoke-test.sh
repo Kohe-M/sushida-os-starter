@@ -14,9 +14,9 @@ for duration in "$BIOS_DURATION" "$UEFI_DURATION"; do
     }
 done
 
-"$SCRIPT_DIR/run-qemu.sh" --firmware bios --offline --headless --qemu-smoke --duration "$BIOS_DURATION"
+"$SCRIPT_DIR/run-qemu.sh" --firmware bios --offline --headless --qemu-smoke --writable-media --duration "$BIOS_DURATION"
 "$PROJECT_ROOT/tests/qemu/smoke-test.sh" bios-offline
-"$SCRIPT_DIR/run-qemu.sh" --firmware uefi --offline --headless --qemu-smoke --duration "$UEFI_DURATION"
+"$SCRIPT_DIR/run-qemu.sh" --firmware uefi --offline --headless --qemu-smoke --writable-media --duration "$UEFI_DURATION"
 "$PROJECT_ROOT/tests/qemu/smoke-test.sh" uefi-offline
 
 echo "QEMU smoke observations completed. Review screenshots for manual-only checks."

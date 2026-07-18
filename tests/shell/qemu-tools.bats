@@ -8,6 +8,7 @@
     [[ "$output" == *"media=cdrom"* ]]
     [[ "$output" == *"readonly=on"* ]]
     [[ "$output" == *"-nic none"* ]]
+    [[ "$output" != *"hostfwd"* ]]
     [[ "$output" != *"/dev/sd"* ]]
     [[ "$output" != *"/dev/nvme"* ]]
 }
@@ -25,6 +26,18 @@
     [ "$status" -eq 0 ]
     [[ "$output" == *"media=cdrom"* ]]
     [[ "$output" == *"readonly=on"* ]]
+}
+
+@test "QEMU writable-media dry run uses only a repository-local ISO copy" {
+    run scripts/run-qemu.sh --firmware bios --offline --headless --writable-media --duration 1 --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"writable-media.img"* ]]
+    [[ "$output" == *"format=raw"* ]]
+    [[ "$output" == *"if=virtio"* ]]
+    [[ "$output" == *"order=c"* ]]
+    [[ "$output" != *"media=cdrom"* ]]
+    [[ "$output" != *"/dev/sd"* ]]
+    [[ "$output" != *"/dev/nvme"* ]]
 }
 
 @test "QEMU runner rejects invalid firmware" {

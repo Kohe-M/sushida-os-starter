@@ -26,14 +26,25 @@ if grep -Eiq '(^|[^[:alpha:]])(login:|password:)' "$SERIAL"; then
     echo "ERROR: serial output contains a normal login prompt" >&2
     exit 1
 fi
+if grep -Eq 'sushida-(wifi-setup|network-watch).*(ERROR:|Traceback|ModuleNotFoundError)' "$SERIAL"; then
+    echo "ERROR: serial output contains a Wi-Fi setup service failure" >&2
+    exit 1
+fi
+if grep -Fq 'Invalid pattern file://' "$SERIAL"; then
+    echo "ERROR: serial output contains an invalid Chromium file URL policy" >&2
+    exit 1
+fi
 grep -q '^QEMU_STATUS=0$' "$RESULT" || {
     echo "ERROR: bounded QEMU run was not cleanly observed" >&2
     exit 1
 }
 for evidence in \
     'systemd.setenv=WLR_RENDERER=pixman' \
-    'sushida-kiosk.service' \
-    'sushida-network-watch.service' \
+    'var-lib-sushida\x2dconfig' \
+    'sushida-config-prepare' \
+    'sushida-wifi-setup' \
+    'sushida-kiosk' \
+    'sushida-network-watch' \
     'graphical.target'; do
     grep -Fq "$evidence" "$SERIAL" || {
         echo "ERROR: serial output lacks boot evidence: $evidence" >&2
@@ -47,10 +58,12 @@ python3 "$SCRIPT_DIR/check-screenshot.py" "$SCREENSHOT_PPM"
     echo "AUTOMATED: screenshot was captured as PNG: PASS"
     echo "AUTOMATED: screenshot has nonblank, spatially complete kiosk contrast: PASS"
     echo "AUTOMATED: serial log contains no normal login/password prompt: PASS"
+    echo "AUTOMATED: serial log contains no Wi-Fi setup backend/watcher error: PASS"
     echo "AUTOMATED: QEMU pixman boot entry reached kiosk services and graphical target: PASS"
+    echo "AUTOMATED: writable config filesystem and Wi-Fi setup services started: PASS"
     echo "MANUAL: boot reached the kiosk UI: UNVERIFIED"
     echo "MANUAL: Cage and Chromium are visible and full-screen: UNVERIFIED"
-    echo "MANUAL: offline page is visible: UNVERIFIED"
+    echo "MANUAL: static offline page is visible: UNVERIFIED"
     echo "MANUAL: Chromium/Cage restart behavior: UNVERIFIED"
 } > "$REPORT"
 

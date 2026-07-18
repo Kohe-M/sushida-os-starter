@@ -11,6 +11,7 @@ NETWORK="online"
 HEADLESS=false
 DRY_RUN=false
 QEMU_SMOKE=false
+WRITABLE_MEDIA_MODE=false
 DURATION=0
 
 usage() {
@@ -21,6 +22,7 @@ Usage: scripts/run-qemu.sh [options]
   --headless            Disable the QEMU display window
   --duration SECONDS    Capture a screenshot and quit after a bounded interval
   --qemu-smoke          Select the QEMU-only software-renderer boot entry
+  --writable-media      Boot a private writable copy under build/qemu
   --dry-run             Print the QEMU command without starting it
 EOF
 }
@@ -58,6 +60,10 @@ while [ "$#" -gt 0 ]; do
             QEMU_SMOKE=true
             shift
             ;;
+        --writable-media)
+            WRITABLE_MEDIA_MODE=true
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -90,7 +96,14 @@ SCREENSHOT="$RUN_DIR/screenshot.png"
 SCREENSHOT_PPM="$RUN_DIR/screenshot.ppm"
 MONITOR_SOCKET="$RUN_DIR/monitor.sock"
 RESULT_FILE="$RUN_DIR/result.env"
+WRITABLE_MEDIA="$RUN_DIR/writable-media.img"
 rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$SCREENSHOT_PPM" "$MONITOR_SOCKET" "$RESULT_FILE"
+
+if [ "$WRITABLE_MEDIA_MODE" = true ] && [ "$DRY_RUN" = false ]; then
+    rm -f -- "$WRITABLE_MEDIA"
+    cp --reflink=auto -- "$ISO" "$WRITABLE_MEDIA"
+    chmod 0600 "$WRITABLE_MEDIA"
+fi
 
 QEMU_ACCEL="tcg"
 if [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
@@ -102,8 +115,6 @@ QEMU_ARGS=(
     -machine "q35,accel=$QEMU_ACCEL"
     -m 2048
     -smp 2
-    -boot order=d
-    -drive "file=$ISO,media=cdrom,readonly=on"
     -audiodev "driver=none,id=sushida-audio"
     -device ich9-intel-hda
     -device "hda-duplex,audiodev=sushida-audio"
@@ -111,6 +122,14 @@ QEMU_ARGS=(
     -monitor "unix:$MONITOR_SOCKET,server=on,wait=off"
     -no-reboot
 )
+
+if [ "$WRITABLE_MEDIA_MODE" = true ]; then
+    QEMU_ARGS+=( -boot "order=c" )
+    QEMU_ARGS+=( -drive "file=$WRITABLE_MEDIA,format=raw,if=virtio" )
+else
+    QEMU_ARGS+=( -boot "order=d" )
+    QEMU_ARGS+=( -drive "file=$ISO,media=cdrom,readonly=on" )
+fi
 
 # virtio-vga provides a stable captured scanout for BIOS. Under OVMF/TCG its
 # post-GOP scanout can remain black even when the guest is running, so UEFI
@@ -278,6 +297,7 @@ QEMU_PID=""
 {
     printf 'FIRMWARE=%s\n' "$FIRMWARE"
     printf 'NETWORK=%s\n' "$NETWORK"
+    printf 'WRITABLE_MEDIA=%s\n' "$WRITABLE_MEDIA_MODE"
     printf 'DURATION=%s\n' "$DURATION"
     printf 'QEMU_STATUS=%s\n' "$qemu_status"
     printf 'SERIAL_LOG=%s\n' "$SERIAL_LOG"
