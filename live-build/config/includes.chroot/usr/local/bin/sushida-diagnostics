@@ -60,6 +60,7 @@ redact_stream() {
         -e 's#(https?://[^?[:space:]]+)\?[^[:space:]]+#\1?[REDACTED]#g' \
         -e 's/([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}/[REDACTED-MAC]/g' \
         -e 's/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[1-5][[:xdigit:]]{3}-[89abAB][[:xdigit:]]{3}-[[:xdigit:]]{12}/[REDACTED-UUID]/g' \
+        -e 's/(ssid|bssid)[=:][^[:space:]]*/\1=[REDACTED]/gI' \
         -e 's/(password|passwd|psk|secret|token|credential)[=:][^[:space:]]*/\1=[REDACTED]/gI'
 }
 

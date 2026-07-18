@@ -64,8 +64,11 @@ def test_does_not_collect_secret_bearing_sources() -> None:
         "set |",
         "edid",
         "sudo",
+        "--" + "ask",
     ):
         assert forbidden not in text.lower()
+    assert "SSID, PSK, MAC" not in text
+    assert "NOT_COLLECTED: SSIDs" in text
 
 
 def test_redacts_common_credentials_and_unique_identifiers() -> None:
@@ -74,6 +77,7 @@ def test_redacts_common_credentials_and_unique_identifiers() -> None:
         "REDACTED-MAC",
         "REDACTED-UUID",
         "password|passwd|psk|secret|token|credential",
+        "ssid|bssid",
         "?[REDACTED]",
     ):
         assert marker in text

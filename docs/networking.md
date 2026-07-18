@@ -29,18 +29,35 @@ rows and enter its password. The UI intentionally avoids native drop-down
 popups because they are not reliable across all Cage/Wayland hardware paths.
 `再スキャン` submits back to the setup page root and performs a fresh scan;
 the page does not refresh automatically while a credential is being entered.
-The setup backend asks NetworkManager to associate, enables auto-connect, and
-stores the credential only after association succeeds. Open networks are
-supported with an empty password. Hidden SSIDs and enterprise/802.1X networks
-are not supported by this screen.
+The backend performs a new scan immediately before any profile or radio change
+and classifies the selected SSID itself. Only open networks and WPA Personal
+(`wpa-psk`) are supported. WEP, 802.1X/Enterprise, OWE, WPA3/SAE, unknown
+security advertisements, and hidden SSIDs are rejected with a specific Japanese
+message before NetworkManager is changed. Open networks accept only an empty
+password. A WPA Personal passphrase is accepted at 8–63 UTF-8 bytes, and a
+64-digit hexadecimal raw PSK is also accepted.
 
-The password is supplied to `nmcli --ask` over a private standard-input pipe;
-it is never placed in the `nmcli` command line where another local account
-could read it through `/proc`. A WPA personal passphrase is accepted at 8–63
-UTF-8 bytes, and a 64-digit hexadecimal raw PSK is also accepted. After a
-successful activation, the backend returns a lightweight transition message
-without performing another forced scan. The low-frequency route watcher then
-restarts the kiosk onto the official URL.
+The connection profile is first loaded from a mode-`0600` anonymous temporary
+keyfile. Its `/proc/self/fd/N` path is the only profile argument, so the SSID
+does not enter the `nmcli` argument vector. WPA activation uses
+`nmcli --wait 30 connection up id sushida-os-wifi passwd-file /proc/self/fd/N`;
+the passwd file contains exactly
+`802-11-wireless-security.psk:<password>\n`, is inherited only by that child,
+and is closed on every success, failure, timeout, and exception path. No
+password is put in a process argument, HTTP response, service log, or
+source-controlled fixture. The profile sets `connection.autoconnect=yes` and
+`psk-flags=1`; the backend verifies auto-connect for this boot before saving
+`setup.json`, which is the reboot recovery path rather than a NetworkManager
+profile secret.
+
+Radio enable, old-profile deletion, profile load/configuration, activation, and
+the auto-connect check are separate checked stages. A missing old profile is the
+only tolerated delete failure. Activation or configuration failure deletes the
+temporary NetworkManager profile and never updates `setup.json`. Failure
+messages classify the nmcli exit code and Wi-Fi `GENERAL.REASON` number (for
+example timeout, NetworkManager stopped, DHCP, authentication, firmware, or
+SSID-not-found) without claiming that a password is wrong. The low-frequency
+route watcher then restarts the kiosk onto the official URL.
 
 Saved-credential restoration and an interactive connection request can overlap
 during startup. The backend serializes those operations around the single
@@ -52,11 +69,9 @@ breaking the entire scan response.
 An active Ethernet route does not suppress saved Wi-Fi restoration. The
 backend skips restoration only when its own fixed Wi-Fi profile is already
 active, so Wi-Fi remains available as a fallback if Ethernet is unplugged
-later. Failure or timeout while setting NetworkManager's auto-connect flag does
-not tear down an otherwise successful HTTP response: the private
-`SUSHIDA-CFG` credential remains the reboot recovery path. HTTP request bodies
-also have a short read deadline and must match their declared size, preventing
-one abandoned loopback POST from blocking all later rescans.
+later. HTTP request bodies also have a short read deadline and must match their
+declared size, preventing one abandoned loopback POST from blocking all later
+rescans.
 
 This is a constrained kiosk page, not a general network settings application:
 
@@ -81,9 +96,9 @@ avoids an inert page during the startup race. There is intentionally no route
 from the official site to a general settings screen.
 
 Unknown local GET paths redirect to the setup root rather than leaving the
-kiosk on a plain `Not found` response. Request diagnostics record only the HTTP
-method and status in the volatile journal; paths, SSIDs, and credentials are
-not logged.
+kiosk on a plain `Not found` response. Request and connection diagnostics use
+only a stage, nmcli exit code, and numeric reason in the volatile journal;
+paths, SSIDs, passwords, and raw NetworkManager output are not logged.
 
 The CSRF token is a private mode-`0600` file in the service's systemd runtime
 directory. `RuntimeDirectoryPreserve=restart` keeps it across an automatic
@@ -139,11 +154,12 @@ credentials. The same extraction warning applies to build-time profiles.
 ## Verification
 
 Repository tests verify the state machine, serialized NetworkManager changes,
-wired-to-Wi-Fi fallback restoration, secret delivery outside process arguments,
-bounded HTTP reads, post-connection timeout recovery, input validation,
-malformed scan output, atomic credential/status writes, symlink refusal, file
-modes, service sandboxing, polkit scope, Chromium origin, and ISO partition
-structure. QEMU can verify that a writable copy of the hybrid image
+wired-to-Wi-Fi fallback restoration, private FD/passwd-file delivery outside
+process arguments, temporary-file cleanup, WPA/open command differences,
+unsupported security rejection, reason classification, bounded HTTP reads,
+input validation, malformed scan output, atomic credential/status writes,
+symlink refusal, file modes, service sandboxing, polkit scope, Chromium origin,
+and ISO partition structure. QEMU can verify that a writable copy of the hybrid image
 boots, mounts `SUSHIDA-CFG`, and starts the setup services. The isolated QEMU
 smoke entry deliberately shows the static offline page: its virtual NIC is not
 a Wi-Fi device, and the loopback Chromium path is unreliable under TCG-only

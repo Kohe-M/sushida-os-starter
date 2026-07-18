@@ -113,7 +113,21 @@ def test_backend_constrains_http_and_persists_atomically() -> None:
     assert 'b"Forbidden"' not in text
     assert "with CONNECT_LOCK:" in text
     assert 'errors="replace"' in text
-    assert 'input=input_text' in text
+    assert 'pass_fds=tuple(pass_fds)' in text
+    assert "TemporaryFile" in text
+    assert "802-11-wireless-security.psk:" in text
+    assert '"connection", "load"' in text
+    assert '"passwd-file"' in text
+    assert "--" + "ask" not in text
+    assert "classify_security" in text
+    for unsupported in ("wep", "enterprise", "owe", "unsupported"):
+        assert f'"{unsupported}"' in text
+    assert "_wifi_reason" in text
+    for reason in ("(5, 15, 16, 17)", "== 7", "(8, 9, 10, 11)", "== 35", "== 53"):
+        assert reason in text
+    assert "stage=" in text
+    assert "nmcli_exit=" in text
+    assert "reason=" in text
     assert 'command.extend(["password", password])' not in text
     assert "REQUEST_READ_TIMEOUT_SECONDS" in text
     assert "self.connection.settimeout" in text

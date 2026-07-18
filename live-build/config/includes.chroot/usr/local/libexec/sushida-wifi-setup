@@ -8,10 +8,14 @@ import hmac
 import html
 import json
 import os
+import re
 import secrets
 import stat
 import subprocess
+import tempfile
 import threading
+from contextlib import contextmanager
+from collections.abc import Iterator
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -135,7 +139,7 @@ def nmcli_path() -> str:
 def run_nmcli(
     *args: str,
     timeout: int = COMMAND_TIMEOUT_SECONDS,
-    input_text: str | None = None,
+    pass_fds: tuple[int, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [nmcli_path(), *args],
@@ -144,8 +148,8 @@ def run_nmcli(
         text=True,
         encoding="utf-8",
         errors="replace",
-        input=input_text,
         timeout=timeout,
+        pass_fds=tuple(pass_fds),
         env={"LANG": "C", "LC_ALL": "C", "PATH": "/usr/sbin:/usr/bin:/sbin:/bin"},
     )
 
@@ -262,13 +266,51 @@ def scan_networks() -> list[tuple[str, int, str]]:
     )
 
 
-def validate_credentials(ssid: str, password: str) -> str | None:
+def classify_security(security: str) -> str:
+    """Classify only the two Wi-Fi modes this kiosk can provision safely."""
+    normalized = " ".join(security.upper().split())
+    if normalized in ("", "--"):
+        return "open"
+    if "WEP" in normalized:
+        return "wep"
+    if (
+        "802.1X" in normalized
+        or "802-1X" in normalized
+        or "EAP" in normalized
+        or "ENTERPRISE" in normalized
+    ):
+        return "enterprise"
+    if "OWE" in normalized:
+        return "owe"
+    # The profile deliberately uses wpa-psk.  SAE-only WPA3 and any unknown
+    # security advertisement must not be silently downgraded to WPA-PSK.
+    if "WPA3" in normalized or "SAE" in normalized:
+        return "unsupported"
+    if "WPA" in normalized:
+        return "wpa-personal"
+    return "unsupported"
+
+
+def _validate_ssid(ssid: str) -> str | None:
     if not ssid or "\ufffd" in ssid or len(ssid.encode("utf-8")) > 32:
         return "SSIDが不正です。"
     if any(ord(char) < 32 or ord(char) == 127 for char in ssid):
         return "制御文字を含むSSIDには対応していません。"
+
+
+def _validate_password_shape(password: str) -> str | None:
     if "\x00" in password or "\n" in password or "\r" in password:
         return "パスワードに使用できない文字が含まれています。"
+
+
+def validate_credentials(ssid: str, password: str) -> str | None:
+    """Validate fields without trusting the browser's advertised security."""
+    ssid_error = _validate_ssid(ssid)
+    if ssid_error:
+        return ssid_error
+    password_error = _validate_password_shape(password)
+    if password_error:
+        return password_error
     password_bytes = password.encode("utf-8")
     raw_psk = len(password) == 64 and all(
         character in "0123456789abcdefABCDEF" for character in password
@@ -279,7 +321,7 @@ def validate_credentials(ssid: str, password: str) -> str | None:
 
 
 def connect_wifi(ssid: str, password: str) -> tuple[bool, str]:
-    error = validate_credentials(ssid, password)
+    error = _validate_ssid(ssid) or _validate_password_shape(password)
     if error:
         return False, error
     # The saved-credential restore thread and an interactive POST may arrive
@@ -290,35 +332,302 @@ def connect_wifi(ssid: str, password: str) -> tuple[bool, str]:
         return _connect_wifi(ssid, password)
 
 
-def _connect_wifi(ssid: str, password: str) -> tuple[bool, str]:
-    storage_ready = persistent_storage_ready()
+@contextmanager
+def _temporary_fd(payload: bytes) -> Iterator[tuple[str, int]]:
+    """Expose a 0600 anonymous file only through an inherited proc fd."""
+    with tempfile.TemporaryFile(mode="w+b") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
+        stream.seek(0)
+        descriptor = stream.fileno()
+        yield f"/proc/self/fd/{descriptor}", descriptor
 
-    try:
-        run_nmcli("radio", "wifi", "on", timeout=5)
-        run_nmcli("--wait", "5", "connection", "delete", "id", CONNECTION_NAME, timeout=8)
-        # --ask reads the missing secret from the private stdin pipe.  Never
-        # expose a Wi-Fi password through /proc/*/cmdline.
-        command = ["--ask", "--wait", "30", "device", "wifi", "connect", ssid]
-        command.extend(["name", CONNECTION_NAME])
-        result = run_nmcli(*command, timeout=35, input_text=password + "\n")
-    except (OSError, subprocess.TimeoutExpired):
-        return False, "Wi-Fi接続処理がタイムアウトしました。"
-    if result.returncode != 0:
-        return False, "接続できませんでした。SSIDとパスワードを確認してください。"
 
+def _keyfile_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+
+
+def _profile_keyfile(ssid: str, security_mode: str) -> bytes:
+    wifi_lines = [
+        "[wifi]",
+        f"ssid={_keyfile_escape(ssid)}",
+        "mode=infrastructure",
+    ]
+    if security_mode == "wpa-personal":
+        wifi_lines.append("security=802-11-wireless-security")
+    lines = [
+        "[connection]",
+        f"id={CONNECTION_NAME}",
+        "type=wifi",
+        "autoconnect=true",
+        "",
+        *wifi_lines,
+        "",
+        "[ipv4]",
+        "method=auto",
+        "",
+        "[ipv6]",
+        "method=auto",
+    ]
+    if security_mode == "wpa-personal":
+        lines.extend([
+            "",
+            "[wifi-security]",
+            "key-mgmt=wpa-psk",
+            "psk-flags=1",
+        ])
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _log_stage(stage: str, exit_code: int, reason: int | None) -> None:
+    # Keep service logs useful for diagnosis while excluding command output,
+    # SSIDs, device names, and all credential material.
+    # NetworkManager uses reason 0 for an unspecified/no-reason state; keep
+    # every emitted reason field numeric without exposing command output.
+    numeric_reason = reason if reason is not None else 0
+    print(
+        f"wifi-setup: stage={stage} nmcli_exit={exit_code} reason={numeric_reason}",
+        flush=True,
+    )
+
+
+def _wifi_reason() -> int | None:
+    """Read only the numeric reason from the current Wi-Fi device."""
     try:
-        autoconnect = run_nmcli(
-            "connection", "modify", CONNECTION_NAME,
-            "connection.autoconnect", "yes", timeout=8,
+        devices = run_nmcli(
+            "-t", "--escape", "yes", "-f", "DEVICE,TYPE",
+            "device", "status", timeout=5,
         )
-        autoconnect_ready = autoconnect.returncode == 0
+        if devices.returncode != 0:
+            return None
+        device_name: str | None = None
+        for line in devices.stdout.splitlines():
+            fields = _split_escaped(line)
+            if len(fields) == 2 and fields[1] in ("wifi", "802-11-wireless"):
+                device_name = fields[0]
+                break
+        if not device_name:
+            return None
+        details = run_nmcli(
+            "-t", "-f", "GENERAL.REASON", "device", "show", device_name,
+            timeout=5,
+        )
+        if details.returncode != 0:
+            return None
+        for line in details.stdout.splitlines():
+            match = re.search(r"GENERAL\.REASON:(\d+)", line)
+            if match:
+                return int(match.group(1))
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+    return None
+
+
+def _failure_message(exit_code: int, reason: int | None) -> str:
+    if exit_code == 3:
+        return "Wi-Fi接続がタイムアウトしました。しばらく待ってから再試行してください。"
+    if exit_code == 8:
+        return "NetworkManagerが停止しています。管理者に状態を確認してもらってください。"
+    if reason in (5, 15, 16, 17):
+        return "IPアドレスを取得できませんでした。アクセスポイントのDHCP設定を確認してください。"
+    if reason == 7:
+        return "接続情報を提供できない内部構成エラーです。もう一度接続を試してください。"
+    if reason in (8, 9, 10, 11):
+        return "認証に失敗しました。パスワードまたはアクセスポイント設定を確認してください。"
+    if reason == 35:
+        return "Wi-Fiファームウェアが不足しています。管理者に確認してください。"
+    if reason == 53:
+        return "SSIDが見つかりません。再スキャンして選び直してください。"
+    return "Wi-Fi接続に失敗しました。アクセスポイント設定を確認してください。"
+
+
+def _run_nmcli_stage(
+    stage: str,
+    *args: str,
+    timeout: int,
+    pass_fds: tuple[int, ...] = (),
+) -> str | None:
+    try:
+        result = run_nmcli(*args, timeout=timeout, pass_fds=pass_fds)
+    except subprocess.TimeoutExpired:
+        _log_stage(stage, 3, None)
+        return _failure_message(3, None)
+    except OSError:
+        _log_stage(stage, 8, None)
+        return _failure_message(8, None)
+    if result.returncode == 0:
+        return None
+    reason = _wifi_reason()
+    _log_stage(stage, result.returncode, reason)
+    return _failure_message(result.returncode, reason)
+
+
+def _profile_exists() -> bool | None:
+    try:
+        result = run_nmcli(
+            "-t", "--escape", "yes", "-f", "NAME",
+            "connection", "show", timeout=8,
+        )
     except (OSError, subprocess.TimeoutExpired):
-        autoconnect_ready = False
-    if not autoconnect_ready:
-        # Persistent setup.json remains the reboot recovery path.  Log only
-        # the stage, never the SSID, password, or command output.
-        print("wifi-setup: autoconnect configuration failed", flush=True)
-    if not storage_ready:
+        return None
+    if result.returncode != 0:
+        return None
+    return any(
+        _split_escaped(line) == [CONNECTION_NAME]
+        for line in result.stdout.splitlines()
+    )
+
+
+def _delete_old_profile() -> str | None:
+    try:
+        result = run_nmcli(
+            "--wait", "5", "connection", "delete", "id", CONNECTION_NAME,
+            timeout=8,
+        )
+    except subprocess.TimeoutExpired:
+        _log_stage("profile-delete", 3, None)
+        return _failure_message(3, None)
+    except OSError:
+        _log_stage("profile-delete", 8, None)
+        return _failure_message(8, None)
+    if result.returncode == 0 or _profile_exists() is False:
+        return None
+    reason = _wifi_reason()
+    _log_stage("profile-delete", result.returncode, reason)
+    return _failure_message(result.returncode, reason)
+
+
+def _cleanup_profile() -> None:
+    try:
+        result = run_nmcli(
+            "--wait", "5", "connection", "delete", "id", CONNECTION_NAME,
+            timeout=8,
+        )
+    except subprocess.TimeoutExpired:
+        _log_stage("profile-cleanup", 3, None)
+        return
+    except OSError:
+        _log_stage("profile-cleanup", 8, None)
+        return
+    if result.returncode != 0 and _profile_exists() is not False:
+        _log_stage("profile-cleanup", result.returncode, _wifi_reason())
+
+
+def _verify_autoconnect() -> str | None:
+    try:
+        result = run_nmcli(
+            "-t", "--escape", "yes", "-f", "connection.autoconnect",
+            "connection", "show", "id", CONNECTION_NAME, timeout=8,
+        )
+    except subprocess.TimeoutExpired:
+        _log_stage("autoconnect-check", 3, None)
+        return _failure_message(3, None)
+    except OSError:
+        _log_stage("autoconnect-check", 8, None)
+        return _failure_message(8, None)
+    if result.returncode != 0:
+        reason = _wifi_reason()
+        _log_stage("autoconnect-check", result.returncode, reason)
+        return _failure_message(result.returncode, reason)
+    if not any(line.rstrip().endswith("yes") for line in result.stdout.splitlines()):
+        _log_stage("autoconnect-check", 0, None)
+        return "NetworkManagerの自動再接続を確認できませんでした。もう一度接続してください。"
+    return None
+
+
+def _connect_wifi(ssid: str, password: str) -> tuple[bool, str]:
+    # Re-scan before changing any NetworkManager state.  The browser submits
+    # only an SSID; its security field is never trusted.
+    selected = next((item for item in scan_networks() if item[0] == ssid), None)
+    if selected is None:
+        return False, "指定したSSIDが見つかりません。隠しSSIDや範囲外のSSIDには対応していません。再スキャンして選び直してください。"
+    security_mode = classify_security(selected[2])
+    unsupported_messages = {
+        "wep": "このWi-FiはWEP方式のため対応していません。WPA PersonalまたはオープンSSIDを使用してください。",
+        "enterprise": "このWi-Fiは802.1X/Enterprise方式のため対応していません。WPA PersonalまたはオープンSSIDを使用してください。",
+        "owe": "このWi-FiはOWE方式のため対応していません。WPA PersonalまたはオープンSSIDを使用してください。",
+        "unsupported": "このWi-Fiの暗号方式には対応していません。WPA PersonalまたはオープンSSIDを使用してください。",
+    }
+    if security_mode in unsupported_messages:
+        return False, unsupported_messages[security_mode]
+    if security_mode == "open" and password:
+        return False, "オープンSSIDではパスワードを空欄にしてください。"
+    if security_mode == "wpa-personal":
+        if not password:
+            return False, "WPA Personalにはパスワードが必要です。"
+        password_error = validate_credentials(ssid, password)
+        if password_error:
+            return False, password_error
+
+    profile_created = False
+    failure: str | None = None
+    try:
+        radio = _run_nmcli_stage("radio-on", "radio", "wifi", "on", timeout=5)
+        if radio is not None:
+            return False, radio
+
+        deleted = _delete_old_profile()
+        if deleted is not None:
+            return False, deleted
+
+        profile_payload = _profile_keyfile(ssid, security_mode)
+        with _temporary_fd(profile_payload) as (profile_path, profile_fd):
+            created_result = _run_nmcli_stage(
+                "profile-create", "connection", "load", profile_path,
+                timeout=10, pass_fds=(profile_fd,),
+            )
+        if created_result is not None:
+            return False, created_result
+        profile_created = True
+
+        modify_args = [
+            "connection", "modify", CONNECTION_NAME,
+            "connection.autoconnect", "yes",
+        ]
+        if security_mode == "wpa-personal":
+            modify_args.extend([
+                "802-11-wireless-security.key-mgmt", "wpa-psk",
+                "802-11-wireless-security.psk-flags", "1",
+            ])
+        modified = _run_nmcli_stage(
+            "profile-configure", *modify_args, timeout=10,
+        )
+        if modified is not None:
+            failure = modified
+
+        if failure is None and security_mode == "wpa-personal":
+            with _temporary_fd(
+                f"802-11-wireless-security.psk:{password}\n".encode("utf-8")
+            ) as (passwd_path, passwd_fd):
+                activated = _run_nmcli_stage(
+                    "activation", "--wait", "30", "connection", "up",
+                    "id", CONNECTION_NAME, "passwd-file", passwd_path,
+                    timeout=35, pass_fds=(passwd_fd,),
+                )
+        elif failure is None:
+            activated = _run_nmcli_stage(
+                "activation", "--wait", "30", "connection", "up",
+                "id", CONNECTION_NAME, timeout=35,
+            )
+        if failure is None and activated is not None:
+            failure = activated
+
+        if failure is None:
+            autoconnect = _verify_autoconnect()
+            if autoconnect is not None:
+                failure = autoconnect
+    except (OSError, subprocess.TimeoutExpired):
+        _log_stage("internal", 3, None)
+        failure = "Wi-Fi接続処理がタイムアウトしました。"
+
+    if failure is not None:
+        if profile_created:
+            _cleanup_profile()
+        return False, failure
+
+    if not persistent_storage_ready():
         return True, "接続しました。この接続は再起動後には保存されません。"
     try:
         persist_credentials(ssid, password)
@@ -516,7 +825,8 @@ class SetupHandler(BaseHTTPRequestHandler):
         )
 
     def _log_rejection(self, reason: str) -> None:
-        print(f"wifi-setup: rejected reason={reason}", flush=True)
+        del reason
+        print("wifi-setup: stage=http-reject nmcli_exit=0 reason=0", flush=True)
 
     def do_GET(self) -> None:  # noqa: N802
         target = urlsplit(self.path)
@@ -607,16 +917,13 @@ class SetupHandler(BaseHTTPRequestHandler):
         self._reply(render_page(message, success))
 
     def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
-        # Preserve enough ephemeral journal evidence to distinguish a missed
-        # click from a handled request, without recording paths or form data.
-        print(
-            f"wifi-setup: request method={self.command} status={code} size={size}",
-            flush=True,
-        )
+        del code, size
+        print("wifi-setup: stage=http-request nmcli_exit=0 reason=0", flush=True)
 
     def log_message(self, message_format: str, *args: object) -> None:
         # Never copy request details or credentials into diagnostics.
-        print("wifi-setup: http-server message", flush=True)
+        del message_format, args
+        print("wifi-setup: stage=http-server nmcli_exit=0 reason=0", flush=True)
 
 
 def main() -> None:
