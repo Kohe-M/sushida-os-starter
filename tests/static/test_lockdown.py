@@ -227,10 +227,25 @@ def test_logind_reserve_vt() -> None:
     assert cfg.get("ReserveVT") == "0"
 
 
-def test_logind_no_power_settings() -> None:
+def test_logind_power_key_settings_are_explicit_and_safe() -> None:
     cfg = _parse_dropin(LOGIND, "Login")
-    extra = [k for k in cfg if k not in ("NAutoVTs", "ReserveVT")]
-    assert not extra, f"Unexpected logind settings: {extra}"
+    assert cfg == {
+        "NAutoVTs": "0",
+        "ReserveVT": "0",
+        "HandlePowerKey": "poweroff",
+        "HandlePowerKeyLongPress": "ignore",
+        "PowerKeyIgnoreInhibited": "yes",
+    }
+    assert "acpid" not in KIOSK_SERVICE.read_text().lower()
+
+
+def test_poweroff_uses_logind_without_extra_event_daemon_or_target_enable() -> None:
+    hook = HOOK.read_text().lower()
+    package_list = PACKAGE_LIST.read_text().lower()
+    assert "systemctl enable poweroff.target" not in hook
+    assert "acpid" not in hook
+    assert "acpid" not in package_list
+    assert "input-event" not in hook
 
 
 # ── Ctrl+Alt+Delete burst protection ──────────────────────────────────────

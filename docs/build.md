@@ -131,6 +131,7 @@ extract stored credentials.
 | `make verify` | Recheck checksum, metadata, manifest, ISO, and SquashFS paths |
 | `make qemu` | Interactive BIOS boot of the release ISO |
 | `make test-qemu` | Bounded offline BIOS and UEFI writable-copy runs with serial/PNG/PPM evidence |
+| `make test-qemu-powerdown` | Bounded BIOS and UEFI monitor `system_powerdown` runs; requires natural guest exit and clean config unmount evidence |
 | `make clean` | Remove disposable build/QEMU state |
 | `make distclean` | Also remove the four known release artifacts |
 
@@ -169,3 +170,8 @@ intervals have produced intermittent blank captures after the kiosk service
 started. Set `SUSHIDA_QEMU_BIOS_DURATION` or
 `SUSHIDA_QEMU_UEFI_DURATION` to override one path; the legacy
 `SUSHIDA_QEMU_DURATION` override still applies to both.
+The dedicated `make test-qemu-powerdown` path uses
+`SUSHIDA_QEMU_POWERDOWN_TIMEOUT` (180 seconds by default), starts from a private
+writable-media copy, and restricts the monitor socket to the selected
+`build/qemu/*-powerdown` run directory. It does not issue any power operation
+to the host.

@@ -117,6 +117,29 @@ def test_hook_validates_units_and_lockdown() -> None:
         assert unit in text
 
 
+def test_hook_validates_jis_keyboard_and_session_environment() -> None:
+    text = _text()
+    for value in (
+        "/etc/default/keyboard",
+        "XKBMODEL=\"pc105\"",
+        "XKBLAYOUT=\"jp\"",
+        "XKBVARIANT=\"106\"",
+        "XKBOPTIONS=\"\"",
+        "BACKSPACE=\"guess\"",
+        "/etc/console-setup/cached.kmap.gz",
+        "Environment=XKB_DEFAULT_MODEL=pc105",
+        "Environment=XKB_DEFAULT_LAYOUT=jp",
+        "Environment=XKB_DEFAULT_VARIANT=106",
+        "Environment=XKB_DEFAULT_OPTIONS=",
+        "setupcon",
+        "HandlePowerKey=poweroff",
+        "HandlePowerKeyLongPress=ignore",
+        "PowerKeyIgnoreInhibited=yes",
+        "custom power event daemon",
+    ):
+        assert value in text
+
+
 def test_hook_validates_runtime_and_logs() -> None:
     text = _text()
     assert "/usr/lib/tmpfiles.d/sushida-os.conf" in text

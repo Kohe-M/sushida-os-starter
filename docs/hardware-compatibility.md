@@ -9,7 +9,10 @@
 - HDMI/DisplayPort or HDA analog audio through PipeWire/WirePlumber
 
 The image includes DRM, GBM, EGL/GLES, Wayland, Mesa DRI/VA, PipeWire,
-PipeWire-Pulse, and standard keyboard data. Production does not pass
+PipeWire-Pulse, and standard keyboard data. The image selects the physical JIS
+layout (`pc105`, `jp`, variant `106`) in console-setup and exports the same XKB
+environment to Cage and Chromium; it does not install an IME or settings GUI.
+Production does not pass
 `--disable-gpu`, `--disable-webgl`, or `--no-sandbox`, and does not force
 software rendering. The normal boot entry preserves that boundary. The bounded
 QEMU runner explicitly selects a separate `QEMU smoke test` boot entry that
@@ -47,6 +50,14 @@ diagnostics report and acceptance worksheet without Wi-Fi credentials.
   setup screen, clean-reboot credential survival, setup fallback, and recovery
   without including SSID/PSK in public evidence. QEMU has no representative
   Wi-Fi radio, so adapter/firmware combinations require physical testing.
+- **JIS keyboard:** verify `@`, Shift+2 (`"`), `^`, `:`, `¥`/backslash, `_`,
+  `[`, `]`, letters, digits, Space, Enter, and Backspace. Use a dedicated test
+  access point with a symbol-containing password; never retain its SSID/PSK in
+  shared evidence.
+- **Power button:** press once and verify the logind `poweroff.target` path,
+  clean `SUSHIDA-CFG` unmount, and no low-level power-key inhibitor. Firmware
+  or ACPI implementations that do not publish a power-switch event are
+  unsupported/unverified until a platform-specific result is recorded.
 - **Escape controls:** execute every shortcut and gameplay-input row in
   `docs/acceptance-tests.md` with the actual keyboard/firmware.
 
@@ -58,9 +69,11 @@ serial logs and rejects blank white/black frames, but its dedicated entry shows
 the static offline page. The effective Cage/Chromium session and on-device
 Wi-Fi setup UI must still be reviewed on physical hardware. Audio
 playback, Chromium WebGL/GPU acceleration, Intel/AMD DRM/GBM/EGL,
-HDMI/DP/analog audio, physical shortcut resistance, sudden-power-loss recovery,
-Secure Boot, and representative hardware are unverified until a completed
-worksheet records them.
+HDMI/DP/analog audio, physical shortcut resistance, JIS symbol mapping,
+physical power-button handling, sudden-power-loss recovery, Secure Boot, and
+representative hardware are unverified until a completed worksheet records
+them. The QEMU powerdown mode exercises the guest systemd path only; it is not
+evidence that a particular firmware exposes a physical power-switch event.
 
 Additional unverified targets include Intel Arc and AMD discrete GPUs, USB and
 Bluetooth audio, microphones, multi-monitor/daisy-chain/HDR, laptop-specific

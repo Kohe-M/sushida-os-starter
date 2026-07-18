@@ -16,6 +16,20 @@ bootloader
   -> official Sushi-da URL
 ```
 
+The keyboard boundary is configured before the session starts: the image's
+`/etc/default/keyboard` and generated console-setup cache use `pc105`/`jp`/
+`106`, while `sushida-kiosk.service` exports the matching `XKB_DEFAULT_*`
+variables inherited by Cage and Chromium. No input interception or general
+settings GUI is installed.
+
+Power-button shutdown is delegated to `systemd-logind`. The kiosk image sets
+`HandlePowerKey=poweroff`, `PowerKeyIgnoreInhibited=yes`, ignores long presses,
+disables automatic VTs, and does not install an ACPI event daemon or enable a
+separate poweroff target.
+The normal systemd poweroff transaction therefore unmounts `SUSHIDA-CFG`; a
+QEMU-only monitor test sends `system_powerdown` to an isolated guest socket and
+requires natural exit without affecting the host.
+
 ## Read-only live-system boundary
 
 The production ISO uses Debian live-boot without a persistent root. Its source
@@ -147,12 +161,20 @@ directories with the expected ownership and private mode, never through a
 symbolic link. Connection creation is serialized so boot-time credential
 restoration cannot race an interactive submission.
 
-Wi-Fi secrets reach `nmcli --ask` only through a private stdin pipe, not its
-process arguments. Saved Wi-Fi restoration checks the managed Wi-Fi profile
+Wi-Fi provisioning re-scans and classifies the requested SSID in the backend;
+only open and WPA Personal networks are accepted. WEP, Enterprise/802.1X, OWE,
+hidden, and unknown modes are rejected before profile changes. A temporary
+mode-`0600` keyfile carries the SSID through an inherited `/proc/self/fd/N`
+descriptor, while WPA activation receives exactly one
+`802-11-wireless-security.psk:<password>` line through the separate
+`passwd-file` descriptor. Neither value is placed in process arguments or
+service logs. The descriptor contexts close on every path, and the temporary
+NetworkManager profile is removed after activation/configuration failure.
+Saved Wi-Fi restoration uses the same path and checks the managed Wi-Fi profile
 itself rather than general connectivity, allowing Ethernet and the fallback
-Wi-Fi association to coexist. The loopback HTTP handler bounds partial body
-reads, and a successful association bypasses the otherwise forced scan so the
-route watcher can move promptly to the online kiosk session.
+Wi-Fi association to coexist. The backend verifies `connection.autoconnect=yes`
+before persisting `setup.json`; that file is the reboot recovery input, not a
+password-bearing image profile.
 
 ### offline.html
 

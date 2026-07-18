@@ -12,6 +12,7 @@ HEADLESS=false
 DRY_RUN=false
 QEMU_SMOKE=false
 WRITABLE_MEDIA_MODE=false
+POWERDOWN=false
 DURATION=0
 
 usage() {
@@ -23,6 +24,7 @@ Usage: scripts/run-qemu.sh [options]
   --duration SECONDS    Capture a screenshot and quit after a bounded interval
   --qemu-smoke          Select the QEMU-only software-renderer boot entry
   --writable-media      Boot a private writable copy under build/qemu
+  --powerdown           Send monitor system_powerdown and require natural exit
   --dry-run             Print the QEMU command without starting it
 EOF
 }
@@ -64,6 +66,10 @@ while [ "$#" -gt 0 ]; do
             WRITABLE_MEDIA_MODE=true
             shift
             ;;
+        --powerdown)
+            POWERDOWN=true
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -75,6 +81,12 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$FIRMWARE" in bios|uefi) ;; *) fail "firmware must be bios or uefi" ;; esac
+if [ "$POWERDOWN" = true ] && [ "$WRITABLE_MEDIA_MODE" = false ]; then
+    fail "--powerdown requires --writable-media"
+fi
+if [ "$POWERDOWN" = true ] && [ "$DURATION" = 0 ]; then
+    DURATION="${SUSHIDA_QEMU_POWERDOWN_TIMEOUT:-180}"
+fi
 [[ "$DURATION" =~ ^[0-9]+$ ]] || fail "duration must be a non-negative integer"
 if [ "$HEADLESS" = true ] && [ "$DURATION" -eq 0 ] && [ "$DRY_RUN" = false ]; then
     fail "headless execution requires --duration"
@@ -87,7 +99,11 @@ for cmd in date qemu-system-x86_64 sha256sum; do
 done
 
 [ ! -L "$QEMU_ROOT" ] || fail "QEMU output root is a symlink"
-RUN_DIR="$QEMU_ROOT/$FIRMWARE-$NETWORK"
+RUN_SUFFIX=""
+if [ "$POWERDOWN" = true ]; then
+    RUN_SUFFIX="-powerdown"
+fi
+RUN_DIR="$QEMU_ROOT/$FIRMWARE-$NETWORK$RUN_SUFFIX"
 if [ -e "$RUN_DIR" ] && [ -L "$RUN_DIR" ]; then
     fail "QEMU run directory is a symlink"
 fi
@@ -267,6 +283,57 @@ if [ "$QEMU_SMOKE" = true ]; then
     fi
     grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG" || \
         fail "QEMU-only boot entry was not selected"
+fi
+
+if [ "$POWERDOWN" = true ]; then
+    # Wait for the managed kiosk to reach the booted session before sending an
+    # ACPI power-button event. The monitor is always the per-run socket below
+    # build/qemu; no host shutdown command is ever used.
+    kiosk_ready=false
+    for _boot in $(seq 1 "$DURATION"); do
+        if grep -Fq 'sushida-kiosk.service' "$SERIAL_LOG"; then
+            kiosk_ready=true
+            break
+        fi
+        kill -0 "$QEMU_PID" 2>/dev/null || fail "QEMU exited before kiosk startup"
+        sleep 1
+    done
+    [ "$kiosk_ready" = true ] || fail "kiosk did not start before powerdown timeout"
+    printf 'system_powerdown\n' | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
+    powerdown_sent=true
+    natural_powerdown=false
+    for _shutdown in $(seq 1 "$DURATION"); do
+        if ! kill -0 "$QEMU_PID" 2>/dev/null; then
+            natural_powerdown=true
+            break
+        fi
+        sleep 1
+    done
+    [ "$natural_powerdown" = true ] || fail "guest did not power down naturally"
+    set +e
+    wait "$QEMU_PID"
+    qemu_status=$?
+    set -e
+    QEMU_PID=""
+    [ "$qemu_status" -eq 0 ] || fail "QEMU returned status $qemu_status after powerdown"
+    RUN_FINISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    {
+        printf 'FIRMWARE=%s\n' "$FIRMWARE"
+        printf 'NETWORK=%s\n' "$NETWORK"
+        printf 'WRITABLE_MEDIA=%s\n' "$WRITABLE_MEDIA_MODE"
+        printf 'POWERDOWN_MODE=true\n'
+        printf 'POWERDOWN_SENT=%s\n' "$powerdown_sent"
+        printf 'NATURAL_POWERDOWN=%s\n' "$natural_powerdown"
+        printf 'DURATION=%s\n' "$DURATION"
+        printf 'QEMU_STATUS=%s\n' "$qemu_status"
+        printf 'ISO_SHA256=%s\n' "$ISO_SHA256"
+        printf 'RUN_STARTED_AT=%s\n' "$RUN_STARTED_AT"
+        printf 'RUN_FINISHED_AT=%s\n' "$RUN_FINISHED_AT"
+        printf 'SERIAL_LOG=%s\n' "$SERIAL_LOG"
+        printf 'MONITOR_SOCKET=%s\n' "$MONITOR_SOCKET"
+    } > "$RESULT_FILE"
+    echo "QEMU powerdown completed: $RUN_DIR"
+    exit 0
 fi
 
 sleep "$DURATION"

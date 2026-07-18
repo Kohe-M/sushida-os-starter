@@ -12,7 +12,7 @@ EXECUTABLE_SHELL_FILES := $(shell \
 	git ls-files --stage | awk '$$1 == "100755" {print $$4}' | \
 	xargs -r grep -lE '^(#!/bin/(ba)?sh|#!/usr/bin/(env )?(ba)?sh|#!/usr/bin/dash)' 2>/dev/null)
 
-.PHONY: builder configure iso test test-static test-shell test-qemu qemu verify clean distclean
+.PHONY: builder configure iso test test-static test-shell test-qemu test-qemu-powerdown qemu verify clean distclean
 
 builder:
 	$(CONTAINER_ENGINE) $(CONTAINER_ENGINE_ARGS) build -t $(BUILDER_IMAGE):$(BUILDER_TAG) -f builder/Dockerfile .
@@ -34,6 +34,9 @@ test-shell:
 
 test-qemu:
 	./scripts/smoke-test.sh
+
+test-qemu-powerdown:
+	./scripts/powerdown-test.sh
 
 qemu:
 	./scripts/run-qemu.sh

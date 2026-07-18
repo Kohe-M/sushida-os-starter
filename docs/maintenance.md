@@ -58,6 +58,28 @@ material because it is the only writable persistent filesystem. Verify its
 mount state and run clean reboot plus credential-survival acceptance before
 redeployment; do not run filesystem repair from the production kiosk UI.
 
+The production power-button path is handled by `systemd-logind`:
+`HandlePowerKey=poweroff`, `HandlePowerKeyLongPress=ignore`, and
+`PowerKeyIgnoreInhibited=yes`. There is no `acpid` or custom input-event
+service, and the kiosk UI has no shutdown command. From an authorized
+maintenance session, inspect `loginctl list-inhibitors` and confirm no low-level
+power-key inhibitor is present. A single physical short press should reach the
+normal `poweroff.target` path; firmware that does not publish an ACPI
+power-switch event is unsupported until separately validated.
+
+The non-invasive QEMU equivalent is bounded and uses only the per-run monitor
+socket below `build/qemu`:
+
+```bash
+make test-qemu-powerdown
+```
+
+This starts BIOS and UEFI guests from private writable-media copies, waits for
+kiosk startup, sends monitor `system_powerdown`, and requires natural guest
+exit. It never calls host `poweroff`, `shutdown`, or `reboot`. Review each
+`build/qemu/*-powerdown/serial.log` and confirm `SUSHIDA-CFG` has no unmount
+failure before treating the test as passed.
+
 ## Volatile diagnostics
 
 The production image includes `sushida-diagnostics`, but it is not linked from

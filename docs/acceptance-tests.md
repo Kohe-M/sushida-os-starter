@@ -50,6 +50,9 @@
 | K37 | Enter invalid Wi-Fi credential | Error remains inside setup UI and no credential is saved |  |  | No arbitrary browser navigation |
 | K38 | Boot with missing/damaged config partition | Boot continues; setup refuses persistent save |  |  | Static offline fallback remains available |
 | K38a | Select an SSID with the config partition unavailable | Controls remain interactive and Wi-Fi connects for the current boot with a non-persistence warning |  |  | Must not silently claim that credentials were saved |
+| K38b | Submit an open SSID with a non-empty password | Backend rejects it before changing NetworkManager and asks for an empty password |  |  | Open mode never creates a passwd-file |
+| K38c | Submit WEP, 802.1X/Enterprise, OWE, hidden, or unknown security | A specific unsupported-mode Japanese message appears and no profile/radio change occurs |  |  | Backend re-scan owns the security decision |
+| K38d | Submit a WPA Personal password containing spaces, a colon, and symbols | Association succeeds without the password appearing in argv, logs, or the HTTP response |  |  | Confirm with redacted diagnostics only |
 
 ## Gameplay input
 
@@ -61,6 +64,10 @@
 | G04 | Space | Space character works in-game |  |  | No keyboard filter applied |
 | G05 | Enter | Enter key works in-game |  |  | No keyboard filter applied |
 | G06 | Backspace | Backspace works in-game |  |  | No keyboard filter applied |
+| G07 | Physical JIS `@` key | `@` is entered as `@` |  |  | Verify on the target keyboard, not a US-layout substitute |
+| G08 | Shift+2 | `"` is entered as `"` |  |  | JIS symbol mapping |
+| G09 | JIS punctuation | `^`, `:`, `¥`/backslash, `_`, `[`, and `]` all enter correctly |  |  | Record the physical key and resulting character |
+| G10 | JIS Wi-Fi test password | A dedicated test AP accepts a password containing the symbols above |  |  | Do not include the SSID or PSK in shared evidence |
 
 ## Power and recovery
 
@@ -71,6 +78,9 @@
 | P03 | Power loss | On next boot, system returns to known-good kiosk state |  |  | Immutable SquashFS plus volatile overlay |
 | P04 | Power loss during credential update | Root still boots; prior or new complete credential is present, never partial JSON |  |  | Sacrificial media; atomic replace does not prove ext4 durability |
 | P05 | Normal shutdown | `SUSHIDA-CFG` unmounts without failure |  |  | Record exact unit if any unmount warning appears |
+| P06 | Press the physical power button once | systemd-logind reaches the normal `poweroff.target` path and the guest/host test ends naturally |  |  | No acpid or custom event monitor is installed |
+| P07 | Hold the physical power button | Long press is ignored; only the normal short-press action is supported |  |  | Confirm with firmware/ACPI behavior |
+| P08 | QEMU monitor `system_powerdown` | Dedicated BIOS/UEFI test exits naturally, serial logs show normal poweroff, and `SUSHIDA-CFG` unmounts cleanly |  |  | Monitor socket must be below `build/qemu` only |
 
 ## Audio
 

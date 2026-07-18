@@ -71,10 +71,17 @@ NetworkManager polkit actions and write its private configuration directory.
 Its loopback HTTP surface still adds parser, NetworkManager, and local-browser
 attack surface. Same-origin/CSRF checks, bounded inputs, argv-based process
 execution without a shell, HTML escaping, service sandboxing, and a default-deny
-Chromium policy reduce but do not eliminate vulnerabilities. Wi-Fi secrets are
-delivered to `nmcli --ask` through a private stdin pipe rather than command-line
-arguments, preventing the ordinary `kiosk` account from reading a password from
-another process's command line during association.
+Chromium policy reduce but do not eliminate vulnerabilities. Wi-Fi setup
+re-scans the selected SSID in the backend and accepts only open or WPA Personal
+networks. SSID and PSK data are carried by separate mode-`0600` temporary
+descriptors (`/proc/self/fd/N`); WPA uses the exact
+`802-11-wireless-security.psk:<password>` passwd-file record. They are not
+placed in process arguments, HTTP responses, or the setup service's
+stage/exit/reason logs. The profile is deleted after a failed activation and
+its `psk-flags=1` setting prevents a password-bearing persistent NetworkManager
+profile. This reduces local observation of secrets but does not protect the
+plaintext credential stored in `SUSHIDA-CFG` from someone who can read the
+device.
 
 ## Evidence interpretation
 

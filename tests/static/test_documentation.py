@@ -37,6 +37,7 @@ def test_build_documents_all_supported_paths_and_podman_boundary() -> None:
         "--privileged",
         "make iso",
         "make test-qemu",
+        "make test-qemu-powerdown",
     ):
         assert value in text
 

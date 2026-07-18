@@ -35,7 +35,7 @@ require_executable() {
         fail "unsafe owner or mode for $1: $(stat -c '%U:%G:%a' "$1")"
 }
 
-for cmd in dpkg-query getent id stat systemctl systemd-analyze python3; do
+for cmd in dpkg-query getent id stat systemctl systemd-analyze python3 setupcon; do
     require_command "$cmd"
 done
 
@@ -104,6 +104,37 @@ for file in \
     /usr/local/libexec/sushida-wifi-setup; do
     require_executable "$file"
 done
+
+# Physical JIS keyboard layout is configured both for console-setup and the
+# Wayland session inherited by Cage/Chromium.
+keyboard=/etc/default/keyboard
+require_file "$keyboard"
+grep -qx 'XKBMODEL="pc105"' "$keyboard" || fail "unexpected XKBMODEL"
+grep -qx 'XKBLAYOUT="jp"' "$keyboard" || fail "unexpected XKBLAYOUT"
+grep -qx 'XKBVARIANT="106"' "$keyboard" || fail "unexpected XKBVARIANT"
+grep -qx 'XKBOPTIONS=""' "$keyboard" || fail "unexpected XKBOPTIONS"
+grep -qx 'BACKSPACE="guess"' "$keyboard" || fail "unexpected BACKSPACE"
+[ -f /etc/console-setup/cached.kmap.gz ] || fail "JIS console keymap cache is missing"
+grep -qx 'Environment=XKB_DEFAULT_MODEL=pc105' \
+    /etc/systemd/system/sushida-kiosk.service || fail "kiosk XKB model is not pc105"
+grep -qx 'Environment=XKB_DEFAULT_LAYOUT=jp' \
+    /etc/systemd/system/sushida-kiosk.service || fail "kiosk XKB layout is not jp"
+grep -qx 'Environment=XKB_DEFAULT_VARIANT=106' \
+    /etc/systemd/system/sushida-kiosk.service || fail "kiosk XKB variant is not 106"
+grep -qx 'Environment=XKB_DEFAULT_OPTIONS=' \
+    /etc/systemd/system/sushida-kiosk.service || fail "kiosk XKB options are not empty"
+logind=/etc/systemd/logind.conf.d/90-sushida-kiosk.conf
+require_file "$logind"
+grep -qx 'NAutoVTs=0' "$logind" || fail "NAutoVTs is not disabled"
+grep -qx 'ReserveVT=0' "$logind" || fail "ReserveVT is not disabled"
+grep -qx 'HandlePowerKey=poweroff' "$logind" || fail "power key action is not poweroff"
+grep -qx 'HandlePowerKeyLongPress=ignore' "$logind" || fail "long power press is not ignored"
+grep -qx 'PowerKeyIgnoreInhibited=yes' "$logind" || fail "power-key inhibitor policy is unsafe"
+if grep -R -n -E 'acpid|systemctl[[:space:]]+enable[[:space:]]+poweroff\.target' \
+    /etc/systemd/system /etc/systemd/logind.conf.d /etc/systemd/system.conf.d \
+    > /dev/null 2>&1; then
+    fail "custom power event daemon or enabled poweroff target is present"
+fi
 for unit in sushida-kiosk.service sushida-network-watch.service \
     sushida-config-prepare.service sushida-wifi-setup.service \
     'var-lib-sushida\x2dconfig.mount'; do

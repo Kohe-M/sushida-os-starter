@@ -8,7 +8,9 @@ from pathlib import Path
 
 RUN = Path("scripts/run-qemu.sh")
 SMOKE = Path("scripts/smoke-test.sh")
+POWERDOWN = Path("scripts/powerdown-test.sh")
 CHECK = Path("tests/qemu/smoke-test.sh")
+POWERDOWN_CHECK = Path("tests/qemu/powerdown-test.sh")
 SCREENSHOT_CHECK = Path("tests/qemu/check-screenshot.py")
 MAKEFILE = Path("Makefile")
 DOCKERFILE = Path("builder/Dockerfile")
@@ -18,7 +20,7 @@ GRUB = Path("live-build/config/bootloaders/grub-pc/config.cfg")
 
 
 def test_qemu_scripts_are_executable_and_strict() -> None:
-    for path in (RUN, SMOKE, CHECK, SCREENSHOT_CHECK):
+    for path in (RUN, SMOKE, POWERDOWN, CHECK, POWERDOWN_CHECK, SCREENSHOT_CHECK):
         assert path.is_file()
         assert path.stat().st_mode & stat.S_IXUSR
         assert os.access(path, os.X_OK)
@@ -44,6 +46,25 @@ def test_runner_supports_bios_uefi_offline_and_evidence() -> None:
     assert "ISO_SHA256" in text
     assert "RUN_STARTED_AT" in text
     assert "RUN_FINISHED_AT" in text
+
+
+def test_powerdown_mode_is_monitor_only_and_bounded() -> None:
+    runner = RUN.read_text()
+    script = POWERDOWN.read_text()
+    checker = POWERDOWN_CHECK.read_text()
+    assert "--powerdown" in runner
+    assert "system_powerdown" in runner
+    assert "MONITOR_SOCKET" in runner
+    assert "build/qemu" in runner
+    assert "--writable-media" in script
+    assert "--powerdown" in script
+    assert "POWERDOWN_SENT" in runner
+    assert "NATURAL_POWERDOWN" in runner
+    assert "poweroff.target" in checker
+    assert "var-lib-sushida\\x2dconfig.mount" in checker
+    for forbidden in ("poweroff ", "shutdown ", "reboot "):
+        assert forbidden not in runner.lower()
+        assert forbidden not in script.lower()
 
 
 def test_screenshot_checker_rejects_blank_frames(tmp_path: Path) -> None:
@@ -115,6 +136,7 @@ def test_smoke_report_distinguishes_automated_and_manual_checks() -> None:
 def test_make_qemu_targets_call_real_scripts() -> None:
     text = MAKEFILE.read_text()
     assert "test-qemu:\n\t./scripts/smoke-test.sh" in text
+    assert "test-qemu-powerdown:\n\t./scripts/powerdown-test.sh" in text
     assert "qemu:\n\t./scripts/run-qemu.sh" in text
 
 
