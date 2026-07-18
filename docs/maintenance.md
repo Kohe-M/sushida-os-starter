@@ -80,8 +80,10 @@ exit. It never calls host `poweroff`, `shutdown`, or `reboot`. The checker
 requires the run's Git commit, ISO SHA-256, `SHA256SUMS`, and `build-info.json`
 to describe the current clean checkout. Review each
 `build/qemu/*-powerdown/serial.log` for explicit `Mounted` and `Unmounted`
-evidence for `SUSHIDA-CFG`, as well as the absence of unmount failures, before
-treating the test as passed.
+evidence for `SUSHIDA-CFG`, as well as the absence of failures for that unit,
+before treating the test as passed. live-boot may report an unrelated
+`/run/live/medium` busy-unmount during QEMU teardown; that does not replace the
+required positive `SUSHIDA-CFG` evidence.
 
 ## Volatile diagnostics
 
