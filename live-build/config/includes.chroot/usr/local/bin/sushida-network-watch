@@ -59,7 +59,7 @@ while IFS= read -r line || [ -n "$line" ]; do
                 echo "ERROR: Duplicate NETWORK_CHECK_INTERVAL_SECONDS" >&2; exit 1
             fi
             seen_interval=true; INTERVAL="$value" ;;
-        KIOSK_RESTART_SECONDS|NETWORK_SETUP_GRACE_SECONDS) ;;
+        NETWORK_SETUP_GRACE_SECONDS) ;;
         *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;
     esac
 done < "$CONFIG_FILE"
@@ -91,11 +91,19 @@ for cmd in nmcli systemctl id stat grep kill sleep; do
 done
 
 desired_route() {
-    local state
+    local status state connectivity
     if [ "$FORCE_OFFLINE" = true ]; then
         printf '%s\n' offline
-    elif state=$(LC_ALL=C nmcli -t -f STATE general 2>/dev/null) && [ "$state" = connected ]; then
-        printf '%s\n' online
+    elif status=$(LC_ALL=C nmcli -t -f STATE,CONNECTIVITY general 2>/dev/null); then
+        state="${status%%:*}"
+        connectivity="${status#*:}"
+        if [ "$state" = connected ] && [ "$connectivity" = full ]; then
+            printf '%s\n' online
+        elif systemctl -q is-active sushida-wifi-setup.service 2>/dev/null; then
+            printf '%s\n' setup
+        else
+            printf '%s\n' offline
+        fi
     elif systemctl -q is-active sushida-wifi-setup.service 2>/dev/null; then
         printf '%s\n' setup
     else

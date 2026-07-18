@@ -120,8 +120,8 @@ def test_launcher_exec_dbus_session() -> None:
 
 def test_launcher_selects_route_from_nm_global_state() -> None:
     content = LAUNCHER.read_text()
-    assert "LC_ALL=C nmcli -t -f STATE general" in content
-    assert '[ "$nm_state" = "connected" ]' in content
+    assert "LC_ALL=C nmcli -t -f STATE,CONNECTIVITY general" in content
+    assert '[ "$connectivity" = full ]' in content
     assert "connected.local" not in content
 
 def test_launcher_offline_url_is_fixed() -> None:

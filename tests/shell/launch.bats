@@ -137,7 +137,7 @@ SHIM
     cat > "$TEST_ROOT/bin/nmcli" << 'SHIM'
 #!/bin/bash
 if [ "${SUSHIDA_OS_NM_FAIL:-0}" = "1" ]; then exit 1; fi
-printf '%s\n' "${SUSHIDA_OS_NM_STATE:-connected}"
+printf '%s\n' "${SUSHIDA_OS_NM_STATE:-connected}:${SUSHIDA_OS_NM_CONNECTIVITY:-full}"
 SHIM
     chmod +x "$TEST_ROOT/bin/nmcli"
 
@@ -157,7 +157,7 @@ case "$1" in 0.1|0.2|0.3|0.5|1) exec /usr/bin/sleep "$1" ;; *) exec /usr/bin/sle
 SHIM
     chmod +x "$TEST_ROOT/bin/sleep"
 
-    printf 'SUSHIDA_URL=https://sushida.net/play.html\nNETWORK_CHECK_INTERVAL_SECONDS=30\nKIOSK_RESTART_SECONDS=2\n' > "$SUSHIDA_OS_CONFIG"
+    printf 'SUSHIDA_URL=https://sushida.net/play.html\nNETWORK_CHECK_INTERVAL_SECONDS=30\n' > "$SUSHIDA_OS_CONFIG"
 }
 
 teardown() {

@@ -159,7 +159,7 @@ def test_launcher_waits_bounded_then_selects_setup() -> None:
     assert "NETWORK_SETUP_GRACE_SECONDS" in text
     assert "15" in text
     assert 'ACTIVE_ROUTE="setup"' in text
-    assert "nmcli -t -f STATE general" in text
+    assert "nmcli -t -f STATE,CONNECTIVITY general" in text
 
 
 def test_setup_origin_is_allowed_at_both_browser_layers() -> None:

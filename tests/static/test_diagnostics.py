@@ -48,7 +48,7 @@ def test_collects_required_diagnostic_categories() -> None:
         "pipewire",
         "wireplumber",
         "wpctl status",
-        "nmcli -t -f STATE general",
+        "nmcli -t -f STATE,CONNECTIVITY general",
     ):
         assert value in text
 

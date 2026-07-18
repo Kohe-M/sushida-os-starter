@@ -152,7 +152,7 @@ capture() {
     heading "NetworkManager"
     capture "NetworkManager service" systemctl show NetworkManager.service \
         --property=LoadState,ActiveState,SubState,Result --no-pager
-    capture "NetworkManager global state" nmcli -t -f STATE general
+    capture "NetworkManager state and connectivity" nmcli -t -f STATE,CONNECTIVITY general
     capture "Network device state without identifiers" nmcli -t -f TYPE,STATE device
     echo "NOT_COLLECTED: SSIDs, connection profiles, addresses, MACs, and credentials"
 } > "$TEMP_OUTPUT"

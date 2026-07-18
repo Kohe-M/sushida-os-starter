@@ -87,9 +87,18 @@ def test_kiosk_description_set() -> None:
     assert "Description" in _K_sec("Unit")
 
 
-def test_kiosk_after_network() -> None:
+def test_kiosk_starts_after_networkmanager_without_waiting_online() -> None:
     after = _K_sec("Unit").get("After", "")
-    assert "network-online.target" in after
+    assert "NetworkManager.service" in after
+    assert "sushida-wifi-setup.service" in after
+    assert "network-online.target" not in after
+
+
+def test_kiosk_wants_networkmanager_and_setup_service() -> None:
+    wants = _K_sec("Unit").get("Wants", "")
+    assert "NetworkManager.service" in wants
+    assert "sushida-wifi-setup.service" in wants
+    assert "network-online.target" not in wants
 
 
 def test_kiosk_startlimitinterval_disabled() -> None:
@@ -101,6 +110,11 @@ def test_kiosk_startlimitinterval_disabled() -> None:
 def test_kiosk_startlimitburst_not_in_service() -> None:
     svc = _K_sec("Service")
     assert "StartLimitBurst" not in svc
+
+
+def test_kiosk_does_not_wait_for_network_online_target() -> None:
+    unit = KIOSK_UNIT.read_text()
+    assert "network-online.target" not in unit
 
 
 # ── kiosk unit: [Service] section ────────────────────────────────────────────
@@ -154,6 +168,26 @@ def test_kiosk_ambient_capabilities_empty() -> None:
     assert svc["AmbientCapabilities"] == ""
 
 
+def test_kiosk_has_safe_sandboxing_without_private_devices() -> None:
+    svc = _K_sec("Service")
+    for key, value in {
+        "ProtectSystem": "strict",
+        "ProtectHome": "true",
+        "PrivateTmp": "true",
+        "ProtectKernelTunables": "true",
+        "ProtectKernelModules": "true",
+        "ProtectKernelLogs": "true",
+        "ProtectControlGroups": "true",
+        "LockPersonality": "true",
+        "RestrictSUIDSGID": "true",
+        "RestrictRealtime": "true",
+        "SystemCallArchitectures": "native",
+        "ReadWritePaths": "/run/sushida-os",
+    }.items():
+        assert svc.get(key) == value
+    assert "PrivateDevices" not in svc
+
+
 def test_kiosk_runtime_directory_sushida_os() -> None:
     assert _K_sec("Service").get("RuntimeDirectory") == "sushida-os"
 
@@ -200,6 +234,23 @@ def test_watcher_startlimitinterval_disabled() -> None:
     unit = _W_sec("Unit")
     assert "StartLimitIntervalSec" in unit
     assert unit["StartLimitIntervalSec"] == "0"
+
+
+def test_watcher_has_safe_sandboxing() -> None:
+    svc = _W_sec("Service")
+    for key in (
+        "ProtectSystem", "PrivateTmp", "ProtectKernelLogs", "ProtectHostname",
+        "ProtectClock", "RestrictSUIDSGID", "RestrictRealtime", "LockPersonality",
+        "SystemCallArchitectures", "RestrictAddressFamilies", "ReadWritePaths",
+    ):
+        assert key in svc
+
+
+def test_wifi_setup_disables_start_rate_limit() -> None:
+    setup = Path(
+        "live-build/config/includes.chroot/etc/systemd/system/sushida-wifi-setup.service"
+    ).read_text()
+    assert "StartLimitIntervalSec=0" in setup
 
 
 def test_watcher_partof_not_enable_proxy() -> None:

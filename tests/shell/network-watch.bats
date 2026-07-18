@@ -19,15 +19,15 @@ setup() {
     WATCHER="live-build/config/includes.chroot/usr/local/bin/sushida-network-watch"
     FIXTURE_PID=""
 
-    printf 'SUSHIDA_URL=https://sushida.net/play.html\nNETWORK_SETUP_GRACE_SECONDS=15\nNETWORK_CHECK_INTERVAL_SECONDS=30\nKIOSK_RESTART_SECONDS=2\n' > "$SUSHIDA_OS_CONFIG"
+    printf 'SUSHIDA_URL=https://sushida.net/play.html\nNETWORK_SETUP_GRACE_SECONDS=15\nNETWORK_CHECK_INTERVAL_SECONDS=30\n' > "$SUSHIDA_OS_CONFIG"
     printf 'online\n' > "$SUSHIDA_OS_RUNTIME/active-route"
     printf '0::/system.slice/sushida-kiosk.service\n' > "$SUSHIDA_OS_TEST_CGROUP_FILE"
     : > "$TEST_ROOT/sleep.log"
 
-    cat > "$TEST_ROOT/bin/nmcli" <<'SHIM'
+cat > "$TEST_ROOT/bin/nmcli" <<'SHIM'
 #!/bin/bash
 [ "${NM_FAIL:-0}" = 0 ] || exit 1
-printf '%s\n' "${NM_STATE:-connected}"
+printf '%s\n' "${NM_STATE:-connected}:${NM_CONNECTIVITY:-full}"
 SHIM
     chmod +x "$TEST_ROOT/bin/nmcli"
 

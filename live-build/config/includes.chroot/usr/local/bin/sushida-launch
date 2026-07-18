@@ -93,7 +93,7 @@ while IFS= read -r line || [ -n "$line" ]; do
                 echo "ERROR: Duplicate NETWORK_SETUP_GRACE_SECONDS" >&2; exit 1
             fi
             seen_setup_grace=true; NETWORK_SETUP_GRACE_SECONDS="$value" ;;
-        NETWORK_CHECK_INTERVAL_SECONDS|KIOSK_RESTART_SECONDS) ;;
+        NETWORK_CHECK_INTERVAL_SECONDS) ;;
         *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;
     esac
 done < "$CONFIG_FILE"
@@ -132,6 +132,15 @@ if [ "$(id -un)" != "kiosk" ]; then
 fi
 
 # ── Launch session helper inside dbus-run-session ─────────────────────────
+network_is_online() {
+    local status state connectivity
+    status=$(LC_ALL=C nmcli -t -f STATE,CONNECTIVITY general 2>/dev/null) || return 1
+    state="${status%%:*}"
+    connectivity="${status#*:}"
+    [ "$state" = connected ] || return 1
+    [ "$connectivity" = full ]
+}
+
 if [ "$FORCE_OFFLINE" = true ]; then
     START_URL="$OFFLINE_URL"
     ACTIVE_ROUTE="offline"
@@ -140,8 +149,7 @@ else
     ACTIVE_ROUTE="setup"
     waited=0
     while true; do
-        if nm_state=$(LC_ALL=C nmcli -t -f STATE general 2>/dev/null) && \
-           [ "$nm_state" = "connected" ]; then
+        if network_is_online; then
             START_URL="$SUSHIDA_URL"
             ACTIVE_ROUTE="online"
             break

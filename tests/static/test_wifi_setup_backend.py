@@ -8,12 +8,17 @@ import os
 import socket
 import stat
 import subprocess
+import sys
 import threading
 from http.client import HTTPConnection
 from pathlib import Path
 from urllib.parse import urlencode
 
 import pytest
+
+# Loading the extensionless production helper must not leave an ignored .pyc
+# beside files that live-build later stages into the ISO.
+sys.dont_write_bytecode = True
 
 
 BACKEND = Path(
@@ -46,7 +51,7 @@ def backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "#!/bin/sh\n"
         f"printf '%s\\n' \"$*\" >> '{command_log}'\n"
         "case \" $* \" in\n"
-        "  *' -t -f STATE general '*) printf 'disconnected\\n' ;;\n"
+        "  *' -t -f STATE,CONNECTIVITY general '*) printf 'disconnected:none\\n' ;;\n"
         "  *' device wifi list '*) printf 'Cafe\\\\:Guest:91:WPA2\\nOpenNet:40:--\\n' ;;\n"
         "esac\n"
         "exit 0\n"

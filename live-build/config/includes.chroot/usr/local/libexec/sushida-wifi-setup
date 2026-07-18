@@ -152,10 +152,13 @@ def run_nmcli(
 
 def network_connected() -> bool:
     try:
-        result = run_nmcli("-t", "-f", "STATE", "general", timeout=5)
+        result = run_nmcli("-t", "-f", "STATE,CONNECTIVITY", "general", timeout=5)
     except (OSError, subprocess.TimeoutExpired):
         return False
-    return result.returncode == 0 and result.stdout.strip() == "connected"
+    if result.returncode != 0:
+        return False
+    state, separator, connectivity = result.stdout.strip().partition(":")
+    return separator == ":" and state == "connected" and connectivity == "full"
 
 
 def managed_wifi_active() -> bool:

@@ -60,10 +60,11 @@ def test_watcher_never_starts_browser() -> None:
     assert "singletonlock" not in content
 
 
-def test_watcher_uses_exact_nm_global_connected_state() -> None:
+def test_watcher_uses_networkmanager_connectivity_state() -> None:
     content = WATCHER.read_text()
-    assert "LC_ALL=C nmcli -t -f STATE general" in content
+    assert "LC_ALL=C nmcli -t -f STATE,CONNECTIVITY general" in content
     assert '[ "$state" = connected ]' in content
+    assert '[ "$connectivity" = full ]' in content
 
 
 def test_watcher_validates_restart_target() -> None:
@@ -115,8 +116,12 @@ def test_nm_conf_no_proxy() -> None:
     assert "proxy" not in NM_CONF.read_text()
 
 
-def test_nm_conf_no_external_connectivity() -> None:
-    assert "connectivity" not in NM_CONF.read_text()
+def test_nm_conf_enables_low_frequency_connectivity_check() -> None:
+    cfg = _parse_ini(NM_CONF, "connectivity")
+    assert cfg.get("uri") == "http://nmcheck.gnome.org/check_network_status.txt"
+    assert cfg.get("response") == "NetworkManager is online"
+    assert cfg.get("interval") == "300"
+    assert cfg.get("timeout") == "5"
 
 
 def test_nm_conf_ifupdown_managed_true() -> None:
@@ -134,6 +139,13 @@ def test_nm_conf_no_wifi_gui_setting() -> None:
     content = NM_CONF.read_text()
     assert "nm-applet" not in content
     assert "nm-connection-editor" not in content
+
+
+def test_auto_config_copies_only_tracked_source_files() -> None:
+    content = AUTO_CONFIG.read_text()
+    assert "git -C \"$PROJECT_ROOT\" ls-files -z" in content
+    assert "cp -a \"$SOURCE_DIR/config/.\"" not in content
+    assert "__pycache__" not in content
 
 
 # ── auto/config Wi-Fi staging ──────────────────────────────────────────────

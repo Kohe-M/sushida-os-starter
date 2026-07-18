@@ -1,8 +1,9 @@
 [Unit]
 Description=Sushi-da constrained Wi-Fi setup service
-After=NetworkManager.service sushida-config-prepare.service
-Wants=NetworkManager.service sushida-config-prepare.service
+After=NetworkManager.service
+Wants=NetworkManager.service
 Before=sushida-kiosk.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
