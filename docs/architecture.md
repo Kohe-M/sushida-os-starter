@@ -233,6 +233,22 @@ The following managed policies are applied:
 | `URLBlocklist` | `["*", "view-source:*"]` | Default-deny navigation + view-source |
 | `URLAllowlist` | 3 entries | Minimal allowed origins |
 
+## Wi-Fi connection sequence
+
+The POST handler that initiates a Wi-Fi connection must not execute
+NetworkManager commands synchronously because an interface change aborts
+any in-flight browser request, including loopback (`ERR_NETWORK_CHANGED`).
+The backend therefore:
+
+1. validates and queues the credential immediately;
+2. completes the HTTP response with a transition page;
+3. wakes a single serialized worker that runs the staged NetworkManager chain.
+
+While the worker runs, the transition page polls `/status.json` through
+JavaScript `fetch()`, whose failures are invisible. A terminal state
+(succeeded or failed) is reported through the status endpoint; the page
+either displays the outcome or reloads the interactive form.
+
 ## What managed policy alone cannot prevent
 
 The following controls require system-level or hardware-level enforcement
@@ -245,6 +261,9 @@ beyond managed Chromium policy:
 - Process inspection from another user account (kernel-level)
 - DMA attacks via Thunderbolt / PCIe
 - Network-level traffic interception
+- Preventing a user-gesture popup or same-tab blocked navigation from
+  committing an error page in Chromium (managed policy can deny navigation
+  but cannot prevent the error page from replacing the current document)
 
 These are documented in `docs/threat-model.md`.
 

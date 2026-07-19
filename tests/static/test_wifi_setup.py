@@ -151,6 +151,44 @@ def test_setup_ui_avoids_wayland_popup_and_rescans_via_home_route() -> None:
     assert 'http-equiv="refresh"' not in text
 
 
+def test_connection_request_is_asynchronous_and_response_ordered() -> None:
+    """The POST must be answered before NetworkManager is touched.
+
+    A synchronous nmcli run inside the POST handler aborts the in-flight
+    request with ERR_NETWORK_CHANGED when the interface comes up, which used
+    to strand the kiosk on a browser error page.  The backend therefore
+    queues the credential, completes the response, and only then wakes a
+    single serialized worker.
+    """
+    text = BACKEND.read_text()
+    assert "queue_connection(ssid[0], password[0])" in text
+    assert "success, message = connect_wifi(ssid[0], password[0])" not in text
+    assert "self._reply_connecting(busy=False)\n        start_queued_connection()" in text
+    assert "_request_event = threading.Event()" in text
+    assert "_connect_worker" in text
+    assert "threading.Thread(target=_connect_worker, daemon=True).start()" in text
+    assert "def connect_status()" in text
+    assert "def consume_failure()" in text
+    assert "def reset_succeeded()" in text
+    assert '"/status.json"' in text
+    assert 'fetch("/status.json"' in text
+    assert "location.reload()" in text
+    # The poller never navigates while the network interface changes; only a
+    # terminal state reloads the page, after the worker has settled.
+    assert 'data.state === "connecting"' in text
+    assert 'data.state === "succeeded"' in text
+    # The inline poller script is authorized by exact hash, not 'unsafe-inline'.
+    assert "script-src 'sha256-" in text
+    assert "script-src 'unsafe-inline'" not in text
+    assert "def script_csp_hash()" in text
+    assert "base64.b64encode(digest)" in text
+    # Duplicate submissions are refused without storing the credential.
+    assert "HTTPStatus.CONFLICT" in text
+    # Public status never carries the SSID or password.
+    assert 'data["password"]' not in text
+    assert '{"state": state, "message": message}' in text
+
+
 def test_storage_failure_does_not_disable_wifi_connection() -> None:
     text = BACKEND.read_text()
     assert 'connected or not storage_ready or not networks' not in text

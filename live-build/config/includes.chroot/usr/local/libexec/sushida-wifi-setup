@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import html
@@ -41,6 +42,110 @@ CSRF_TOKEN_BYTES = 32
 
 _csrf_token_cache: str | None = None
 CONNECT_LOCK = threading.Lock()
+
+# ── Asynchronous connection state machine ─────────────────────────────────
+# A network interface change aborts any in-flight browser request, including
+# loopback ones (ERR_NETWORK_CHANGED).  The HTTP response to a connection
+# request must therefore be completed before NetworkManager is touched.  The
+# handler queues the credential, replies immediately, and only then wakes a
+# single worker thread that performs the staged nmcli operations.  The
+# browser learns the outcome through the read-only /status.json endpoint,
+# which never contains the SSID or password.
+CONNECT_IDLE = "idle"
+CONNECT_WORKING = "connecting"
+CONNECT_SUCCEEDED = "succeeded"
+CONNECT_FAILED = "failed"
+
+_state_lock = threading.Lock()
+_connect_state = CONNECT_IDLE
+_state_message = ""
+_pending_request: tuple[str, str] | None = None
+_request_event = threading.Event()
+
+
+def connect_status() -> tuple[str, str]:
+    """Return a snapshot of the public, secret-free connection state."""
+    with _state_lock:
+        return _connect_state, _state_message
+
+
+def queue_connection(ssid: str, password: str) -> bool:
+    """Accept at most one connection request at a time.
+
+    Returns False when an attempt is already pending or running; the caller
+    must drop its copy of the credential immediately in that case.
+    """
+    global _connect_state, _state_message, _pending_request
+    with _state_lock:
+        if _connect_state != CONNECT_IDLE:
+            return False
+        _connect_state = CONNECT_WORKING
+        _state_message = ""
+        _pending_request = (ssid, password)
+    return True
+
+
+def start_queued_connection() -> None:
+    """Wake the worker.  Called only after the HTTP response is written."""
+    _request_event.set()
+
+
+def _take_pending() -> tuple[str, str] | None:
+    global _pending_request
+    with _state_lock:
+        pending = _pending_request
+        _pending_request = None
+    return pending
+
+
+def _publish_result(success: bool, message: str) -> None:
+    global _connect_state, _state_message
+    with _state_lock:
+        _connect_state = CONNECT_SUCCEEDED if success else CONNECT_FAILED
+        _state_message = message
+
+
+def consume_failure() -> str | None:
+    """Reset a published failure when the setup form is rendered again."""
+    global _connect_state, _state_message
+    with _state_lock:
+        if _connect_state != CONNECT_FAILED:
+            return None
+        message = _state_message
+        _connect_state = CONNECT_IDLE
+        _state_message = ""
+        return message
+
+
+def reset_succeeded() -> None:
+    """Forget a stale success once the network is gone again."""
+    global _connect_state, _state_message
+    with _state_lock:
+        if _connect_state == CONNECT_SUCCEEDED:
+            _connect_state = CONNECT_IDLE
+            _state_message = ""
+
+
+def _connect_worker() -> None:
+    """Single serialized worker; the only caller of the nmcli stage chain."""
+    while True:
+        _request_event.wait()
+        _request_event.clear()
+        pending = _take_pending()
+        if pending is None:
+            continue
+        ssid, password = pending
+        try:
+            success, message = connect_wifi(ssid, password)
+        except Exception:  # noqa: BLE001 - never leak internals to the page
+            _log_stage("internal", 8, None)
+            success = False
+            message = "Wi-Fi接続処理で内部エラーが発生しました。もう一度接続してください。"
+        finally:
+            # Every path drops the credential before the result is published.
+            password = ""
+            pending = None
+        _publish_result(success, message)
 
 
 def _test_path(name: str, production: Path) -> Path:
@@ -684,7 +789,10 @@ def restore_saved_connection() -> None:
     saved = load_credentials()
     if saved is None or managed_wifi_active():
         return
-    connect_wifi(*saved)
+    # Boot-time restoration goes through the same serialized worker as an
+    # interactive submission so the two can never race profile changes.
+    if queue_connection(*saved):
+        start_queued_connection()
 
 
 def render_page(message: str = "", success: bool = False) -> bytes:
@@ -765,6 +873,83 @@ padding:.85rem;border:1px solid #777;border-radius:.5rem;background:#222;cursor:
     return document.encode("utf-8")
 
 
+# Client-side poller for the connecting page.  fetch() failures caused by a
+# network interface change are invisible to the user, unlike a navigation:
+# the document never leaves the connecting page, so no browser error page can
+# appear.  The exact bytes below are hashed into the page's Content-Security-
+# Policy header; keep them in sync by always rendering through
+# render_connecting_page().
+CONNECTING_SCRIPT = """(function () {
+  var statusLine = document.getElementById("connect-status");
+  var errors = 0;
+  var rounds = 0;
+  function say(text) {
+    if (statusLine) {
+      statusLine.textContent = text;
+    }
+  }
+  function poll() {
+    rounds += 1;
+    if (rounds > 160) {
+      location.reload();
+      return;
+    }
+    fetch("/status.json", { cache: "no-store" }).then(function (response) {
+      if (!response.ok) {
+        throw new Error("status");
+      }
+      return response.json();
+    }).then(function (data) {
+      errors = 0;
+      if (data.state === "connecting") {
+        setTimeout(poll, 1500);
+      } else if (data.state === "succeeded") {
+        say(data.message || "接続しました。寿司打画面へ切り替えます。");
+      } else {
+        location.reload();
+      }
+    }).catch(function () {
+      errors += 1;
+      if (errors > 40) {
+        location.reload();
+        return;
+      }
+      setTimeout(poll, 1500);
+    });
+  }
+  setTimeout(poll, 1200);
+}());
+"""
+
+
+def script_csp_hash() -> str:
+    digest = hashlib.sha256(CONNECTING_SCRIPT.encode("utf-8")).digest()
+    return base64.b64encode(digest).decode("ascii")
+
+
+def render_connecting_page(busy: bool = False) -> bytes:
+    notice = (
+        "別の接続処理がすでに実行中です。そのままお待ちください。"
+        if busy
+        else "Wi-Fi接続処理を実行しています。そのままお待ちください。"
+    )
+    document = f"""<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ネットワーク設定</title>
+<style>
+html,body{{margin:0;min-height:100%;background:#111;color:#f4f4f4;font-family:sans-serif}}
+main{{max-width:720px;margin:0 auto;padding:7vh 6vw}}h1{{font-size:2rem}}
+.note{{font-size:.9rem;color:#bbb}}
+</style></head><body><main><h1>ネットワーク設定</h1>
+<p id="connect-status">{notice}</p>
+<p class="note">接続に成功すると自動的に寿司打の画面へ切り替わります。失敗した場合は設定画面へ戻ります。</p>
+<noscript><p class="note">しばらく待ってからこの画面を再読み込みしてください。</p></noscript>
+<script>{CONNECTING_SCRIPT}</script>
+</main></body></html>"""
+    return document.encode("utf-8")
+
+
 class SetupHandler(BaseHTTPRequestHandler):
     server_version = "SushidaSetup/1"
     sys_version = ""
@@ -775,12 +960,22 @@ class SetupHandler(BaseHTTPRequestHandler):
         # reads so one abandoned loopback POST cannot block every rescan.
         self.connection.settimeout(REQUEST_READ_TIMEOUT_SECONDS)
 
-    def _headers(self, status_code: HTTPStatus, length: int) -> None:
+    def _headers(
+        self,
+        status_code: HTTPStatus,
+        length: int,
+        script_hash: str | None = None,
+    ) -> None:
         self.send_response(status_code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(length))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+        script_src = f"; script-src 'sha256-{script_hash}'" if script_hash else ""
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; style-src 'unsafe-inline'; form-action 'self'; "
+            "frame-ancestors 'none'; base-uri 'none'" + script_src,
+        )
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         # Keep same-origin form navigation metadata available to Chromium so
@@ -791,6 +986,31 @@ class SetupHandler(BaseHTTPRequestHandler):
 
     def _reply(self, body: bytes, status_code: HTTPStatus = HTTPStatus.OK) -> None:
         self._headers(status_code, len(body))
+        self.wfile.write(body)
+
+    def _reply_connecting(
+        self, busy: bool, status_code: HTTPStatus = HTTPStatus.OK
+    ) -> None:
+        body = render_connecting_page(busy)
+        self._headers(status_code, len(body), script_csp_hash())
+        self.wfile.write(body)
+        self.wfile.flush()
+
+    def _reply_status(self) -> None:
+        # Read-only, loopback-only, and free of SSIDs and credentials.
+        state, message = connect_status()
+        body = json.dumps(
+            {"state": state, "message": message}, ensure_ascii=False
+        ).encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", "default-src 'none'")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "same-origin")
+        self.end_headers()
         self.wfile.write(body)
 
     def _redirect_home(self) -> None:
@@ -823,10 +1043,29 @@ class SetupHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         target = urlsplit(self.path)
+        if target.path == "/status.json":
+            self._reply_status()
+            return
         if target.path not in ("/", "/rescan"):
             # Never strand a kiosk user on a plain browser error page.
             self._redirect_home()
             return
+        state, message = connect_status()
+        if state == CONNECT_WORKING:
+            # A rescan or manual reload while the worker runs must not issue
+            # another nmcli scan or show the form again.
+            self._reply_connecting(busy=False)
+            return
+        if state == CONNECT_FAILED:
+            self._reply(render_page(consume_failure() or ""))
+            return
+        if state == CONNECT_SUCCEEDED:
+            if network_connected():
+                self._reply(render_page(message, success=True))
+                return
+            # The network was lost again before the kiosk switched routes;
+            # show the normal form instead of a stale success message.
+            reset_succeeded()
         self._reply(render_page())
 
     def do_POST(self) -> None:  # noqa: N802
@@ -906,8 +1145,21 @@ class SetupHandler(BaseHTTPRequestHandler):
                 HTTPStatus.FORBIDDEN,
             )
             return
-        success, message = connect_wifi(ssid[0], password[0])
-        self._reply(render_page(message, success))
+        validation_error = validate_credentials(ssid[0], password[0])
+        if validation_error:
+            self._setup_error(validation_error, HTTPStatus.OK)
+            return
+        if not queue_connection(ssid[0], password[0]):
+            # A duplicate submission while an attempt runs is refused without
+            # touching the running attempt; the credential from this request
+            # is dropped immediately and never stored.
+            self._reply_connecting(busy=True, status_code=HTTPStatus.CONFLICT)
+            return
+        # The response is completed before the worker may change any
+        # NetworkManager state, so the browser can never observe an
+        # ERR_NETWORK_CHANGED abort for this POST.
+        self._reply_connecting(busy=False)
+        start_queued_connection()
 
     def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
         del code, size
@@ -921,6 +1173,7 @@ class SetupHandler(BaseHTTPRequestHandler):
 
 def main() -> None:
     csrf_token()
+    threading.Thread(target=_connect_worker, daemon=True).start()
     threading.Thread(target=restore_saved_connection, daemon=True).start()
     server = HTTPServer((HOST, PORT), SetupHandler)
     server.serve_forever()

@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import importlib.machinery
 import importlib.util
+import json
 import os
+import re
 import socket
 import stat
 import subprocess
 import sys
 import threading
+import time
 from http.client import HTTPConnection
 from pathlib import Path
 from urllib.parse import urlencode
@@ -49,19 +54,25 @@ def backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     config_dir.mkdir(parents=True)
     config_dir.chmod(0o700)
     status_file.write_text("ready\n")
+    gate_file = tmp_path / "nm-mutation.gate"
     fake_nmcli.write_text(
         "#!/bin/sh\n"
         "set -eu\n"
+        # Mutating stages can be held back deterministically so tests can
+        # prove the HTTP response precedes any NetworkManager change.
+        "gate() {\n"
+        "  while [ -f '" + str(gate_file) + "' ]; do sleep 0.05; done\n"
+        "}\n"
         "case \" $* \" in\n"
         f"  *' device wifi list '*) printf 'Fixture\\\\:Guest:91:WPA2\\nOpenFixture:40:--\\n'; printf 'scan\\n' >> '{command_log}' ;;\n"
         "  *' STATE,CONNECTIVITY general '*) printf 'disconnected:none\\n'; printf 'general\\n' >> '" + str(command_log) + "' ;;\n"
-        "  *' radio wifi on '*) printf 'radio-on\\n' >> '" + str(command_log) + "' ;;\n"
-        "  *' connection delete id sushida-os-wifi '*) printf 'profile-delete\\n' >> '" + str(command_log) + "'; exit 10 ;;\n"
+        "  *' radio wifi on '*) gate; printf 'radio-on\\n' >> '" + str(command_log) + "' ;;\n"
+        "  *' connection delete id sushida-os-wifi '*) gate; printf 'profile-delete\\n' >> '" + str(command_log) + "'; exit 10 ;;\n"
         "  *'-f NAME connection show '*) printf 'profile-list\\n' >> '" + str(command_log) + "'; exit 0 ;;\n"
-        "  *' connection add type wifi '*) printf 'profile-create\\n' >> '" + str(command_log) + "' ;;\n"
-        "  *' connection modify sushida-os-wifi '*) printf 'profile-configure\\n' >> '" + str(command_log) + "' ;;\n"
-        "  *' passwd-file /proc/self/fd/'*) printf 'activation-passwd-file\\n' >> '" + str(command_log) + "'; test -r \"$8\" ;;\n"
-        "  *' --wait 30 connection up id sushida-os-wifi '*) printf 'activation-open\\n' >> '" + str(command_log) + "' ;;\n"
+        "  *' connection add type wifi '*) gate; printf 'profile-create\\n' >> '" + str(command_log) + "' ;;\n"
+        "  *' connection modify sushida-os-wifi '*) gate; printf 'profile-configure\\n' >> '" + str(command_log) + "' ;;\n"
+        "  *' passwd-file /proc/self/fd/'*) gate; printf 'activation-passwd-file\\n' >> '" + str(command_log) + "'; test -r \"$8\" ;;\n"
+        "  *' --wait 30 connection up id sushida-os-wifi '*) gate; printf 'activation-open\\n' >> '" + str(command_log) + "' ;;\n"
         "  *' connection show id sushida-os-wifi '*) printf 'connection.autoconnect:yes\\n802-11-wireless-security.psk-flags:0\\n'; printf 'autoconnect-check\\n' >> '" + str(command_log) + "' ;;\n"
         "  *' DEVICE,TYPE device status '*) printf 'wlan0:wifi\\n' ;;\n"
         "  *' GENERAL.REASON device show '*) printf 'GENERAL.REASON:0\\n' ;;\n"
@@ -70,6 +81,7 @@ def backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "exit 0\n"
     )
     fake_nmcli.chmod(0o755)
+    module._gate_file = gate_file
     monkeypatch.setenv("SUSHIDA_WIFI_SETUP_TEST_MODE", "1")
     monkeypatch.setenv("SUSHIDA_WIFI_SETUP_CONFIG_MOUNT", str(config_mount))
     monkeypatch.setenv("SUSHIDA_WIFI_SETUP_STORAGE_STATUS", str(status_file))
@@ -77,6 +89,62 @@ def backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SUSHIDA_WIFI_SETUP_NMCLI", str(fake_nmcli))
     module._command_log = command_log
     return module
+
+
+@pytest.fixture()
+def worker(backend):
+    """Run the asynchronous connection worker against a fresh backend."""
+    thread = threading.Thread(target=backend._connect_worker, daemon=True)
+    thread.start()
+    return thread
+
+
+def start_server(backend):
+    server = backend.HTTPServer((backend.HOST, 0), backend.SetupHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
+def stop_server(backend, server, thread) -> None:
+    server.shutdown()
+    server.server_close()
+    thread.join(timeout=5)
+
+
+def get_status(backend, port: int) -> dict:
+    connection = HTTPConnection(backend.HOST, port, timeout=3)
+    connection.request("GET", "/status.json")
+    response = connection.getresponse()
+    assert response.status == 200
+    return json.loads(response.read().decode())
+
+
+def wait_for_status(backend, port: int, want: str, timeout: float = 10.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        data = get_status(backend, port)
+        if data["state"] == want:
+            return data
+        time.sleep(0.05)
+    raise AssertionError(f"connection state did not reach {want!r}")
+
+
+def post_connect(backend, port: int, password: str = TEST_PASSWORD):
+    payload = urlencode(
+        {"csrf": backend.csrf_token(), "ssid": TEST_SSID, "password": password}
+    )
+    connection = HTTPConnection(backend.HOST, port, timeout=10)
+    connection.request(
+        "POST", "/connect", payload,
+        {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": backend.ORIGIN,
+        },
+    )
+    response = connection.getresponse()
+    body = response.read().decode()
+    return response.status, body
 
 
 def test_scan_unescapes_deduplicates_and_orders_networks(backend) -> None:
@@ -459,7 +527,7 @@ def test_connect_operations_are_serialized(backend, monkeypatch: pytest.MonkeyPa
 
 
 def test_saved_wifi_is_restored_even_when_wired_network_is_connected(
-    backend, monkeypatch: pytest.MonkeyPatch,
+    backend, worker, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     restored: list[tuple[str, str]] = []
     monkeypatch.setattr(
@@ -475,6 +543,9 @@ def test_saved_wifi_is_restored_even_when_wired_network_is_connected(
 
     backend.restore_saved_connection()
 
+    deadline = time.monotonic() + 5
+    while not restored and time.monotonic() < deadline:
+        time.sleep(0.05)
     assert restored == [(TEST_SSID, TEST_PASSWORD)]
 
 
@@ -495,11 +566,11 @@ def test_saved_wifi_restore_skips_an_already_active_managed_profile(
 
 
 def test_http_requires_same_origin_and_csrf_and_never_reflects_password(
-    backend, capsys: pytest.CaptureFixture[str],
+    backend, worker, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    server = backend.HTTPServer((backend.HOST, 0), backend.SetupHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
+    monkeypatch.setattr(backend, "network_connected", lambda: True)
+    server, thread = start_server(backend)
     try:
         connection = HTTPConnection(backend.HOST, server.server_port, timeout=10)
         connection.request("GET", "/")
@@ -589,7 +660,11 @@ def test_http_requires_same_origin_and_csrf_and_never_reflects_password(
         response = connection.getresponse()
         body = response.read().decode()
         assert response.status == 200
-        assert "接続しました" in body
+        assert "接続処理を実行しています" in body
+        data = wait_for_status(backend, server.server_port, "succeeded")
+        assert "接続しました" in data["message"]
+        assert TEST_PASSWORD not in data["message"]
+        assert TEST_SSID not in data["message"]
 
         connection.request(
             "POST", "/connect", payload,
@@ -617,6 +692,29 @@ def test_http_requires_same_origin_and_csrf_and_never_reflects_password(
         assert "Forbidden" not in body
         assert TEST_PASSWORD not in body
 
+        # A second submission while the success state is published is refused
+        # and lands on the same non-error transition page.
+        connection.request(
+            "POST", "/connect", payload,
+            {"Content-Type": "application/x-www-form-urlencoded", "Origin": backend.ORIGIN},
+        )
+        response = connection.getresponse()
+        body = response.read().decode()
+        assert response.status == 409
+        assert "実行中" in body
+        assert TEST_PASSWORD not in body
+
+        # The success page replaces the form until the network disappears.
+        connection.request("GET", "/")
+        response = connection.getresponse()
+        body = response.read().decode()
+        assert response.status == 200
+        assert "接続しました" in body
+        assert '<input type="radio" name="ssid"' not in body
+        assert TEST_PASSWORD not in body
+
+        # Once the published success is gone, a fresh request is accepted.
+        backend.reset_succeeded()
         connection.request(
             "POST", "/connect", payload,
             {"Content-Type": "application/x-www-form-urlencoded", "Origin": backend.ORIGIN},
@@ -624,12 +722,11 @@ def test_http_requires_same_origin_and_csrf_and_never_reflects_password(
         response = connection.getresponse()
         body = response.read().decode()
         assert response.status == 200
-        assert "接続しました" in body
+        assert "接続処理を実行しています" in body
         assert TEST_PASSWORD not in body
+        wait_for_status(backend, server.server_port, "succeeded")
     finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
+        stop_server(backend, server, thread)
 
     captured = capsys.readouterr()
     assert TEST_PASSWORD not in captured.out
@@ -683,28 +780,17 @@ def test_connected_state_keeps_all_visible_setup_controls_interactive(
 
 
 def test_connected_state_still_accepts_a_wifi_connection_request(
-    backend, monkeypatch: pytest.MonkeyPatch,
+    backend, worker, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(backend, "network_connected", lambda: True)
-    server = backend.HTTPServer((backend.HOST, 0), backend.SetupHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
+    server, thread = start_server(backend)
     try:
-        payload = urlencode(
-            {
-                "csrf": backend.csrf_token(),
-                "ssid": TEST_SSID,
-                "password": TEST_PASSWORD,
-            }
-        )
+        status, body = post_connect(backend, server.server_port)
+        assert status == 200
+        assert "接続処理を実行しています" in body
+        wait_for_status(backend, server.server_port, "succeeded")
         connection = HTTPConnection(backend.HOST, server.server_port, timeout=10)
-        connection.request(
-            "POST", "/connect", payload,
-            {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Origin": backend.ORIGIN,
-            },
-        )
+        connection.request("GET", "/")
         response = connection.getresponse()
         body = response.read().decode()
         assert response.status == 200
@@ -715,9 +801,7 @@ def test_connected_state_still_accepts_a_wifi_connection_request(
         assert TEST_PASSWORD not in commands
         assert TEST_SSID not in commands
     finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=5)
+        stop_server(backend, server, thread)
 
 
 def test_oversized_http_body_is_rejected_before_read(backend) -> None:
@@ -741,6 +825,277 @@ def test_oversized_http_body_is_rejected_before_read(backend) -> None:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_initial_response_completes_before_networkmanager_changes(
+    backend, worker,
+) -> None:
+    backend._gate_file.write_text("block\n")
+    server, thread = start_server(backend)
+    try:
+        status, body = post_connect(backend, server.server_port)
+        assert status == 200
+        assert "接続処理を実行しています" in body
+        assert 'http-equiv="refresh"' not in body
+        # Give the worker ample opportunity to misbehave; the response must
+        # have completed before any NetworkManager mutation could begin.
+        time.sleep(0.4)
+        commands = (
+            backend._command_log.read_text()
+            if backend._command_log.exists()
+            else ""
+        )
+        for mutation in (
+            "radio-on", "profile-delete", "profile-create",
+            "profile-configure", "activation",
+        ):
+            assert mutation not in commands
+        backend._gate_file.unlink()
+        data = wait_for_status(backend, server.server_port, "succeeded")
+        assert "接続しました" in data["message"]
+        commands = backend._command_log.read_text()
+        assert "radio-on" in commands
+        assert "activation-passwd-file" in commands
+        assert TEST_PASSWORD not in commands
+        assert TEST_SSID not in commands
+    finally:
+        backend._gate_file.unlink(missing_ok=True)
+        stop_server(backend, server, thread)
+
+
+def test_duplicate_submission_during_attempt_is_serialized_and_dropped(
+    backend, worker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(backend, "network_connected", lambda: True)
+    backend._gate_file.write_text("block\n")
+    server, thread = start_server(backend)
+    second_password = "second : pass9"
+    try:
+        status, _body = post_connect(backend, server.server_port)
+        assert status == 200
+        status, body = post_connect(backend, server.server_port, second_password)
+        assert status == 409
+        assert "実行中" in body
+        assert second_password not in body
+        backend._gate_file.unlink()
+        wait_for_status(backend, server.server_port, "succeeded")
+        commands = backend._command_log.read_text()
+        # Exactly one attempt ran, and it used the first credential only.
+        assert commands.count("profile-create") == 1
+        assert commands.count("activation-passwd-file") == 1
+        assert second_password not in commands
+        assert TEST_PASSWORD not in commands
+        assert TEST_SSID not in commands
+        assert backend.load_credentials() == (TEST_SSID, TEST_PASSWORD)
+    finally:
+        backend._gate_file.unlink(missing_ok=True)
+        stop_server(backend, server, thread)
+
+
+def test_queue_connection_accepts_only_one_attempt(backend) -> None:
+    assert backend.queue_connection("One", TEST_PASSWORD)
+    assert not backend.queue_connection("Two", TEST_PASSWORD)
+    assert backend.connect_status() == (backend.CONNECT_WORKING, "")
+    assert backend._take_pending() == ("One", TEST_PASSWORD)
+    backend._publish_result(False, "error")
+    assert backend.consume_failure() == "error"
+    assert backend.connect_status() == (backend.CONNECT_IDLE, "")
+    assert backend.queue_connection("Three", TEST_PASSWORD)
+
+
+def test_failed_attempt_returns_to_form_and_allows_retry(
+    backend, worker, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    def failing_activation(
+        *args: str, timeout: int = 40, pass_fds: tuple[int, ...] = (),
+    ) -> subprocess.CompletedProcess[str]:
+        del timeout, pass_fds
+        if "connection" in args and "up" in args:
+            return subprocess.CompletedProcess(args, 3, "", "")
+        if args[:2] == ("--wait", "5") and "connection" in args:
+            return subprocess.CompletedProcess(args, 10, "", "")
+        if "connection" in args and "show" in args and "id" not in args:
+            return subprocess.CompletedProcess(args, 0, "", "")
+        if "connection" in args and "show" in args and "id" in args:
+            return subprocess.CompletedProcess(args, 0, "connection.autoconnect:yes\n", "")
+        if "GENERAL.REASON" in args:
+            return subprocess.CompletedProcess(args, 0, "GENERAL.REASON:0\n", "")
+        if args[:3] == ("-t", "--escape", "yes") and "device" in args and "status" in args:
+            return subprocess.CompletedProcess(args, 0, "wlan0:wifi\n", "")
+        if args[:3] == ("-t", "--escape", "yes") and "device" in args:
+            return subprocess.CompletedProcess(args, 0, f"Fixture\\:Guest:90:WPA2\n", "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(backend, "run_nmcli", failing_activation)
+    server, thread = start_server(backend)
+    try:
+        status, body = post_connect(backend, server.server_port)
+        assert status == 200
+        assert "接続処理を実行しています" in body
+        data = wait_for_status(backend, server.server_port, "failed")
+        assert "タイムアウト" in data["message"]
+        assert TEST_PASSWORD not in data["message"]
+        assert TEST_SSID not in data["message"]
+
+        # The failure is consumed by the next form render, which shows the
+        # specific reason and keeps every control interactive for a retry.
+        connection = HTTPConnection(backend.HOST, server.server_port, timeout=10)
+        connection.request("GET", "/")
+        response = connection.getresponse()
+        body = response.read().decode()
+        assert response.status == 200
+        assert "タイムアウト" in body
+        assert '<input type="radio" name="ssid"' in body
+        assert " disabled" not in body
+        assert TEST_PASSWORD not in body
+        assert get_status(backend, server.server_port)["state"] == "idle"
+
+        # A retry after a timeout is a fresh accepted attempt.
+        status, body = post_connect(backend, server.server_port)
+        assert status == 200
+        assert "接続処理を実行しています" in body
+        wait_for_status(backend, server.server_port, "failed")
+        assert backend.load_credentials() is None
+    finally:
+        stop_server(backend, server, thread)
+
+    captured = capsys.readouterr()
+    assert TEST_PASSWORD not in captured.out
+    assert TEST_PASSWORD not in captured.err
+    assert TEST_SSID not in captured.out
+    assert TEST_SSID not in captured.err
+
+
+def test_worker_exception_surfaces_generic_message_without_secrets(
+    backend, worker, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    def exploding_connect(_ssid: str, _password: str) -> tuple[bool, str]:
+        raise RuntimeError("fixture failure")
+
+    monkeypatch.setattr(backend, "connect_wifi", exploding_connect)
+    server, thread = start_server(backend)
+    try:
+        status, _body = post_connect(backend, server.server_port)
+        assert status == 200
+        data = wait_for_status(backend, server.server_port, "failed")
+        assert "内部エラー" in data["message"]
+        assert TEST_PASSWORD not in data["message"]
+        assert TEST_SSID not in data["message"]
+        assert backend.load_credentials() is None
+    finally:
+        stop_server(backend, server, thread)
+
+    captured = capsys.readouterr()
+    assert TEST_PASSWORD not in captured.out
+    assert TEST_PASSWORD not in captured.err
+    assert TEST_SSID not in captured.out
+    assert TEST_SSID not in captured.err
+
+
+def test_get_during_connection_shows_transition_page_without_rescan(
+    backend, worker,
+) -> None:
+    backend._gate_file.write_text("block\n")
+    server, thread = start_server(backend)
+    try:
+        status, _body = post_connect(backend, server.server_port)
+        assert status == 200
+        connection = HTTPConnection(backend.HOST, server.server_port, timeout=10)
+        connection.request("GET", "/")
+        response = connection.getresponse()
+        body = response.read().decode()
+        assert response.status == 200
+        assert "接続処理を実行しています" in body
+        assert '<input type="radio" name="ssid"' not in body
+        # No additional nmcli scan is issued while the worker is busy; the
+        # only scan on record is the worker's own pre-mutation rescan.
+        commands = (
+            backend._command_log.read_text()
+            if backend._command_log.exists()
+            else ""
+        )
+        assert commands.splitlines().count("scan") <= 1
+        backend._gate_file.unlink()
+        wait_for_status(backend, server.server_port, "succeeded")
+    finally:
+        backend._gate_file.unlink(missing_ok=True)
+        stop_server(backend, server, thread)
+
+
+def test_connecting_page_inline_script_matches_csp_hash(backend) -> None:
+    body = backend.render_connecting_page().decode()
+    match = re.search(r"<script>(.*?)</script>", body, re.DOTALL)
+    assert match is not None
+    digest = hashlib.sha256(match.group(1).encode("utf-8")).digest()
+    expected = base64.b64encode(digest).decode("ascii")
+    assert backend.script_csp_hash() == expected
+    assert 'http-equiv="refresh"' not in body
+    assert 'fetch("/status.json"' in body
+
+
+def test_connecting_page_csp_authorizes_only_the_hashed_inline_script(
+    backend, worker,
+) -> None:
+    server, thread = start_server(backend)
+    try:
+        status, _body = post_connect(backend, server.server_port)
+        assert status == 200
+        connection = HTTPConnection(backend.HOST, server.server_port, timeout=10)
+        connection.request("GET", "/")
+        response = connection.getresponse()
+        response.read()
+        csp = response.headers["Content-Security-Policy"]
+        assert f"script-src 'sha256-{backend.script_csp_hash()}'" in csp
+        wait_for_status(backend, server.server_port, "succeeded")
+
+        connection.request("GET", "/status.json")
+        response = connection.getresponse()
+        response.read()
+        assert response.headers["Content-Security-Policy"] == "default-src 'none'"
+        assert response.headers["Cache-Control"] == "no-store"
+    finally:
+        stop_server(backend, server, thread)
+
+
+def test_status_endpoint_is_secret_free_and_reports_transitions(
+    backend, worker,
+) -> None:
+    server, thread = start_server(backend)
+    try:
+        data = get_status(backend, server.server_port)
+        assert data == {"state": "idle", "message": ""}
+        status, _body = post_connect(backend, server.server_port)
+        assert status == 200
+        data = wait_for_status(backend, server.server_port, "succeeded")
+        raw = json.dumps(data, ensure_ascii=False)
+        assert TEST_PASSWORD not in raw
+        assert TEST_SSID not in raw
+    finally:
+        stop_server(backend, server, thread)
+
+
+def test_success_page_falls_back_to_form_when_network_is_lost(
+    backend, worker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(backend, "network_connected", lambda: True)
+    server, thread = start_server(backend)
+    try:
+        status, _body = post_connect(backend, server.server_port)
+        assert status == 200
+        wait_for_status(backend, server.server_port, "succeeded")
+        # The link drops before the kiosk switched routes: the stale success
+        # page must not strand the user, the normal form returns instead.
+        monkeypatch.setattr(backend, "network_connected", lambda: False)
+        connection = HTTPConnection(backend.HOST, server.server_port, timeout=10)
+        connection.request("GET", "/")
+        response = connection.getresponse()
+        body = response.read().decode()
+        assert response.status == 200
+        assert '<input type="radio" name="ssid"' in body
+        assert "接続が完了しました" not in body
+        assert get_status(backend, server.server_port)["state"] == "idle"
+    finally:
+        stop_server(backend, server, thread)
 
 
 def test_partial_http_body_times_out_without_blocking_later_requests(

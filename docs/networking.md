@@ -35,16 +35,25 @@ When the setup screen appears, select a scanned SSID from the large radio-button
 rows and enter its password. The UI intentionally avoids native drop-down
 popups because they are not reliable across all Cage/Wayland hardware paths.
 `再スキャン` submits back to the setup page root and performs a fresh scan;
-the page does not refresh automatically while a credential is being entered.
-The backend performs a new scan immediately before any profile or radio change
-and classifies the selected SSID itself. Only open networks and WPA Personal
-(`wpa-psk`) are supported. WPA2/WPA3 transition advertisements are treated as
-WPA Personal because they retain a WPA2 fallback; SAE-only WPA3, WEP,
-802.1X/Enterprise, OWE, unknown security advertisements, and hidden SSIDs are
-rejected with a specific Japanese message before NetworkManager is changed.
-Open networks accept only an empty password. A WPA Personal passphrase is
-accepted at 8–63 UTF-8 bytes, and a 64-digit hexadecimal raw PSK is also
-accepted.
+the page does not navigate away during connection. The backend performs a new
+scan immediately before any profile or radio change and classifies the selected
+SSID itself. Only open networks and WPA Personal (`wpa-psk`) are supported.
+WPA2/WPA3 transition advertisements are treated as WPA Personal because they
+retain a WPA2 fallback; SAE-only WPA3, WEP, 802.1X/Enterprise, OWE, unknown
+security advertisements, and hidden SSIDs are rejected with a specific Japanese
+message before NetworkManager is changed. Open networks accept only an empty
+password. A WPA Personal passphrase is accepted at 8–63 UTF-8 bytes, and a
+64-digit hexadecimal raw PSK is also accepted.
+
+A network interface change aborts any in-flight browser request, including
+loopback ones (Chromium returns `ERR_NETWORK_CHANGED`). The POST handler
+therefore validates the request, stores the credential in an in-memory queue,
+completes the HTTP response, and only then wakes a single serialized worker
+thread that performs the staged NetworkManager operations. The response is
+written before any `nmcli` call can change the interface configuration, so the
+browser never observes the error page. The worker runs each stage
+(radio enable, profile creation/configuration, WPA activation) in order inside
+a shared lock.
 
 The connection profile is first created with the Polkit-authorized
 `nmcli connection add type wifi ... ssid <SSID>` API. The SSID is not a
@@ -71,12 +80,21 @@ example timeout, NetworkManager stopped, DHCP, authentication, firmware, or
 SSID-not-found) without claiming that a password is wrong. The low-frequency
 route watcher then restarts the kiosk onto the official URL.
 
-Saved-credential restoration and an interactive connection request can overlap
-during startup. The backend serializes those operations around the single
-managed NetworkManager profile, preventing one request from deleting the
-profile just created by the other. NetworkManager output is decoded
-defensively; an SSID containing undecodable bytes is omitted instead of
-breaking the entire scan response.
+While the worker runs, the browser shows a local transition page that polls
+`/status.json` every 1.5 seconds through a `fetch()` call. Because a `fetch()`
+failure is invisible to the document, an interface change during the attempt
+cannot produce a browser error page. When the worker succeeds, the page
+displays a success message; the route watcher restarts the kiosk onto the
+official URL in the background. When the worker fails, the page reloads and
+returns to the interactive form with the specific error. Duplicate submissions
+during an active attempt receive a `409 Conflict` response whose credential is
+dropped immediately and never stored.
+
+Saved-credential restoration at boot goes through the same queue and worker
+thread so an interactive request and a boot-time restoration can never race
+each other's profile changes. NetworkManager output is decoded defensively; an
+SSID containing undecodable bytes is omitted instead of breaking the entire
+scan response.
 
 An active Ethernet route does not suppress saved Wi-Fi restoration. The
 backend skips restoration only when its own fixed Wi-Fi profile is already
