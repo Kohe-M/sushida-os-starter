@@ -228,6 +228,30 @@ fi
 rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$SCREENSHOT_PPM" "$MONITOR_SOCKET" \
     "$RESULT_FILE" "$REPORT"
 
+# ── Safety: EXTRACT_DIR must be a subdirectory of RUN_DIR ──────────────
+RUNAWAY_EXTRACT_DIR() {
+    local _xt _rn
+    _xt="$(cd "$EXTRACT_DIR" && pwd -P 2>/dev/null)" || return 1
+    _rn="$(cd "$RUN_DIR" && pwd -P 2>/dev/null)" || return 1
+    [ "$_xt" != "$_rn" ] || return 1
+    [[ "$_xt" = "$_rn"/.kernel-extract.* ]]
+}
+
+QEMU_PID=""
+cleanup() {
+    if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then
+        kill "$QEMU_PID" 2>/dev/null || true
+        wait "$QEMU_PID" 2>/dev/null || true
+    fi
+    rm -f -- "$MONITOR_SOCKET"
+    if [ -n "${EXTRACT_DIR:-}" ] && [ -d "$EXTRACT_DIR" ] && RUNAWAY_EXTRACT_DIR; then
+        rm -rf -- "$EXTRACT_DIR"
+    fi
+}
+trap cleanup EXIT INT TERM HUP
+# Register the trap before any extraction so that a failure during xorriso
+# or symlink resolution still removes the temporary directory.
+
 # ── Extract kernel and initrd from ISO for direct boot ──────────────────
 EXTRACT_DIR=""
 if [ "$QEMU_SMOKE" = true ]; then
@@ -280,19 +304,7 @@ GIT_COMMIT="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD 2>/dev/null)" || \
     fail "cannot determine current Git commit"
 RUN_STARTED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
-QEMU_PID=""
-cleanup() {
-    if [ -n "$QEMU_PID" ] && kill -0 "$QEMU_PID" 2>/dev/null; then
-        kill "$QEMU_PID" 2>/dev/null || true
-        wait "$QEMU_PID" 2>/dev/null || true
-    fi
-    rm -f -- "$MONITOR_SOCKET"
-    if [ -n "${EXTRACT_DIR:-}" ] && [ -d "$EXTRACT_DIR" ]; then
-        rm -rf -- "$EXTRACT_DIR"
-    fi
-}
-trap cleanup EXIT INT TERM HUP
-
+# ── Launch QEMU ──────────────────────────────────────────────────────────
 qemu-system-x86_64 "${QEMU_ARGS[@]}" &
 QEMU_PID=$!
 

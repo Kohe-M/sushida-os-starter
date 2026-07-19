@@ -62,6 +62,7 @@ _connect_state = CONNECT_IDLE
 _state_message = ""
 _pending_request: tuple[str, str] | None = None
 _request_event = threading.Event()
+_restore_cancelled = threading.Event()
 
 
 def connect_status() -> tuple[str, str]:
@@ -125,6 +126,14 @@ def reset_succeeded() -> None:
         if _connect_state == CONNECT_SUCCEEDED:
             _connect_state = CONNECT_IDLE
             _state_message = ""
+
+
+def _reset_failure() -> None:
+    """Clear a failed attempt so the restore loop may retry."""
+    global _connect_state
+    with _state_lock:
+        if _connect_state == CONNECT_FAILED:
+            _connect_state = CONNECT_IDLE
 
 
 def _connect_worker() -> None:
@@ -789,12 +798,11 @@ def load_credentials() -> tuple[str, str] | None:
 def restore_saved_connection() -> None:
     """Retry saved credential restoration with bounded backoff.
 
-    The saved credential is loaded once per retry so a replacement written
-    by an interactive request is picked up.  The loop waits for the worker
-    to finish each attempt, backoffs on failure, and stops on any of:
-    the managed profile is already active, an interactive request loads a
-    new credential and succeeds, the saved credential disappears, or the
-    retry budget is exhausted.
+    Each retry reloads the persisted credential so a replacement written by
+    an interactive request is picked up.  A failed attempt resets the
+    shared state to IDLE explicitly before the next queue attempt.  When an
+    interactive POST succeeds (CONNECT_SUCCEEDED) or sets the cancellation
+    event, the restore loop terminates permanently for this boot.
     """
     BACKOFF_MIN = 2.0
     BACKOFF_MAX = 16.0
@@ -804,14 +812,19 @@ def restore_saved_connection() -> None:
     deadline = time.monotonic() + 120.0
 
     while time.monotonic() < deadline and retries < MAX_RETRIES:
+        if _restore_cancelled.is_set():
+            return
         if managed_wifi_active():
             return
         saved = load_credentials()
         if saved is None:
             return
-        # If an interactive or previous restore attempt is still running,
-        # wait a moment and check again rather than racing.
+        # If the shared state was left in FAILED by a previous restore
+        # attempt that did not pass through the HTTP handler, clear it so
+        # queue_connection will accept the next retry.
+        _reset_failure()
         if not queue_connection(*saved):
+            # Another request is in flight.  Check the outcome.
             state, _msg = connect_status()
             if state == CONNECT_SUCCEEDED:
                 return
@@ -823,6 +836,8 @@ def restore_saved_connection() -> None:
         # Wait for the worker to complete this attempt.
         while time.monotonic() < deadline:
             time.sleep(1.0)
+            if _restore_cancelled.is_set():
+                return
             if managed_wifi_active():
                 return
             state, _msg = connect_status()
@@ -1197,6 +1212,9 @@ class SetupHandler(BaseHTTPRequestHandler):
             # is dropped immediately and never stored.
             self._reply_connecting(busy=True, status_code=HTTPStatus.CONFLICT)
             return
+        # An interactive request takes priority over any boot-time restore
+        # loop that may still be running.
+        _restore_cancelled.set()
         # The response is completed before the worker may change any
         # NetworkManager state, so the browser can never observe an
         # ERR_NETWORK_CHANGED abort for this POST.
