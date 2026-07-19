@@ -88,6 +88,32 @@ def queue_connection(ssid: str, password: str) -> bool:
     return True
 
 
+def enqueue_interactive(ssid: str, password: str) -> bool:
+    """Submit (or queue for later execution) an interactive connection request.
+
+    Called from the HTTP handler, this function cancels any running boot-
+    time restore and, under the state lock, either starts the request
+    immediately (state is IDLE) or saves it as pending-interactive.  The
+    worker is always woken so it picks up the new request.
+    """
+    global _restore_cancelled, _pending_interactive
+    global _pending_request, _connect_state, _state_message
+
+    _restore_cancelled.set()
+    with _state_lock:
+        if _connect_state == CONNECT_IDLE:
+            _connect_state = CONNECT_WORKING
+            _state_message = ""
+            _pending_request = (ssid, password)
+            _pending_interactive = None
+            queued = True
+        else:
+            _pending_interactive = (ssid, password)
+            queued = False
+        _request_event.set()
+    return queued
+
+
 def start_queued_connection() -> None:
     """Wake the worker.  Called only after the HTTP response is written."""
     _request_event.set()
@@ -1236,20 +1262,12 @@ class SetupHandler(BaseHTTPRequestHandler):
         if validation_error:
             self._setup_error(validation_error, HTTPStatus.OK)
             return
-        if not queue_connection(ssid[0], password[0]):
-            # A restore thread is still running.  Instead of discarding
-            # the interactive credential, save it in the pending-interactive
-            # slot so the worker picks it up as soon as the current attempt
-            # finishes.  The cancel event prevents the restore loop from
-            # submitting another attempt after the worker becomes idle.
-            with _state_lock:
-                _restore_cancelled.set()
-                _pending_interactive = (ssid[0], password[0])
-            # The worker will be woken by _request_event when the current
-            # attempt terminates; let the browser poll the result.
+        if not enqueue_interactive(ssid[0], password[0]):
+            # A restore thread is still running.  The credential has been
+            # saved as pending-interactive; the worker will run it as soon
+            # as the current attempt finishes.
             self._reply_connecting(busy=True, status_code=HTTPStatus.CONFLICT)
             return
-        _restore_cancelled.set()
         self._reply_connecting(busy=False)
         start_queued_connection()
 

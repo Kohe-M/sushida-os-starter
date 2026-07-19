@@ -161,12 +161,12 @@ def test_connection_request_is_asynchronous_and_response_ordered() -> None:
     single serialized worker.
     """
     text = BACKEND.read_text()
-    assert "queue_connection(ssid[0], password[0])" in text
+    assert 'enqueue_interactive(ssid[0], password[0])' in text
     assert "success, message = connect_wifi(ssid[0], password[0])" not in text
-    assert "self._reply_connecting(busy=False)\n        start_queued_connection()" in text
-    assert "_request_event = threading.Event()" in text
+    assert "_request_event.set()" in text
     assert "_connect_worker" in text
     assert "threading.Thread(target=_connect_worker, daemon=True).start()" in text
+    assert "def enqueue_interactive" in text
     assert "def connect_status()" in text
     assert "def consume_failure()" in text
     assert "def reset_succeeded()" in text

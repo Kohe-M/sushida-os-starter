@@ -26,18 +26,19 @@ if [ ! -f "$SERIAL" ] || [ ! -f "$RESULT" ]; then
 fi
 
 # Strip ANSI colour sequences from systemd's console output.
-_serial_plain() { sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g' "$SERIAL"; }
+SERIAL_PLAIN="$RUN_DIR/serial.plain.log"
+sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g' "$SERIAL" > "$SERIAL_PLAIN"
 _exit_report=0
 
 # Verify the bootloader succeeded in reaching kiosk services.
 _serial_kiosk=false
 _serial_graphical=false
-if _serial_plain | grep -Eiq 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)'; then
+if grep -Eiq 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)' "$SERIAL_PLAIN"; then
     _serial_kiosk=true
 else
     echo "ERROR: serial output lacks kiosk service start" >&2
 fi
-if _serial_plain | grep -Fiq 'graphical.target'; then
+if grep -Fiq 'graphical.target' "$SERIAL_PLAIN"; then
     _serial_graphical=true
 else
     echo "ERROR: serial output lacks graphical.target" >&2

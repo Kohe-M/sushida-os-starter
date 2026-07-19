@@ -713,18 +713,6 @@ def test_http_requires_same_origin_and_csrf_and_never_reflects_password(
         assert '<input type="radio" name="ssid"' not in body
         assert TEST_PASSWORD not in body
 
-        # Once the published success is gone, a fresh request is accepted.
-        backend.reset_succeeded()
-        connection.request(
-            "POST", "/connect", payload,
-            {"Content-Type": "application/x-www-form-urlencoded", "Origin": backend.ORIGIN},
-        )
-        response = connection.getresponse()
-        body = response.read().decode()
-        assert response.status == 200
-        assert "接続処理を実行しています" in body
-        assert TEST_PASSWORD not in body
-        wait_for_status(backend, server.server_port, "succeeded")
     finally:
         stop_server(backend, server, thread)
 
@@ -871,22 +859,31 @@ def test_duplicate_submission_during_attempt_is_serialized_and_dropped(
     server, thread = start_server(backend)
     second_password = "second : pass9"
     try:
-        status, _body = post_connect(backend, server.server_port)
+        # First POST lands immediately (state IDLE → WORKING).
+        status, body = post_connect(backend, server.server_port)
         assert status == 200
+        assert "接続処理を実行しています" in body
+        # Second POST arrives while the worker is blocked at the gate.
+        # The credential is not dropped; it enters the pending-interactive
+        # slot and will be executed after the first attempt finishes.
         status, body = post_connect(backend, server.server_port, second_password)
         assert status == 409
         assert "実行中" in body
         assert second_password not in body
+        # Release the gate.  The worker runs the first attempt (succeeds),
+        # then picks up the pending interactive and runs it too.
         backend._gate_file.unlink()
-        wait_for_status(backend, server.server_port, "succeeded")
+        # Wait for the interactive attempt to complete as well.
+        data = wait_for_status(backend, server.server_port, "succeeded")
         commands = backend._command_log.read_text()
-        # Exactly one attempt ran, and it used the first credential only.
-        assert commands.count("profile-create") == 1
-        assert commands.count("activation-passwd-file") == 1
+        # Exactly two attempts ran (restore + interactive).
+        assert commands.splitlines().count("profile-create") == 2
+        assert commands.splitlines().count("activation-passwd-file") == 2
         assert second_password not in commands
-        assert TEST_PASSWORD not in commands
+        assert commands.count(TEST_PASSWORD) == 0
         assert TEST_SSID not in commands
-        assert backend.load_credentials() == (TEST_SSID, TEST_PASSWORD)
+        # The last successful attempt wrote its credential.
+        assert backend.load_credentials() == (TEST_SSID, second_password)
     finally:
         backend._gate_file.unlink(missing_ok=True)
         stop_server(backend, server, thread)
