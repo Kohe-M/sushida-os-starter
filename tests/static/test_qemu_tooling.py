@@ -108,7 +108,8 @@ def test_runner_never_attaches_a_host_disk_or_debug_shell() -> None:
     assert "media=cdrom,readonly=on" in text
     assert "/dev/sd" not in text
     assert "/dev/nvme" not in text
-    assert "-kernel" not in text
+    # The direct-kernel boot is acceptable for the isolated QEMU smoke entry.
+    # Debug shell init=/bin/sh or rd.break must never appear.
     assert "init=/bin/sh" not in text
     assert "rd.break" not in text
 
@@ -170,11 +171,15 @@ def test_bios_and_uefi_boot_menus_have_bounded_autoboot() -> None:
     isolinux = ISOLINUX.read_text()
     grub = GRUB.read_text()
     assert "default vesamenu.c32" in isolinux
-    assert "timeout 30" in isolinux
+    assert "TIMEOUT 30" in isolinux or "timeout 30" in isolinux
     assert "timeout 0" not in isolinux
-    assert "set default=1" in grub
+    assert "ALLOWOPTIONS 0" in isolinux
+    assert "NOESCAPE 1" in isolinux
+    assert "set default=0" in grub
     assert "set timeout=3" in grub
     assert "set timeout=0" not in grub
+    assert '--unrestricted' in grub
+    assert 'set superusers="kiosk"' in grub
 
 
 def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
@@ -187,29 +192,33 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     chromium_renderer = "systemd.setenv=SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1"
     force_offline = "systemd.setenv=SUSHIDA_QEMU_FORCE_OFFLINE=1"
 
-    assert marker in isolinux
-    assert marker in grub
-    assert renderer in isolinux
-    assert renderer in grub
-    assert chromium_renderer in isolinux
-    assert chromium_renderer in grub
-    assert force_offline in isolinux
-    assert force_offline in grub
-    assert sum(line.startswith("label ") for line in isolinux.splitlines()) == 1
-    assert "label qemu-smoke-amd64" in isolinux
-    assert "menu default" not in isolinux
-    assert marker not in GRUB.read_text().split("menuentry \"QEMU smoke", 1)[0]
-    assert force_offline not in GRUB.read_text().split("menuentry \"QEMU smoke", 1)[0]
-    assert "--hotkey=q" in grub
+    # Production bootloader configs must not carry the software-renderer
+    # markers; they are passed only through direct kernel boot in the
+    # QEMU-only test path.
+    assert marker not in isolinux
+    assert marker not in grub
+    assert renderer not in isolinux
+    assert renderer not in grub
+    assert chromium_renderer not in isolinux
+    assert chromium_renderer not in grub
+    assert force_offline not in isolinux
+    assert force_offline not in grub
     assert "--qemu-smoke" in runner
-    assert "BdsDxe: starting Boot" in runner
-    assert "sendkey esc" in runner
-    assert "sendkey up" in runner
-    assert "sendkey q" in runner
+    # The QEMU-only test uses xorriso to extract the kernel and initrd from
+    # the production ISO, then boots with a direct software-renderer cmdline.
+    assert "QEMU_ARGS+=(" in runner
+    assert "-kernel " in runner
+    assert "EXTRACT_DIR/vmlinuz" in runner
     assert "QEMU_BOOT_MARKER" in runner
     assert 'grep -Fq "$QEMU_BOOT_MARKER"' in runner
-    assert "for _wave" in runner
-    assert "for _quiet" in runner
+    # Hotkey-based selection is no longer needed; the kernel cmdline is
+    # passed directly.
+    assert "sendkey esc" not in runner
+    assert "sendkey up" not in runner
+    assert "sendkey q" not in runner
+    assert "BdsDxe: starting Boot" not in runner
+    assert "xorriso -indev" in runner
+    assert "EXTRACT_DIR" in runner
     assert 'QEMU_ARGS+=(-vga std)' in runner
     assert 'QEMU_ARGS+=(-device virtio-vga)' in runner
     assert 'rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$SCREENSHOT_PPM" "$MONITOR_SOCKET"' in runner
