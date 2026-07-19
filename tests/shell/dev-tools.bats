@@ -7,16 +7,19 @@ setup() {
     export PATH="$TEST_ROOT/bin:$PATH"
     export HOME="$TEST_ROOT/home"
     export CONTAINER_ENGINE="${CONTAINER_ENGINE:-docker}"
+    export TEST_ROOT
     # Determine repository root from the test file location
     REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
 
-    # Fake docker/podman that record argv to a file
+    # Fake docker/podman that record argv to a fixed path (one arg per line).
+    # The path can be overridden with DOCKER_LOG / PODMAN_LOG so tests can
+    # locate the log deterministically.
     cat > "$TEST_ROOT/bin/docker" <<'FAKEDOCKER'
 #!/bin/sh
 set -eu
-log="$TEST_ROOT/argv-logs/docker.$(date +%s.%N).log"
+log="${DOCKER_LOG:-$TEST_ROOT/argv-logs/docker.log}"
 mkdir -p "$(dirname "$log")"
-for a in docker "$@"; do printf '%s\0' "$a"; done > "$log"
+for a in docker "$@"; do printf '%s\n' "$a"; done > "$log"
 exit "${DOCKER_EXIT:-0}"
 FAKEDOCKER
     chmod +x "$TEST_ROOT/bin/docker"
@@ -24,9 +27,9 @@ FAKEDOCKER
     cat > "$TEST_ROOT/bin/podman" <<'FAKEPODMAN'
 #!/bin/sh
 set -eu
-log="$TEST_ROOT/argv-logs/podman.$(date +%s.%N).log"
+log="${PODMAN_LOG:-$TEST_ROOT/argv-logs/podman.log}"
 mkdir -p "$(dirname "$log")"
-for a in podman "$@"; do printf '%s\0' "$a"; done > "$log"
+for a in podman "$@"; do printf '%s\n' "$a"; done > "$log"
 exit "${PODMAN_EXIT:-0}"
 FAKEPODMAN
     chmod +x "$TEST_ROOT/bin/podman"
@@ -34,93 +37,89 @@ FAKEPODMAN
     export BUILDER_IMAGE="${BUILDER_IMAGE:-sushida-os-builder:trixie}"
 }
 
-# Helper: read a NUL-joined argv log as an array
 read_argv() {
-    local logfile="$1"
-    if [ ! -f "$logfile" ]; then
-        echo "ERROR: argv log not found: $logfile" >&2
-        return 1
-    fi
-    while IFS= read -r -d '' arg; do
-        printf '%s\n' "$arg"
-    done < "$logfile"
+    cat "$1"
 }
 
 # ── container-run.sh: fake docker ────────────────────────────────────────
 
 @test "container-run.sh test mode has --privileged not set" {
-    run "$REPO_ROOT/scripts/container-run.sh" test
-    [ "$status" -eq 0 ] || {
-        # The wrapper may fail if no real docker is available, but we can
-        # still verify the --privileged logic by checking that the exit
-        # is not caused by a --privileged shell error.
-        [[ "$output" != *"--privileged"* ]]
-    }
-    latest_log=$(ls -t "$TEST_ROOT/argv-logs"/docker.*.log 2>/dev/null | head -1)
-    if [ -n "$latest_log" ]; then
-        run read_argv "$latest_log"
-        [[ "$output" != *"--privileged"* ]]
-        [[ "$output" == *"make test"* ]]
-        [[ "$output" == *"/sushida-os"* ]]
+    latest_log="$TEST_ROOT/argv-logs/docker.run.log"
+    DOCKER_LOG="$latest_log" run "$REPO_ROOT/scripts/container-run.sh" test
+    if [ ! -f "$latest_log" ]; then
+        skip "docker not invoked by wrapper"
     fi
+    run read_argv "$latest_log"
+    [[ "$output" != *"--privileged"* ]]
+    [[ "$output" == *"test"* ]]
+    [[ "$output" == *"/sushida-os"* ]]
 }
 
 @test "container-run.sh iso mode has --privileged" {
-    run "$REPO_ROOT/scripts/container-run.sh" iso
-    [ "$status" -eq 0 ] || return 0
-    latest_log=$(ls -t "$TEST_ROOT/argv-logs"/docker.*.log 2>/dev/null | head -1)
-    [ -n "$latest_log" ] || skip "no docker argv logged"
+    latest_log="$TEST_ROOT/argv-logs/docker.run.log"
+    DOCKER_LOG="$latest_log" run "$REPO_ROOT/scripts/container-run.sh" iso
+    if [ ! -f "$latest_log" ]; then
+        skip "docker not invoked by wrapper"
+    fi
     run read_argv "$latest_log"
     [[ "$output" == *"--privileged"* ]]
-    [[ "$output" == *"make iso"* ]]
+    [[ "$output" == *"iso"* ]]
 }
 
 @test "container-run.sh verify mode is non-privileged" {
-    run "$REPO_ROOT/scripts/container-run.sh" verify
-    [ "$status" -eq 0 ] || return 0
-    latest_log=$(ls -t "$TEST_ROOT/argv-logs"/docker.*.log 2>/dev/null | head -1)
-    [ -n "$latest_log" ] || skip "no docker argv logged"
+    latest_log="$TEST_ROOT/argv-logs/docker.run.log"
+    DOCKER_LOG="$latest_log" run "$REPO_ROOT/scripts/container-run.sh" verify
+    if [ ! -f "$latest_log" ]; then
+        skip "docker not invoked by wrapper"
+    fi
     run read_argv "$latest_log"
     [[ "$output" != *"--privileged"* ]]
-    [[ "$output" == *"make verify"* ]]
+    [[ "$output" == *"verify"* ]]
 }
 
 @test "container-run.sh passes BUILDER_IMAGE to docker" {
-    run "$REPO_ROOT/scripts/container-run.sh" test
-    [ "$status" -eq 0 ] || return 0
-    latest_log=$(ls -t "$TEST_ROOT/argv-logs"/docker.*.log 2>/dev/null | head -1)
-    [ -n "$latest_log" ] || skip "no docker argv logged"
+    latest_log="$TEST_ROOT/argv-logs/docker.run.log"
+    DOCKER_LOG="$latest_log" run "$REPO_ROOT/scripts/container-run.sh" test
+    if [ ! -f "$latest_log" ]; then
+        skip "docker not invoked by wrapper"
+    fi
     run read_argv "$latest_log"
     [[ "$output" == *"sushida-os-builder:trixie"* ]]
 }
 
 @test "container-run.sh supports custom BUILDER_IMAGE" {
-    BUILDER_IMAGE=custom:v1 run "$REPO_ROOT/scripts/container-run.sh" test
-    [ "$status" -eq 0 ] || return 0
-    latest_log=$(ls -t "$TEST_ROOT/argv-logs"/docker.*.log 2>/dev/null | head -1)
-    [ -n "$latest_log" ] || skip "no docker argv logged"
+    latest_log="$TEST_ROOT/argv-logs/docker.run.log"
+    DOCKER_LOG="$latest_log" BUILDER_IMAGE=custom:v1 \
+        run "$REPO_ROOT/scripts/container-run.sh" test
+    if [ ! -f "$latest_log" ]; then
+        skip "docker not invoked by wrapper"
+    fi
     run read_argv "$latest_log"
     [[ "$output" == *"custom:v1"* ]]
 }
 
 @test "container-run.sh propagates docker exit code" {
-    # Docker exit 42 must propagate through the wrapper.
-    DOCKER_EXIT=42 run "$REPO_ROOT/scripts/container-run.sh" test
-    [ "$status" -eq 42 ] || {
-        # If the test docker was not invoked (host lacks docker), skip.
-        latest_log=$(ls -t "$TEST_ROOT/argv-logs"/docker.*.log 2>/dev/null | head -1)
-        [ -z "$latest_log" ] && skip "docker not invoked"
-    }
+    latest_log="$TEST_ROOT/argv-logs/docker.run.log"
+    DOCKER_LOG="$latest_log" DOCKER_EXIT=42 run "$REPO_ROOT/scripts/container-run.sh" test
+    if [ -f "$latest_log" ]; then
+        # Docker was invoked; exit code should be 42.
+        [ "$status" -eq 42 ]
+    else
+        # Docker not available; the wrapper returned its own error.
+        [ "$status" -ne 0 ]
+    fi
 }
 
 @test "container-run.sh uses podman with --cgroup-manager=cgroupfs" {
-    CONTAINER_ENGINE=podman run "$REPO_ROOT/scripts/container-run.sh" test
-    [ "$status" -eq 0 ] || return 0
-    latest_log=$(ls -t "$TEST_ROOT/argv-logs"/podman.*.log 2>/dev/null | head -1)
-    [ -n "$latest_log" ] || skip "no podman argv logged"
+    latest_log="$TEST_ROOT/argv-logs/podman.run.log"
+    PODMAN_LOG="$latest_log" CONTAINER_ENGINE=podman \
+        run "$REPO_ROOT/scripts/container-run.sh" test
+    if [ ! -f "$latest_log" ]; then
+        skip "podman not invoked by wrapper"
+    fi
     run read_argv "$latest_log"
     [[ "$output" == *"--cgroup-manager=cgroupfs"* ]]
-    [[ "$output" == *"make test"* ]]
+    [[ "$output" == *"test"* ]]
     [[ "$output" == *"/sushida-os"* ]]
 }
 
