@@ -194,7 +194,10 @@ expected = {
 for key, value in expected.items():
     if policy.get(key) != value or type(policy.get(key)) is not type(value):
         raise SystemExit(f"invalid Chromium policy {key}")
-if policy.get("URLBlocklist") != ["*", "view-source:*"]:
+if policy.get("URLBlocklist") != [
+    "*", "view-source:*", "chrome://*",
+    "chrome-untrusted://*", "devtools://*",
+]:
     raise SystemExit("invalid URLBlocklist")
 if policy.get("URLAllowlist") != [
     "https://.sushida.net:443",

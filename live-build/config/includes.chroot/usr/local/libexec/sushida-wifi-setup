@@ -15,6 +15,7 @@ import stat
 import subprocess
 import tempfile
 import threading
+import time
 from contextlib import contextmanager
 from collections.abc import Iterator
 from http import HTTPStatus
@@ -786,13 +787,32 @@ def load_credentials() -> tuple[str, str] | None:
 
 
 def restore_saved_connection() -> None:
+    """Retry saved credential restoration with bounded exponential backoff.
+
+    The initial scan of Wi-Fi devices, AP firmwares, or kernel drivers may
+    not be ready at boot time.  A single pass would silently skip
+    restoration, leaving the user with the setup page even though a saved
+    credential exists.  The retry stops when the profile becomes active,
+    an interactive request supplies a new credential, the service stops,
+    or the maximum duration is reached.
+    """
     saved = load_credentials()
-    if saved is None or managed_wifi_active():
+    if saved is None:
         return
-    # Boot-time restoration goes through the same serialized worker as an
-    # interactive submission so the two can never race profile changes.
-    if queue_connection(*saved):
-        start_queued_connection()
+    delay = 1.0
+    deadline = time.monotonic() + 120.0
+    while time.monotonic() < deadline:
+        if managed_wifi_active():
+            return
+        if queue_connection(*saved):
+            start_queued_connection()
+            return
+        state, _message = connect_status()
+        if state == CONNECT_SUCCEEDED:
+            # An interactive or earlier restore succeeded; no retry needed.
+            return
+        time.sleep(delay)
+        delay = min(delay * 1.5, 16.0)
 
 
 def render_page(message: str = "", success: bool = False) -> bytes:

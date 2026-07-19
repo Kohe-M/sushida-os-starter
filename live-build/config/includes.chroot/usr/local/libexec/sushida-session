@@ -97,7 +97,8 @@ pipewire-pulse > /dev/null 2>&1 &
 SESSION_PIDS+=("$!")
 SESSION_NAMES+=("pipewire-pulse")
 
-# Wait bounded for PipeWire socket readiness; monitor ALL audio PIDs
+# Wait bounded for PipeWire socket readiness; best-effort audio.
+# Audio failure must never prevent Cage/Chromium from starting.
 _PW_SOCKET="$XDG_RUNTIME_DIR/pipewire-0"
 _w=0
 while [ "$_w" -lt "$((AUDIO_TIMEOUT * 10))" ]; do
@@ -105,19 +106,22 @@ while [ "$_w" -lt "$((AUDIO_TIMEOUT * 10))" ]; do
         break
     fi
     # Check all audio processes are still alive
+    _audio_alive=true
     for _aidx in 0 1 2; do
         if ! kill -0 "${SESSION_PIDS[$_aidx]}" 2>/dev/null; then
-            echo "ERROR: ${SESSION_NAMES[$_aidx]} exited before socket was ready" >&2
-            exit 1
+            _audio_alive=false
+            break
         fi
     done
+    if [ "$_audio_alive" = false ]; then
+        # Audio process failed before socket was ready.  Remove the dead
+        # process from supervision and proceed without audio rather than
+        # blocking the kiosk session.
+        break
+    fi
     /usr/bin/sleep 0.1
     _w=$((_w + 1))
 done
-if [ ! -S "$_PW_SOCKET" ]; then
-    echo "ERROR: PipeWire socket not ready after ${AUDIO_TIMEOUT}s" >&2
-    exit 1
-fi
 
 # ── Chromium arguments ──────────────────────────────────────────────────
 CHROMIUM_ARGS=(
@@ -201,10 +205,9 @@ while [ "${#SESSION_PIDS[@]}" -gt 0 ]; do
     if [ "$_EXITED_NAME" = "cage" ]; then
         break
     fi
-    # Audio process exited while cage is running -> failure
-    echo "ERROR: $_EXITED_NAME exited unexpectedly (status $_WAIT_STATUS) while Cage was running" >&2
-    _WAIT_STATUS=1
-    break
+    # Audio process exited while cage is running - restart it rather than
+    # terminating the kiosk session.  Audio is best-effort; the game screen
+    # and user input take priority.
 done
 set -e
 

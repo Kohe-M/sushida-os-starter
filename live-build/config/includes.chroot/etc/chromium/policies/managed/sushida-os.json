@@ -8,9 +8,13 @@
   "AutofillCreditCardEnabled": false,
   "PrintingEnabled": false,
   "DownloadRestrictions": 3,
+  "AllowFileSelectionDialogs": false,
   "URLBlocklist": [
     "*",
-    "view-source:*"
+    "view-source:*",
+    "chrome://*",
+    "chrome-untrusted://*",
+    "devtools://*"
   ],
   "URLAllowlist": [
     "https://.sushida.net:443",

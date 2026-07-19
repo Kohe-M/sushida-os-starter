@@ -36,7 +36,7 @@ EXPECTED_ALLOWLIST = {
     "http://127.0.0.1:8787",
 }
 
-EXPECTED_BLOCKLIST = {"*", "view-source:*"}
+EXPECTED_BLOCKLIST = {"*", "view-source:*", "chrome://*", "chrome-untrusted://*", "devtools://*"}
 
 
 def _policy_ordered_pairs() -> list[tuple[str, object]]:
@@ -217,6 +217,9 @@ def test_url_blocklist_entries() -> None:
         f"URLBlocklist = {set(bl)}, expected {EXPECTED_BLOCKLIST}"
     )
     assert len(bl) == len(EXPECTED_BLOCKLIST)
+    assert "chrome://*" in bl
+    assert "devtools://*" in bl
+    assert "chrome-untrusted://*" in bl
 
 
 # ── URL allowlist — exact entries ──────────────────────────────────────────
