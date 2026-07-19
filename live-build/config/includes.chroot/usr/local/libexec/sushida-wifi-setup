@@ -910,6 +910,9 @@ def restore_saved_connection() -> None:
                 return
             if managed_wifi_active():
                 return
+            with _state_lock:
+                if _pending_interactive is not None:
+                    return
             state, _msg = connect_status()
             if state == CONNECT_WORKING:
                 continue

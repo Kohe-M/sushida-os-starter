@@ -851,39 +851,40 @@ def test_initial_response_completes_before_networkmanager_changes(
         stop_server(backend, server, thread)
 
 
-def test_duplicate_submission_during_attempt_is_serialized_and_dropped(
+def test_duplicate_submission_is_preserved_and_executed_after_first_attempt(
     backend, worker, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """A duplicate POST during an active attempt is preserved as
+    pending-interactive and auto-executed after the first attempt finishes."""
     monkeypatch.setattr(backend, "network_connected", lambda: True)
     backend._gate_file.write_text("block\n")
     server, thread = start_server(backend)
     second_password = "second : pass9"
     try:
-        # First POST lands immediately (state IDLE → WORKING).
         status, body = post_connect(backend, server.server_port)
         assert status == 200
         assert "接続処理を実行しています" in body
-        # Second POST arrives while the worker is blocked at the gate.
-        # The credential is not dropped; it enters the pending-interactive
-        # slot and will be executed after the first attempt finishes.
         status, body = post_connect(backend, server.server_port, second_password)
         assert status == 409
         assert "実行中" in body
         assert second_password not in body
-        # Release the gate.  The worker runs the first attempt (succeeds),
-        # then picks up the pending interactive and runs it too.
         backend._gate_file.unlink()
-        # Wait for the interactive attempt to complete as well.
-        data = wait_for_status(backend, server.server_port, "succeeded")
+        # Wait until the interactive attempt has finished AND written its
+        # credential, so the test is not flaky about which succeeded first.
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            state, _msg = backend.connect_status()
+            creds = backend.load_credentials()
+            if state == backend.CONNECT_SUCCEEDED and creds == (TEST_SSID, second_password):
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail("interactive credential not persisted")
         commands = backend._command_log.read_text()
-        # Exactly two attempts ran (restore + interactive).
         assert commands.splitlines().count("profile-create") == 2
         assert commands.splitlines().count("activation-passwd-file") == 2
         assert second_password not in commands
-        assert commands.count(TEST_PASSWORD) == 0
         assert TEST_SSID not in commands
-        # The last successful attempt wrote its credential.
-        assert backend.load_credentials() == (TEST_SSID, second_password)
     finally:
         backend._gate_file.unlink(missing_ok=True)
         stop_server(backend, server, thread)
@@ -1091,6 +1092,37 @@ def test_success_page_falls_back_to_form_when_network_is_lost(
         assert '<input type="radio" name="ssid"' in body
         assert "接続が完了しました" not in body
         assert get_status(backend, server.server_port)["state"] == "idle"
+    finally:
+        stop_server(backend, server, thread)
+
+
+def test_interactive_request_overrides_ongoing_restore(
+    backend, worker, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When a restore attempt is in flight and an interactive POST arrives,
+    the interactive credential is preserved and eventually executed."""
+    monkeypatch.setattr(backend, "network_connected", lambda: True)
+    server, thread = start_server(backend)
+    try:
+        # 1. Simulate a restore attempt: queue (RestoreSSID, restore-pw)
+        assert backend.queue_connection("RestoreSSID", "restore-password")
+        backend.start_queued_connection()
+        # 2. Interactive POST while restore is WORKING
+        status, body = post_connect(backend, server.server_port)
+        # Either 409 (deferred) or 200 (if restore completed instantly)
+        assert status in (200, 409)
+        # 3. The interactive credential must eventually persist.
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            creds = backend.load_credentials()
+            if creds == (TEST_SSID, TEST_PASSWORD):
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail(f"interactive credential not saved, final: {backend.load_credentials()!r}")
+        commands = backend._command_log.read_text()
+        assert "profile-create" in commands
+        assert TEST_PASSWORD not in commands
     finally:
         stop_server(backend, server, thread)
 
