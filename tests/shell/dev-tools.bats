@@ -208,6 +208,21 @@ argv_contains() {
     run "$REPO_ROOT/scripts/doctor.sh" test
     [ "$status" -eq 0 ]
     [[ "$output" == *"repository_root=PASS"* ]]
+    [[ "$output" == *"pytest_module=PASS"* ]]
+}
+
+@test "doctor.sh reports pytest failure when module is missing" {
+    run env PATH="$TEST_ROOT/bin" python3 -c 'import pytest' 2>/dev/null || true
+    # Create a stub python3 that rejects pytest import
+    cat > "$TEST_ROOT/bin/python3" <<'STUB'
+#!/bin/sh
+[ "$*" = "-c import pytest" ] && exit 1
+exec /usr/bin/python3 "$@"
+STUB
+    chmod +x "$TEST_ROOT/bin/python3"
+    run "$REPO_ROOT/scripts/doctor.sh" test
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"pytest_module=FAIL"* ]]
 }
 
 @test "doctor.sh rejects unknown profile" {

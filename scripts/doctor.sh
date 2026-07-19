@@ -26,25 +26,16 @@ check() {
     fi
 }
 
-check_path() {
-    local label="$1" path="$2"
-    if [ -e "$path" ] && [ ! -L "$path" ]; then
-        echo "${label}=PASS"
-    elif [ -L "$path" ]; then
-        echo "${label}=WARN (symlink)"
-    else
-        echo "${label}=WARN (missing)"
-    fi
-}
-
 # ── Common (test profile) ────────────────────────────────────────────────
 echo "### Profile: ${PROFILE}"
 check "git" git
 check "make" make
 check "python3" python3
-check "pytest" pytest
 check "shellcheck" shellcheck
 check "bats" bats
+# pytest CLI is optional; the Makefile uses python3 -m pytest.
+check "pytest_cli" pytest WARN
+# The Python module is what actually needs to be importable.
 if python3 -c 'import pytest' > /dev/null 2>&1; then
     echo "pytest_module=PASS"
 else

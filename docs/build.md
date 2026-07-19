@@ -18,8 +18,8 @@ make doctor-qemu      # also check QEMU, OVMF, socat
 ### Local testing (no container)
 
 ```bash
-make test-static      # 598+ pytest checks
-make test-shell       # ShellCheck + 143+ BATS tests
+make test-static      # static pytest suite
+make test-shell       # ShellCheck + BATS suite
 make test             # both of the above
 make ci               # test + git diff --check
 ```
@@ -49,7 +49,7 @@ The `container-*` targets use `scripts/container-run.sh`, which:
 | `make test`, `make ci` | None | No |
 | `make container-test` | Container engine only | No |
 | `make iso` (direct host) | Root | Yes — filesystem mounts |
-| `make container-iso` | `--privileged` in container | No (container only) |
+| `make container-iso` | `--privileged` container | Elevated; current scripts are designed not to target host devices |
 | `make test-qemu` | Container engine + KVM group | No |
 | `scripts/flash.sh` | Root + explicit device confirmation | Yes — reads after write |
 
