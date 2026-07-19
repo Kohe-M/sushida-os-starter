@@ -30,15 +30,17 @@ _serial_plain() { sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g' "$SERIAL"; }
 _exit_report=0
 
 # Verify the bootloader succeeded in reaching kiosk services.
-if ! _serial_plain | grep -Eiq 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)'; then
+_serial_kiosk=false
+_serial_graphical=false
+if _serial_plain | grep -Eiq 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)'; then
+    _serial_kiosk=true
+else
     echo "ERROR: serial output lacks kiosk service start" >&2
-    _exit_report=1
 fi
-if [ $_exit_report -eq 0 ]; then
-    if ! _serial_plain | grep -Fiq 'graphical.target'; then
-        echo "ERROR: serial output lacks graphical.target" >&2
-        _exit_report=1
-    fi
+if _serial_plain | grep -Fiq 'graphical.target'; then
+    _serial_graphical=true
+else
+    echo "ERROR: serial output lacks graphical.target" >&2
 fi
 
 # Verify the run completed cleanly.
@@ -63,11 +65,15 @@ fi
 
 _sha_ok=true
 _git_ok=true
+_boot_ok=true
 if [ -z "$EXPECTED_SHA" ] || [ "$ISO_SHA256" != "$EXPECTED_SHA" ]; then
     _sha_ok=false; _exit_report=1
 fi
 if [ -z "$BUILD_COMMIT" ] || [ "$CURRENT_HEAD" != "$BUILD_COMMIT" ]; then
     _git_ok=false; _exit_report=1
+fi
+if [ "$_serial_kiosk" != true ] || [ "$_serial_graphical" != true ]; then
+    _boot_ok=false; _exit_report=1
 fi
 
 {
@@ -85,14 +91,15 @@ fi
         echo "BUILD_COMMIT=${BUILD_COMMIT:-missing}"
         echo "CURRENT_HEAD=$CURRENT_HEAD"
     fi
+    if [ "$_boot_ok" = true ]; then
+        echo "AUTOMATED: production bootloader reached kiosk service: PASS"
+    else
+        echo "AUTOMATED: production bootloader serial evidence: FAIL"
+    fi
     echo "ISO_SHA256=$ISO_SHA256"
-    echo "AUTOMATED: production bootloader reached kiosk service: PASS"
     echo "GIT_COMMIT=$RUN_GIT_COMMIT"
     echo "MANUAL: verify the bootloader config visually: UNVERIFIED"
 } > "$REPORT"
 
 cat "$REPORT"
 exit $_exit_report
-
-cat "$REPORT"
-exit 0

@@ -159,6 +159,11 @@ else
         waited=$((waited + 1))
     done
     if [ "$ACTIVE_ROUTE" = "online" ]; then
+        # Remove any stale time-sync marker left from a previous boot
+        # where the RTC was wrong.  Also remove it when the clock is
+        # already plausible so the network watcher can route to online.
+        rm -f -- "$BASE_RUNTIME/time-sync-required"
+        
         # Synchronize the system clock before opening the HTTPS target.
         # A severely wrong RTC causes TLS certificate verification to fail
         # even when the network is fully operational.
@@ -176,14 +181,16 @@ else
                 _time_synced=true; break
             fi
             if [ "$_clock_plausible" = true ]; then
-                # The clock is within a plausible window even if not synced.
                 break
             fi
             sleep 1; _time_wait=$((_time_wait + 1))
         done
-        if [ "$_time_synced" = false ] && [ "$_clock_plausible" = false ]; then
-            # The clock is outside the build/target window and NTP sync
-            # has not completed; use a local page so the operator knows.
+        if [ "$_time_synced" = false ] && [ "$_clock_plausible" = false ];
+        then
+            # Signal the network watcher to keep the kiosk offline until
+            # the clock is corrected; otherwise it would see connected:full
+            # and restart onto the HTTPS target repeatedly.
+            : > "$BASE_RUNTIME/time-sync-required"
             START_URL="$OFFLINE_URL"
             ACTIVE_ROUTE="offline"
         fi

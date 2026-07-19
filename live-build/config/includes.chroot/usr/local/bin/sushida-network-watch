@@ -7,6 +7,7 @@ readonly PROD_CONFIG="/etc/sushida-os/config.env"
 readonly PROD_RUNTIME="/run/sushida-os"
 readonly MIN_INTERVAL=30
 readonly MAX_INTERVAL=3600
+readonly TIME_SYNC_REQUIRED_MARKER="/run/sushida-os/time-sync-required"
 
 CONFIG_FILE="${SUSHIDA_OS_CONFIG:-$PROD_CONFIG}"
 RUNTIME_DIR="${SUSHIDA_OS_RUNTIME:-$PROD_RUNTIME}"
@@ -94,6 +95,16 @@ desired_route() {
     local status state connectivity
     if [ "$FORCE_OFFLINE" = true ]; then
         printf '%s\n' offline
+    elif [ -f "$TIME_SYNC_REQUIRED_MARKER" ]; then
+        # The launcher detected an implausible system clock and is waiting
+        # for NTP synchronisation.  Keep the kiosk on a local page until
+        # the clock is corrected; do not restart onto the HTTPS target.
+        if timedatectl show -p NTPSynchronized --value 2>/dev/null | grep -qx yes; then
+            rm -f -- "$TIME_SYNC_REQUIRED_MARKER"
+        else
+            printf '%s\n' offline
+            return
+        fi
     elif status=$(LC_ALL=C nmcli -t -f STATE,CONNECTIVITY general 2>/dev/null); then
         state="${status%%:*}"
         connectivity="${status#*:}"

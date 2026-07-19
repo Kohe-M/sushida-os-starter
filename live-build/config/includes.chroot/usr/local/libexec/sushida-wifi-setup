@@ -61,6 +61,7 @@ _state_lock = threading.Lock()
 _connect_state = CONNECT_IDLE
 _state_message = ""
 _pending_request: tuple[str, str] | None = None
+_pending_interactive: tuple[str, str] | None = None
 _request_event = threading.Event()
 _restore_cancelled = threading.Event()
 
@@ -137,12 +138,36 @@ def _reset_failure() -> None:
 
 
 def _connect_worker() -> None:
-    """Single serialized worker; the only caller of the nmcli stage chain."""
+    """Single serialized worker; the only caller of the nmcli stage chain.
+
+    After each completed attempt the worker checks whether an interactive
+    request arrived while a previous restore-attempt was running and, if
+    so, processes it immediately instead of waiting for the next event.
+    """
+    global _pending_interactive, _pending_request, _connect_state, _state_message
+
     while True:
-        _request_event.wait()
-        _request_event.clear()
+        # Check for a pending interactive request that arrived during the
+        # previous attempt.  The outer lock ensures the state transition
+        # and credential handover are atomic.
+        with _state_lock:
+            if _pending_interactive is not None:
+                if _connect_state in (CONNECT_FAILED, CONNECT_SUCCEEDED):
+                    # Consume the stale terminal state left by the previous
+                    # attempt so queue_connection will accept the interactive
+                    # request below.
+                    _connect_state = CONNECT_IDLE
+                    _state_message = ""
+                if _connect_state == CONNECT_IDLE:
+                    ssid, password = _pending_interactive
+                    _pending_interactive = None
+                    _connect_state = CONNECT_WORKING
+                    _pending_request = (ssid, password)
+
         pending = _take_pending()
         if pending is None:
+            _request_event.wait()
+            _request_event.clear()
             continue
         ssid, password = pending
         try:
@@ -816,6 +841,11 @@ def restore_saved_connection() -> None:
             return
         if managed_wifi_active():
             return
+        # If an interactive request was submitted while we were in backoff
+        # or about to retry, stop immediately — the worker will handle it.
+        with _state_lock:
+            if _pending_interactive is not None:
+                return
         saved = load_credentials()
         if saved is None:
             return
@@ -1207,11 +1237,16 @@ class SetupHandler(BaseHTTPRequestHandler):
             self._setup_error(validation_error, HTTPStatus.OK)
             return
         if not queue_connection(ssid[0], password[0]):
-            # A restore thread is still running or the previous restore
-            # left the state in FAILED before resetting.  Cancel any
-            # pending restore attempts so the next interactive request
-            # can proceed without racing.
-            _restore_cancelled.set()
+            # A restore thread is still running.  Instead of discarding
+            # the interactive credential, save it in the pending-interactive
+            # slot so the worker picks it up as soon as the current attempt
+            # finishes.  The cancel event prevents the restore loop from
+            # submitting another attempt after the worker becomes idle.
+            with _state_lock:
+                _restore_cancelled.set()
+                _pending_interactive = (ssid[0], password[0])
+            # The worker will be woken by _request_event when the current
+            # attempt terminates; let the browser poll the result.
             self._reply_connecting(busy=True, status_code=HTTPStatus.CONFLICT)
             return
         _restore_cancelled.set()
