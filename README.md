@@ -27,20 +27,26 @@ Hardware audio, GPU/WebGL acceleration, physical shortcut resistance, power
 loss, and representative device compatibility require manual acceptance. Do
 not infer those results from static tests or package presence.
 
-## Quick start with Docker
+## Quick start (host tools)
+
+```bash
+make doctor           # check host prerequisites
+make test             # run static tests and shell tests
+make ci               # non-destructive checks (test + git diff)
+```
+
+## Quick start (Docker/Podman)
 
 ```bash
 make builder CONTAINER_ENGINE=docker
-docker run --rm --privileged \
-  -v "$PWD:/sushida-os" -w /sushida-os \
-  sushida-os-builder:trixie make test
-docker run --rm --privileged \
-  -v "$PWD:/sushida-os" -w /sushida-os \
-  sushida-os-builder:trixie make iso
+make container-test   # or: make test  inside the builder container
+make container-iso    # --privileged; builds the release ISO
 ```
 
-Podman must use `--cgroup-manager=cgroupfs`; see [docs/build.md](docs/build.md)
-for exact Linux, Podman, WSL2, and direct Debian commands.
+Normal tests (`make test`, `make container-test`) never use `--privileged`.
+ISO builds require `--privileged` for loopback mounts (container mode only).
+QEMU and flash are separate, manually invoked operations.
+See [docs/build.md](docs/build.md) for Podman, WSL2, and direct Debian commands.
 
 A successful build publishes:
 

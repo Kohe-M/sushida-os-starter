@@ -1,5 +1,60 @@
 # Build and test
 
+## Developer workflow
+
+All development commands are available through `make` targets.  The
+`scripts/container-run.sh` wrapper provides a unified entry point for
+Docker and Podman so build instructions do not need to repeat engine-
+specific `docker run` flags.
+
+### Host prerequisites
+
+```bash
+make doctor           # check git, python3, pytest, shellcheck, bats
+make doctor-build     # also check container engine and builder image
+make doctor-qemu      # also check QEMU, OVMF, socat
+```
+
+### Local testing (no container)
+
+```bash
+make test-static      # 598+ pytest checks
+make test-shell       # ShellCheck + 143+ BATS tests
+make test             # both of the above
+make ci               # test + git diff --check
+```
+
+### Container testing
+
+```bash
+make builder CONTAINER_ENGINE=docker    # build the builder image
+make container-test                     # run make test inside container (non-privileged)
+make container-shell                    # shell tests only
+make container-configure                # stage live-build config
+make container-iso                      # build release ISO (--privileged)
+make container-verify                   # verify release artifacts
+```
+
+The `container-*` targets use `scripts/container-run.sh`, which:
+
+- adds `--cgroup-manager=cgroupfs` automatically for Podman;
+- adds `--privileged` only for the `iso` mode;
+- maps the host UID/GID so test artifacts are not owned by root;
+- sets `PYTHONDONTWRITEBYTECODE=1` to avoid left-over bytecode caches.
+
+### Privilege boundary
+
+| Operation | Privilege needed | Can harm host? |
+|---|---|---|
+| `make test`, `make ci` | None | No |
+| `make container-test` | Container engine only | No |
+| `make iso` | `--privileged` inside container | No (container only) |
+| `make test-qemu` | Container engine + KVM group | No |
+| `scripts/flash.sh` | Root + explicit device confirmation | Yes — reads after write |
+
+QEMU tests and ISO builds are never included in `make ci` or any
+non-privileged target.
+
 ## Builder privileges and isolation
 
 The supported build environment is Debian 13 trixie. Debian live-build mounts

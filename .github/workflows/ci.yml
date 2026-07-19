@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build builder image
+        run: docker build -t sushida-os-builder:trixie -f builder/Dockerfile .
+      - name: Run make ci (static tests + shell tests + git diff)
+        run: docker run --rm -v "$PWD:/sushida-os" -w /sushida-os sushida-os-builder:trixie make ci
