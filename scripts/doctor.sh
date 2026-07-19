@@ -75,12 +75,14 @@ if [ "$PROFILE" = build ] || [ "$PROFILE" = qemu ]; then
     fi
     # Check if any container engine connects
     _engine_found=false
+    _connected_engines=""
     _engines_to_check="${CONTAINER_ENGINE:-docker podman}"
     for engine in $_engines_to_check; do
         if command -v "$engine" > /dev/null 2>&1; then
             if "$engine" info > /dev/null 2>&1; then
                 echo "container_daemon_${engine}=PASS"
                 _engine_found=true
+                _connected_engines="$_connected_engines $engine"
             else
                 echo "container_daemon_${engine}=FAIL (not connected)"
             fi
@@ -97,19 +99,17 @@ if [ "$PROFILE" = build ] || [ "$PROFILE" = qemu ]; then
         echo "container_daemon=FAIL"
         _status=1
     fi
-    # Check builder image
+    # Check builder image on the same engine(s) that were connected.
     _builder_found=false
     _builder_image="${BUILDER_IMAGE:-sushida-os-builder:trixie}"
-    for engine in docker podman; do
-        if command -v "$engine" > /dev/null 2>&1; then
-            if "$engine" image inspect "$_builder_image" > /dev/null 2>&1; then
-                echo "builder_image=PASS"
-                _builder_found=true
-                break
-            fi
+    for engine in $_connected_engines; do
+        if "$engine" image inspect "$_builder_image" > /dev/null 2>&1; then
+            echo "builder_image=PASS"
+            _builder_found=true
+            break
         fi
     done
-    if [ "$_builder_found" = false ]; then
+    if [ "$_builder_found" = false ] && [ -n "$_connected_engines" ]; then
         echo "builder_image=FAIL"
         _status=1
     fi
