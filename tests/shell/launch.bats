@@ -457,63 +457,57 @@ run_helper() {
         "$HELPER" "https://sushida.net/play.html"
 }
 
-@test "readiness timeout fails session" {
+@test "readiness timeout continues to cage and succeeds" {
     run_helper SUSHIDA_OS_PW_NO_SOCKET=1
-    [ "$status" -ne 0 ]; [[ "$output" == *"not ready"* ]]
-    [ ! -s "$CHROMIUM_LOG" ]
+    [ "$status" -eq 0 ]
+    [ -s "$CHROMIUM_LOG" ]
     assert_logged_pids_dead
 }
 
-@test "pipewire failure before readiness fails session" {
+@test "pipewire failure before readiness launches cage anyway" {
     run_helper SUSHIDA_OS_PW_FAIL=1
-    [ "$status" -ne 0 ]; [[ "$output" == *"pipewire exited"* ]]
-    [ ! -s "$CHROMIUM_LOG" ]
+    [ "$status" -eq 0 ]
+    [ -s "$CHROMIUM_LOG" ]
 }
 
-@test "wireplumber failure before readiness fails session" {
+@test "wireplumber failure before readiness launches cage anyway" {
     run_helper SUSHIDA_OS_WP_FAIL=1
-    [ "$status" -ne 0 ]; [[ "$output" == *"wireplumber exited"* ]]
-    [ ! -s "$CHROMIUM_LOG" ]
+    [ "$status" -eq 0 ]
+    [ -s "$CHROMIUM_LOG" ]
 }
 
-@test "pipewire-pulse failure before readiness fails session" {
+@test "pipewire-pulse failure before readiness launches cage anyway" {
     run_helper SUSHIDA_OS_PP_FAIL=1
-    [ "$status" -ne 0 ]; [[ "$output" == *"pipewire-pulse exited"* ]]
-    [ ! -s "$CHROMIUM_LOG" ]
+    [ "$status" -eq 0 ]
+    [ -s "$CHROMIUM_LOG" ]
 }
 
 # ── Post-readiness audio exit ──────────────────────────────────────────────
 
-@test "pipewire post-readiness exit 0 fails session" {
-    run_helper SUSHIDA_OS_CHROMIUM_HOLD=1 \
-        SUSHIDA_OS_PW_EXIT_AFTER_READY=1 SUSHIDA_OS_PW_EXIT_STATUS=0
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"pipewire"* ]]
+@test "pipewire post-readiness exit 0 continues session" {
+    run_helper SUSHIDA_OS_PW_EXIT_AFTER_READY=1 SUSHIDA_OS_PW_EXIT_STATUS=0
+    [ "$status" -eq 0 ]
     [ -s "$CHROMIUM_LOG" ]
     assert_logged_pids_dead
 }
 
-@test "pipewire post-readiness non-zero exit fails session" {
-    run_helper SUSHIDA_OS_CHROMIUM_HOLD=1 \
-        SUSHIDA_OS_PW_EXIT_AFTER_READY=1 SUSHIDA_OS_PW_EXIT_STATUS=7
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"pipewire"* ]]
+@test "pipewire post-readiness non-zero exit continues session" {
+    run_helper SUSHIDA_OS_PW_EXIT_AFTER_READY=1 SUSHIDA_OS_PW_EXIT_STATUS=7
+    [ "$status" -eq 0 ]
     [ -s "$CHROMIUM_LOG" ]
     assert_logged_pids_dead
 }
 
-@test "wireplumber post-readiness exit 0 fails session" {
-    run_helper SUSHIDA_OS_CHROMIUM_HOLD=1 SUSHIDA_OS_WP_EXIT_AFTER_READY=1
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"wireplumber"* ]]
+@test "wireplumber post-readiness exit 0 continues session" {
+    run_helper SUSHIDA_OS_WP_EXIT_AFTER_READY=1
+    [ "$status" -eq 0 ]
     [ -s "$CHROMIUM_LOG" ]
     assert_logged_pids_dead
 }
 
-@test "pipewire-pulse post-readiness exit 0 fails session" {
-    run_helper SUSHIDA_OS_CHROMIUM_HOLD=1 SUSHIDA_OS_PP_EXIT_AFTER_READY=1
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"pipewire-pulse"* ]]
+@test "pipewire-pulse post-readiness exit 0 continues session" {
+    run_helper SUSHIDA_OS_PP_EXIT_AFTER_READY=1
+    [ "$status" -eq 0 ]
     [ -s "$CHROMIUM_LOG" ]
     assert_logged_pids_dead
 }

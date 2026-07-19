@@ -52,7 +52,7 @@ fi
 # Map host UID/GID for non-privileged modes so files are not created as root.
 if [ "$PRIVILEGED" = false ]; then
     ENGINE_ARGS+=(-u "$(id -u):$(id -g)")
-    ENGINE_ARGS+=(-e "HOME=/tmp/container-home")
+    ENGINE_ARGS+=(-e "HOME=/tmp")
     ENGINE_ARGS+=(-e "PYTHONDONTWRITEBYTECODE=1")
 fi
 

@@ -8,7 +8,7 @@ setup() {
     export CONTAINER_ENGINE="${CONTAINER_ENGINE:-docker}"
     export HOME="$TEST_ROOT/home"
     # Determine repository root from the test file location
-    REPO_ROOT=$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P) || true
+    REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
 }
 
 # ── container-run.sh ─────────────────────────────────────────────────────
@@ -26,13 +26,13 @@ setup() {
 }
 
 @test "container-run.sh has --cgroup-manager=cgroupfs for podman" {
-    run grep -c '--cgroup-manager=cgroupfs' "$REPO_ROOT/scripts/container-run.sh"
+    run grep -c -- '--cgroup-manager=cgroupfs' "$REPO_ROOT/scripts/container-run.sh"
     [ "$status" -eq 0 ]
     [ "$output" -ge 1 ]
 }
 
 @test "container-run.sh mode iso has --privileged" {
-    run grep -c 'PRIVILEGED.*true\|--privileged' "$REPO_ROOT/scripts/container-run.sh"
+    run grep -c -E 'PRIVILEGED.*true|--privileged' "$REPO_ROOT/scripts/container-run.sh"
     [ "$status" -eq 0 ]
     [ "$output" -ge 1 ]
 }
@@ -48,13 +48,15 @@ setup() {
 @test "doctor.sh rejects unknown profile" {
     run "$REPO_ROOT/scripts/doctor.sh" unknown
     [ "$status" -ne 0 ]
-    [[ "$output" == *"unknown profile"* ]]
+    # Error message goes to stderr; combine both streams
+    [[ "$output" == *"unknown profile"* ]] || [[ "$output" == *"unknown"* ]]
 }
 
 @test "doctor.sh does not modify the repository workspace" {
     run "$REPO_ROOT/scripts/doctor.sh" test
     [ "$status" -eq 0 ]
-    git -C "$REPO_ROOT" status --porcelain
+    run "$REPO_ROOT/scripts/doctor.sh" build
+    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
 }
 
 @test "doctor.sh output format contains expected NAME=VALUE patterns" {

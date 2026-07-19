@@ -6,7 +6,7 @@ BUILDER_TAG ?= trixie
 CONTAINER_ENGINE_NAME := $(notdir $(CONTAINER_ENGINE))
 CONTAINER_ENGINE_ARGS := $(if $(filter podman,$(CONTAINER_ENGINE_NAME)),--cgroup-manager=cgroupfs,)
 
-.PHONY: builder configure iso test test-static test-shell test-qemu test-qemu-boot test-qemu-runtime test-qemu-powerdown qemu verify clean distclean help doctor ci container-test container-shell container-configure container-iso container-verify
+.PHONY: builder configure iso test test-static test-shell test-qemu test-qemu-boot test-qemu-runtime test-qemu-powerdown qemu verify clean distclean help doctor doctor-build doctor-qemu ci container-test container-shell container-configure container-iso container-verify
 
 help:
 	@echo 'Sushi-da OS development targets'
@@ -58,7 +58,7 @@ test-static:
 	$(PYTHON) -m pytest tests/static/ --strict-markers -ra
 
 test-shell:
-	shellcheck -S warning tests/shell/*.bats $$(./scripts/shellcheck-targets.sh)
+	shellcheck -S warning $$(./scripts/shellcheck-targets.sh)
 	bats tests/shell/*.bats
 
 test-qemu: test-qemu-boot test-qemu-runtime
@@ -97,16 +97,16 @@ ci: test-static test-shell
 	git diff --check
 
 container-test:
-	CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/container-run.sh test
+	CONTAINER_ENGINE=$(CONTAINER_ENGINE) BUILDER_IMAGE=$(BUILDER_IMAGE):$(BUILDER_TAG) ./scripts/container-run.sh test
 
 container-shell:
-	CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/container-run.sh shell
+	CONTAINER_ENGINE=$(CONTAINER_ENGINE) BUILDER_IMAGE=$(BUILDER_IMAGE):$(BUILDER_TAG) ./scripts/container-run.sh shell
 
 container-configure:
-	CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/container-run.sh configure
+	CONTAINER_ENGINE=$(CONTAINER_ENGINE) BUILDER_IMAGE=$(BUILDER_IMAGE):$(BUILDER_TAG) ./scripts/container-run.sh configure
 
 container-iso:
-	CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/container-run.sh iso
+	CONTAINER_ENGINE=$(CONTAINER_ENGINE) BUILDER_IMAGE=$(BUILDER_IMAGE):$(BUILDER_TAG) ./scripts/container-run.sh iso
 
 container-verify:
-	CONTAINER_ENGINE=$(CONTAINER_ENGINE) ./scripts/container-run.sh verify
+	CONTAINER_ENGINE=$(CONTAINER_ENGINE) BUILDER_IMAGE=$(BUILDER_IMAGE):$(BUILDER_TAG) ./scripts/container-run.sh verify

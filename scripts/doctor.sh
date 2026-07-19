@@ -81,7 +81,8 @@ if [ "$PROFILE" = build ] || [ "$PROFILE" = qemu ]; then
             if "$engine" info > /dev/null 2>&1; then
                 echo "container_daemon_${engine}=PASS"
             else
-                echo "container_daemon_${engine}=WARN (not connected)"
+                echo "container_daemon_${engine}=FAIL (not connected)"
+                _status=1
             fi
         fi
     done
@@ -90,14 +91,20 @@ if [ "$PROFILE" = build ] || [ "$PROFILE" = qemu ]; then
         _status=1
     fi
     # Check builder image
+    _builder_found=false
     for engine in docker podman; do
         if command -v "$engine" > /dev/null 2>&1; then
             if "$engine" image inspect sushida-os-builder:trixie > /dev/null 2>&1; then
                 echo "builder_image=PASS"
+                _builder_found=true
                 break
             fi
         fi
     done
+    if [ "$_builder_found" = false ]; then
+        echo "builder_image=FAIL"
+        _status=1
+    fi
     # Warn about WSL + Windows mount
     if [ -f /proc/version ] && grep -qi microsoft /proc/version 2>/dev/null; then
         if echo "$PROJECT_ROOT" | grep -qE '^/(mnt/[a-z]/|.*/host/)'; then
@@ -112,6 +119,10 @@ if [ "$PROFILE" = qemu ]; then
     check "socat" socat
     check_path "ovmf_code" "/usr/share/OVMF/OVMF_CODE.fd"
     check_path "ovmf_vars" "/usr/share/OVMF/OVMF_VARS.fd"
+    if [ ! -f /usr/share/OVMF/OVMF_CODE.fd ] && [ ! -f /usr/share/OVMF/OVMF_CODE_4M.fd ]; then
+        echo "ovmf_any=FAIL"
+        _status=1
+    fi
 fi
 
 exit $_status
