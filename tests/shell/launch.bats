@@ -58,6 +58,10 @@ echo "chromium:$$" >> "${PID_LOG}"
 if [ "${SUSHIDA_OS_CHROMIUM_HOLD:-0}" = "1" ]; then
     exec /usr/bin/sleep 30
 fi
+_hold="${SUSHIDA_OS_CHROMIUM_HOLD_SECONDS:-0}"
+if [ "$_hold" -gt 0 ] 2>/dev/null; then
+    exec /usr/bin/sleep "$_hold"
+fi
 exit "${SUSHIDA_OS_CHROMIUM_EXIT:-0}"
 SHIM
     chmod +x "$TEST_ROOT/bin/chromium"
@@ -485,28 +489,32 @@ run_helper() {
 # ── Post-readiness audio exit ──────────────────────────────────────────────
 
 @test "pipewire post-readiness exit 0 continues session" {
-    run_helper SUSHIDA_OS_PW_EXIT_AFTER_READY=1 SUSHIDA_OS_PW_EXIT_STATUS=0
+    run_helper SUSHIDA_OS_CHROMIUM_HOLD_SECONDS=2 \
+        SUSHIDA_OS_PW_EXIT_AFTER_READY=1 SUSHIDA_OS_PW_EXIT_STATUS=0
     [ "$status" -eq 0 ]
     [ -s "$CHROMIUM_LOG" ]
     assert_logged_pids_dead
 }
 
 @test "pipewire post-readiness non-zero exit continues session" {
-    run_helper SUSHIDA_OS_PW_EXIT_AFTER_READY=1 SUSHIDA_OS_PW_EXIT_STATUS=7
+    run_helper SUSHIDA_OS_CHROMIUM_HOLD_SECONDS=2 \
+        SUSHIDA_OS_PW_EXIT_AFTER_READY=1 SUSHIDA_OS_PW_EXIT_STATUS=7
     [ "$status" -eq 0 ]
     [ -s "$CHROMIUM_LOG" ]
     assert_logged_pids_dead
 }
 
 @test "wireplumber post-readiness exit 0 continues session" {
-    run_helper SUSHIDA_OS_WP_EXIT_AFTER_READY=1
+    run_helper SUSHIDA_OS_CHROMIUM_HOLD_SECONDS=2 \
+        SUSHIDA_OS_WP_EXIT_AFTER_READY=1
     [ "$status" -eq 0 ]
     [ -s "$CHROMIUM_LOG" ]
     assert_logged_pids_dead
 }
 
 @test "pipewire-pulse post-readiness exit 0 continues session" {
-    run_helper SUSHIDA_OS_PP_EXIT_AFTER_READY=1
+    run_helper SUSHIDA_OS_CHROMIUM_HOLD_SECONDS=2 \
+        SUSHIDA_OS_PP_EXIT_AFTER_READY=1
     [ "$status" -eq 0 ]
     [ -s "$CHROMIUM_LOG" ]
     assert_logged_pids_dead

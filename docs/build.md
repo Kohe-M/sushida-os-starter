@@ -48,7 +48,8 @@ The `container-*` targets use `scripts/container-run.sh`, which:
 |---|---|---|
 | `make test`, `make ci` | None | No |
 | `make container-test` | Container engine only | No |
-| `make iso` | `--privileged` inside container | No (container only) |
+| `make iso` (direct host) | Root | Yes — filesystem mounts |
+| `make container-iso` | `--privileged` in container | No (container only) |
 | `make test-qemu` | Container engine + KVM group | No |
 | `scripts/flash.sh` | Root + explicit device confirmation | Yes — reads after write |
 
@@ -81,34 +82,30 @@ The builder image context is restricted to `builder/Dockerfile` and
 
 ## Docker on Linux
 
+All container operations go through the `container-*` Make targets, which
+are implemented by `scripts/container-run.sh`.  The wrapper adds
+`--cgroup-manager=cgroupfs` automatically for Podman and `--privileged`
+only for the `iso` mode:
+
 ```bash
 make builder CONTAINER_ENGINE=docker
-docker run --rm --privileged \
-  -v "$PWD:/sushida-os" -w /sushida-os \
-  sushida-os-builder:trixie make test
-docker run --rm --privileged \
-  -v "$PWD:/sushida-os" -w /sushida-os \
-  sushida-os-builder:trixie make iso
-docker run --rm --privileged \
-  -v "$PWD:/sushida-os" -w /sushida-os \
-  sushida-os-builder:trixie make verify
+make container-test        # non-privileged
+make container-iso         # --privileged
+make container-verify      # non-privileged
 ```
+
+Direct `docker run` is not needed for normal development; see
+`scripts/container-run.sh` for the exact invocation used.
 
 ## Podman on Linux
 
-Every Podman invocation uses the required cgroup manager explicitly:
+Podman uses the same wrapper with `CONTAINER_ENGINE=podman`:
 
 ```bash
 make builder CONTAINER_ENGINE=podman
-podman --cgroup-manager=cgroupfs run --rm --privileged \
-  -v "$PWD:/sushida-os" -w /sushida-os \
-  localhost/sushida-os-builder:trixie make test
-podman --cgroup-manager=cgroupfs run --rm --privileged \
-  -v "$PWD:/sushida-os" -w /sushida-os \
-  localhost/sushida-os-builder:trixie make iso
-podman --cgroup-manager=cgroupfs run --rm --privileged \
-  -v "$PWD:/sushida-os" -w /sushida-os \
-  localhost/sushida-os-builder:trixie make verify
+make container-test        # adds --cgroup-manager=cgroupfs automatically
+make container-iso         # adds --privileged + --cgroup-manager=cgroupfs
+make container-verify
 ```
 
 Rootless Podman may still be unable to provide live-build mounts on some
