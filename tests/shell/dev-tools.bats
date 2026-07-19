@@ -11,6 +11,14 @@ setup() {
     # Determine repository root from the test file location
     REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd -P)"
 
+    # HOME has been changed, so any gitconfig written by the builder
+    # entrypoint is unavailable.  Allow the repository directly via
+    # environment variables so git operations (including inside doctor.sh)
+    # do not fail with "dubious ownership".
+    export GIT_CONFIG_COUNT=1
+    export GIT_CONFIG_KEY_0=safe.directory
+    export GIT_CONFIG_VALUE_0="$REPO_ROOT"
+
     # Fake docker/podman that record argv to a fixed path (one arg per line).
     # The path can be overridden with DOCKER_LOG / PODMAN_LOG so tests can
     # locate the log deterministically.
@@ -154,20 +162,32 @@ read_argv() {
 
 @test "doctor.sh does not modify the repository workspace" {
     run git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all
+    [ "$status" -eq 0 ]
     local before="$output"
     run "$REPO_ROOT/scripts/doctor.sh" test
     [ "$status" -eq 0 ]
     run git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all
+    [ "$status" -eq 0 ]
     local after="$output"
     [ "$after" = "$before" ]
 }
 
-@test "doctor.sh build and qemu profiles run without modifying workspace" {
-    run "$REPO_ROOT/scripts/doctor.sh" build
-    run "$REPO_ROOT/scripts/doctor.sh" qemu
-    # Build profile may fail if container engine not available
+@test "doctor.sh build and qemu profiles do not write to workspace" {
     run git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all
-    [ -z "$output" ] || [ "$status" -eq 0 ]
+    [ "$status" -eq 0 ]
+    local before="$output"
+
+    # build and qemu profiles may exit non-zero when host requirements
+    # are not met; that is acceptable as long as no files are written.
+    run "$REPO_ROOT/scripts/doctor.sh" build
+    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
+    run "$REPO_ROOT/scripts/doctor.sh" qemu
+    [ "$status" -eq 0 ] || [ "$status" -eq 1 ]
+
+    run git -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all
+    [ "$status" -eq 0 ]
+    local after="$output"
+    [ "$after" = "$before" ]
 }
 
 @test "doctor.sh output format contains expected NAME=VALUE patterns" {
