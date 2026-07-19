@@ -193,6 +193,24 @@ if [ "$FIRMWARE" = uefi ]; then
     )
 fi
 
+SUSHIDA_KERNEL_CMDLINE="boot=live components"
+if [ "$QEMU_SMOKE" = true ]; then
+    # The production ISO contains no QEMU-specific boot entry.  Extract the
+    # kernel and initrd from the ISO and boot directly with the software-
+    # renderer parameters that Cage and Chromium need for headless QEMU.
+    EXTRACT_DIR="$(mktemp -d "$RUN_DIR/.kernel-extract.XXXXXX")"
+    command -v xorriso > /dev/null 2>&1 || \
+        fail "xorriso is required for --qemu-smoke (extract kernel/initrd)"
+    xorriso -indev "$ISO" -osirrox on -extract /live/vmlinuz "$EXTRACT_DIR/vmlinuz" \
+        -extract /live/initrd.img "$EXTRACT_DIR/initrd.img" > /dev/null 2>&1 || \
+        fail "failed to extract vmlinuz and initrd from ISO"
+    QEMU_ARGS+=(
+        -kernel "$EXTRACT_DIR/vmlinuz"
+        -initrd "$EXTRACT_DIR/initrd.img"
+        -append "$SUSHIDA_KERNEL_CMDLINE console=ttyS0,115200n8 systemd.setenv=WLR_RENDERER=pixman systemd.setenv=WLR_RENDERER_ALLOW_SOFTWARE=1 systemd.setenv=SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1 systemd.setenv=SUSHIDA_QEMU_FORCE_OFFLINE=1 systemd.default_standard_output=journal+console systemd.default_standard_error=journal+console"
+    )
+fi
+
 if [ "$DRY_RUN" = true ]; then
     printf '%q ' qemu-system-x86_64 "${QEMU_ARGS[@]}"
     printf '\n'
@@ -250,52 +268,13 @@ done
 [ -S "$MONITOR_SOCKET" ] || fail "QEMU monitor did not become ready"
 
 if [ "$QEMU_SMOKE" = true ]; then
-    # Both bootloaders expose a q hotkey for the isolated QEMU entry. UEFI
-    # firmware can take tens of seconds under TCG. Send short waves followed
-    # by a quiet period so key repetition cannot interfere with kernel load.
-    QEMU_BOOT_MARKER="systemd.setenv=WLR_RENDERER=pixman"
-    if [ "$FIRMWARE" = uefi ]; then
-        # Synchronize on OVMF handing control to the DVD. Esc stops GRUB's
-        # short countdown; Up moves from production entry 1 to QEMU entry 0.
-        for _ovmf in $(seq 1 90); do
-            grep -Fq 'BdsDxe: starting Boot' "$SERIAL_LOG" && break
-            sleep 1
-        done
-        grep -Fq 'BdsDxe: starting Boot' "$SERIAL_LOG" || \
-            fail "UEFI firmware did not start the release ISO"
-        for _esc in $(seq 1 15); do
-            printf 'sendkey esc\n' | \
-                socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
-            sleep 1
-        done
-        for _key in $(seq 1 5); do
-            {
-                printf 'sendkey up\n'
-                printf 'sendkey ret\n'
-            } | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
-            sleep 1
-        done
-        for _kernel in $(seq 1 90); do
-            grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG" && break
-            sleep 1
-        done
-    else
-        for _wave in $(seq 1 6); do
-            for _key in $(seq 1 5); do
-                {
-                    printf 'sendkey q\n'
-                    printf 'sendkey ret\n'
-                } | socat - "UNIX-CONNECT:$MONITOR_SOCKET" > /dev/null
-                sleep 1
-            done
-            for _quiet in $(seq 1 30); do
-                if grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG"; then break 2; fi
-                sleep 1
-            done
-        done
-    fi
+    QEMU_BOOT_MARKER="SUSHIDA_QEMU_FORCE_OFFLINE=1"
+    for _check in $(seq 1 90); do
+        if grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG"; then break; fi
+        sleep 1
+    done
     grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG" || \
-        fail "QEMU-only boot entry was not selected"
+        fail "QEMU-only kernel parameters were not loaded"
 fi
 
 if [ "$POWERDOWN" = true ]; then
