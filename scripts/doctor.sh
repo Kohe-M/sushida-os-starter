@@ -45,6 +45,12 @@ check "python3" python3
 check "pytest" pytest
 check "shellcheck" shellcheck
 check "bats" bats
+if python3 -c 'import pytest' > /dev/null 2>&1; then
+    echo "pytest_module=PASS"
+else
+    echo "pytest_module=FAIL"
+    _status=1
+fi
 
 if [ -d "$PROJECT_ROOT/.git" ] || [ -f "$PROJECT_ROOT/.git" ]; then
     echo "repository_root=PASS"
@@ -67,7 +73,7 @@ if [ "$_bad_mode" = false ]; then
 fi
 
 # ── Build profile ────────────────────────────────────────────────────────
-if [ "$PROFILE" = build ] || [ "$PROFILE" = qemu ]; then
+if [ "$PROFILE" = build ]; then
     check "docker" docker WARN
     check "podman" podman WARN
     if [ -n "${CONTAINER_ENGINE:-}" ]; then
@@ -125,10 +131,28 @@ fi
 if [ "$PROFILE" = qemu ]; then
     check "qemu_system" qemu-system-x86_64
     check "socat" socat
-    check_path "ovmf_code" "/usr/share/OVMF/OVMF_CODE.fd"
-    check_path "ovmf_vars" "/usr/share/OVMF/OVMF_VARS.fd"
-    if [ ! -f /usr/share/OVMF/OVMF_CODE.fd ] && [ ! -f /usr/share/OVMF/OVMF_CODE_4M.fd ]; then
-        echo "ovmf_any=FAIL"
+    _ovmf_code_found=false
+    for _candidate in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd; do
+        if [ -f "$_candidate" ]; then
+            _ovmf_code_found=true; break
+        fi
+    done
+    if [ "$_ovmf_code_found" = true ]; then
+        echo "ovmf_code=PASS"
+    else
+        echo "ovmf_code=FAIL"
+        _status=1
+    fi
+    _ovmf_vars_found=false
+    for _candidate in /usr/share/OVMF/OVMF_VARS_4M.fd /usr/share/OVMF/OVMF_VARS.fd; do
+        if [ -f "$_candidate" ]; then
+            _ovmf_vars_found=true; break
+        fi
+    done
+    if [ "$_ovmf_vars_found" = true ]; then
+        echo "ovmf_vars=PASS"
+    else
+        echo "ovmf_vars=FAIL"
         _status=1
     fi
 fi

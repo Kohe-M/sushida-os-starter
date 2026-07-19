@@ -167,6 +167,8 @@ argv_contains() {
     [ -f "$LOG" ]
     run argv_contains "-u" "$LOG"
     [ "$status" -eq 0 ]
+    run argv_contains "$(id -u):$(id -g)" "$LOG"
+    [ "$status" -eq 0 ]
 }
 
 @test "container-run.sh sets PYTHONDONTWRITEBYTECODE" {
