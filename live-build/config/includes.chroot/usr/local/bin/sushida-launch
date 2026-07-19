@@ -165,20 +165,25 @@ else
         _time_synced=false
         _time_wait=0
         _time_max=30
+        _clock_plausible=false
+        _now_epoch="$(date -u +%s)"
+        if [ "$_now_epoch" -ge "$(date -u -d '2025-01-01T00:00:00Z' +%s)" ] && \
+           [ "$_now_epoch" -le "$(date -u -d '2030-01-01T00:00:00Z' +%s)" ]; then
+            _clock_plausible=true
+        fi
         while [ "$_time_wait" -lt "$_time_max" ]; do
             if timedatectl show -p NTPSynchronized --value 2>/dev/null | grep -qx yes; then
                 _time_synced=true; break
             fi
-            if [ "$(date -u +%s)" -ge "$(date -u -d '2026-07-01T00:00:00Z' +%s)" ]; then
+            if [ "$_clock_plausible" = true ]; then
                 # The clock is within a plausible window even if not synced.
                 break
             fi
             sleep 1; _time_wait=$((_time_wait + 1))
         done
-        if [ "$_time_synced" = false ] && \
-           [ "$(date -u +%s)" -lt "$(date -u -d '2026-07-01T00:00:00Z' +%s)" ]; then
-            # The clock is still before the build/target window; use a local
-            # page so the operator knows time sync hasn't completed.
+        if [ "$_time_synced" = false ] && [ "$_clock_plausible" = false ]; then
+            # The clock is outside the build/target window and NTP sync
+            # has not completed; use a local page so the operator knows.
             START_URL="$OFFLINE_URL"
             ACTIVE_ROUTE="offline"
         fi

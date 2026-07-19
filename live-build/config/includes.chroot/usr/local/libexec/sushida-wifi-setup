@@ -1207,17 +1207,14 @@ class SetupHandler(BaseHTTPRequestHandler):
             self._setup_error(validation_error, HTTPStatus.OK)
             return
         if not queue_connection(ssid[0], password[0]):
-            # A duplicate submission while an attempt runs is refused without
-            # touching the running attempt; the credential from this request
-            # is dropped immediately and never stored.
+            # A restore thread is still running or the previous restore
+            # left the state in FAILED before resetting.  Cancel any
+            # pending restore attempts so the next interactive request
+            # can proceed without racing.
+            _restore_cancelled.set()
             self._reply_connecting(busy=True, status_code=HTTPStatus.CONFLICT)
             return
-        # An interactive request takes priority over any boot-time restore
-        # loop that may still be running.
         _restore_cancelled.set()
-        # The response is completed before the worker may change any
-        # NetworkManager state, so the browser can never observe an
-        # ERR_NETWORK_CHANGED abort for this POST.
         self._reply_connecting(busy=False)
         start_queued_connection()
 
