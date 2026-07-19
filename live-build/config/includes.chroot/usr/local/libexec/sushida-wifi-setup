@@ -91,10 +91,15 @@ def queue_connection(ssid: str, password: str) -> bool:
 def enqueue_interactive(ssid: str, password: str) -> bool:
     """Submit (or queue for later execution) an interactive connection request.
 
-    Called from the HTTP handler, this function cancels any running boot-
-    time restore and, under the state lock, either starts the request
-    immediately (state is IDLE) or saves it as pending-interactive.  The
-    worker is always woken so it picks up the new request.
+    Never sets _request_event, because the worker must not be woken before
+    the HTTP response is written.  The response-order guarantee is always
+    enforced by the caller: write the body, flush, *then* call
+    start_queued_connection() which sets the event.
+
+    Returns True when the request could be started immediately (state was
+    IDLE).  Returns False when the request was deferred as
+    pending-interactive; the worker will pick it up after the current
+    attempt finishes.
     """
     global _restore_cancelled, _pending_interactive
     global _pending_request, _connect_state, _state_message
@@ -106,12 +111,9 @@ def enqueue_interactive(ssid: str, password: str) -> bool:
             _state_message = ""
             _pending_request = (ssid, password)
             _pending_interactive = None
-            queued = True
-        else:
-            _pending_interactive = (ssid, password)
-            queued = False
-        _request_event.set()
-    return queued
+            return True
+        _pending_interactive = (ssid, password)
+        return False
 
 
 def start_queued_connection() -> None:
@@ -203,10 +205,22 @@ def _connect_worker() -> None:
             success = False
             message = "Wi-Fi接続処理で内部エラーが発生しました。もう一度接続してください。"
         finally:
-            # Every path drops the credential before the result is published.
             password = ""
             pending = None
-        _publish_result(success, message)
+        # Publish the result atomically: if a pending-interactive request
+        # arrived during this attempt, hand off directly without exposing
+        # the stale terminal state to status pollers.
+        with _state_lock:
+            if _pending_interactive is not None:
+                ssid2, password2 = _pending_interactive
+                _pending_interactive = None
+                _connect_state = CONNECT_WORKING
+                _state_message = ""
+                _pending_request = (ssid2, password2)
+                _request_event.set()
+            else:
+                _connect_state = CONNECT_SUCCEEDED if success else CONNECT_FAILED
+                _state_message = message
 
 
 def _test_path(name: str, production: Path) -> Path:
@@ -1267,8 +1281,8 @@ class SetupHandler(BaseHTTPRequestHandler):
             # saved as pending-interactive; the worker will run it as soon
             # as the current attempt finishes.
             self._reply_connecting(busy=True, status_code=HTTPStatus.CONFLICT)
-            return
-        self._reply_connecting(busy=False)
+        else:
+            self._reply_connecting(busy=False)
         start_queued_connection()
 
     def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
