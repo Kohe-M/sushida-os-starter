@@ -56,6 +56,9 @@ amd64-microcode
 # TLS certificates
 ca-certificates
 
+# Time synchronization (NTP client)
+systemd-timesyncd
+
 # Image-internal policy validation during the live-build chroot stage
 python3-minimal
 # Wi-Fi setup backend uses the complete Python standard library

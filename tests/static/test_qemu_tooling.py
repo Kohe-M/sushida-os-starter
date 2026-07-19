@@ -143,7 +143,8 @@ def test_smoke_report_distinguishes_automated_and_manual_checks() -> None:
 
 def test_make_qemu_targets_call_real_scripts() -> None:
     text = MAKEFILE.read_text()
-    assert "test-qemu:\n\t./scripts/smoke-test.sh" in text
+    assert "test-qemu-boot:\n\t./scripts/boot-test.sh" in text
+    assert "test-qemu-runtime:\n\t./scripts/smoke-test.sh" in text
     assert "test-qemu-powerdown:\n\t./scripts/powerdown-test.sh" in text
     assert "qemu:\n\t./scripts/run-qemu.sh" in text
 

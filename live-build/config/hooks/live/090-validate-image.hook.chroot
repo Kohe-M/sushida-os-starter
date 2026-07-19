@@ -74,7 +74,8 @@ for package in \
     network-manager wpasupplicant polkitd pipewire pipewire-pulse wireplumber \
     libspa-0.2-modules dbus-user-session libgl1-mesa-dri mesa-va-drivers \
     libegl1 libgles2 libgbm1 libdrm2 libwayland-client0 \
-    libwayland-server0 python3-minimal python3 pciutils; do
+    libwayland-server0 python3-minimal python3 pciutils \
+    systemd-timesyncd; do
     require_package "$package"
 done
 
@@ -149,6 +150,8 @@ for unit in sushida-kiosk.service sushida-network-watch.service \
     require_file "/etc/systemd/system/$unit"
     systemctl is-enabled "$unit" > /dev/null 2>&1 || fail "$unit is not enabled"
 done
+systemctl is-enabled systemd-timesyncd.service > /dev/null 2>&1 || \
+    fail "systemd-timesyncd.service is not enabled"
 for unit in getty@.service autovt@.service serial-getty@.service \
     console-getty.service container-getty@.service ctrl-alt-del.target \
     apt-daily.timer apt-daily-upgrade.timer apt-daily.service \
@@ -190,6 +193,7 @@ expected = {
     "AutofillCreditCardEnabled": False,
     "PrintingEnabled": False,
     "DownloadRestrictions": 3,
+    "AllowFileSelectionDialogs": False,
 }
 for key, value in expected.items():
     if policy.get(key) != value or type(policy.get(key)) is not type(value):

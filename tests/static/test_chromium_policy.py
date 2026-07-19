@@ -26,6 +26,7 @@ REQUIRED_POLICIES: dict[str, tuple] = {
     "AutofillCreditCardEnabled": (False, bool),
     "PrintingEnabled": (False, bool),
     "DownloadRestrictions": (3, int),
+    "AllowFileSelectionDialogs": (False, bool),
     "URLBlocklist": (["*"], list),
     "URLAllowlist": (list, list),
 }

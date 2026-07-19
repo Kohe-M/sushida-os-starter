@@ -11,6 +11,7 @@ NETWORK="online"
 HEADLESS=false
 DRY_RUN=false
 QEMU_SMOKE=false
+QEMU_BOOT_TEST=false
 WRITABLE_MEDIA_MODE=false
 POWERDOWN=false
 DURATION=0
@@ -22,7 +23,8 @@ Usage: scripts/run-qemu.sh [options]
   --offline             Do not create a guest network interface
   --headless            Disable the QEMU display window
   --duration SECONDS    Capture a screenshot and quit after a bounded interval
-  --qemu-smoke          Select the QEMU-only software-renderer boot entry
+  --qemu-smoke          Boot with direct kernel + software-renderer params
+  --qemu-boot-test      Boot through the production bootloader only
   --writable-media      Boot a private writable copy under build/qemu
   --powerdown           Send monitor system_powerdown and require natural exit
   --dry-run             Print the QEMU command without starting it
@@ -73,6 +75,10 @@ while [ "$#" -gt 0 ]; do
             QEMU_SMOKE=true
             shift
             ;;
+        --qemu-boot-test)
+            QEMU_BOOT_TEST=true
+            shift
+            ;;
         --writable-media)
             WRITABLE_MEDIA_MODE=true
             shift
@@ -92,6 +98,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$FIRMWARE" in bios|uefi) ;; *) fail "firmware must be bios or uefi" ;; esac
+if [ "$QEMU_SMOKE" = true ] && [ "$QEMU_BOOT_TEST" = true ]; then
+    fail "--qemu-smoke and --qemu-boot-test are mutually exclusive"
+fi
 if [ "$POWERDOWN" = true ] && [ "$WRITABLE_MEDIA_MODE" = false ]; then
     fail "--powerdown requires --writable-media"
 fi
@@ -193,33 +202,67 @@ if [ "$FIRMWARE" = uefi ]; then
     )
 fi
 
-SUSHIDA_KERNEL_CMDLINE="boot=live components"
-if [ "$QEMU_SMOKE" = true ]; then
-    # The production ISO contains no QEMU-specific boot entry.  Extract the
-    # kernel and initrd from the ISO and boot directly with the software-
-    # renderer parameters that Cage and Chromium need for headless QEMU.
-    EXTRACT_DIR="$(mktemp -d "$RUN_DIR/.kernel-extract.XXXXXX")"
-    command -v xorriso > /dev/null 2>&1 || \
-        fail "xorriso is required for --qemu-smoke (extract kernel/initrd)"
-    xorriso -indev "$ISO" -osirrox on -extract /live/vmlinuz "$EXTRACT_DIR/vmlinuz" \
-        -extract /live/initrd.img "$EXTRACT_DIR/initrd.img" > /dev/null 2>&1 || \
-        fail "failed to extract vmlinuz and initrd from ISO"
-    QEMU_ARGS+=(
-        -kernel "$EXTRACT_DIR/vmlinuz"
-        -initrd "$EXTRACT_DIR/initrd.img"
-        -append "$SUSHIDA_KERNEL_CMDLINE console=ttyS0,115200n8 systemd.setenv=WLR_RENDERER=pixman systemd.setenv=WLR_RENDERER_ALLOW_SOFTWARE=1 systemd.setenv=SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1 systemd.setenv=SUSHIDA_QEMU_FORCE_OFFLINE=1 systemd.default_standard_output=journal+console systemd.default_standard_error=journal+console"
-    )
-fi
+# ── QEMU smoke: construct kernel parameters for dry-run display ────────────
+_SMOKE_APPEND="boot=live components console=ttyS0,115200n8 systemd.setenv=WLR_RENDERER=pixman systemd.setenv=WLR_RENDERER_ALLOW_SOFTWARE=1 systemd.setenv=SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1 systemd.setenv=SUSHIDA_QEMU_FORCE_OFFLINE=1 systemd.default_standard_output=journal+console systemd.default_standard_error=journal+console"
 
+# ── Dry-run: print and exit before touching files or directories ─────────
 if [ "$DRY_RUN" = true ]; then
+    if [ "$QEMU_SMOKE" = true ]; then
+        QEMU_ARGS+=(
+            -kernel "ISO:/live/vmlinuz"
+            -initrd "ISO:/live/initrd.img"
+            -append "$_SMOKE_APPEND"
+        )
+    fi
     printf '%q ' qemu-system-x86_64 "${QEMU_ARGS[@]}"
     printf '\n'
     exit 0
 fi
 
+# ── Create directories before any extraction or file creation ───────────
 mkdir -p "$QEMU_ROOT" "$RUN_DIR"
+if [ "${RUN_DIR##"$QEMU_ROOT/"}" = "$RUN_DIR" ]; then
+    # The resolved RUN_DIR must descend from QEMU_ROOT.
+    fail "QEMU run directory is not under $QEMU_ROOT"
+fi
 rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$SCREENSHOT_PPM" "$MONITOR_SOCKET" \
     "$RESULT_FILE" "$REPORT"
+
+# ── Extract kernel and initrd from ISO for direct boot ──────────────────
+EXTRACT_DIR=""
+if [ "$QEMU_SMOKE" = true ]; then
+    command -v xorriso > /dev/null 2>&1 || \
+        fail "xorriso is required for --qemu-smoke (extract kernel/initrd)"
+    EXTRACT_DIR="$(mktemp -d "$RUN_DIR/.kernel-extract.XXXXXX")"
+
+    # Extract the symlinks first, then resolve each one and overwrite
+    # with the real file so QEMU's -kernel/-initrd always sees a regular
+    # file and never a dangling symlink.
+    xorriso -indev "$ISO" -osirrox on \
+        -extract /live/vmlinuz      "$EXTRACT_DIR/vmlinuz" \
+        -extract /live/initrd.img   "$EXTRACT_DIR/initrd.img" \
+        > /dev/null 2>&1 || fail "failed to extract kernel symlinks from ISO"
+
+    for _file in vmlinuz initrd.img; do
+        _path="$EXTRACT_DIR/$_file"
+        if [ -L "$_path" ]; then
+            _target="$(readlink "$_path")"
+            _parent="$(dirname "$_path")"
+            xorriso -indev "$ISO" -osirrox on \
+                -extract "/live/$_target" "$_path" \
+                > /dev/null 2>&1 || fail "failed to extract $_target from ISO"
+        fi
+        [ -f "$_path" ] || fail "extracted $_file is missing"
+        [ ! -L "$_path" ] || fail "extracted $_file is still a symlink"
+        [ -s "$_path" ] || fail "extracted $_file is empty"
+    done
+
+    QEMU_ARGS+=(
+        -kernel "$EXTRACT_DIR/vmlinuz"
+        -initrd "$EXTRACT_DIR/initrd.img"
+        -append "$_SMOKE_APPEND"
+    )
+fi
 
 if [ "$WRITABLE_MEDIA_MODE" = true ]; then
     rm -f -- "$WRITABLE_MEDIA"
@@ -244,6 +287,9 @@ cleanup() {
         wait "$QEMU_PID" 2>/dev/null || true
     fi
     rm -f -- "$MONITOR_SOCKET"
+    if [ -n "${EXTRACT_DIR:-}" ] && [ -d "$EXTRACT_DIR" ]; then
+        rm -rf -- "$EXTRACT_DIR"
+    fi
 }
 trap cleanup EXIT INT TERM HUP
 
@@ -275,6 +321,20 @@ if [ "$QEMU_SMOKE" = true ]; then
     done
     grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG" || \
         fail "QEMU-only kernel parameters were not loaded"
+fi
+
+if [ "$QEMU_BOOT_TEST" = true ]; then
+    kiosk_ready=false
+    for _boot in $(seq 1 120); do
+        if serial_matches 'Started[[:space:]]+sushida-(kiosk|navigation-watch)\.service([[:space:]-]|$)'; then
+            kiosk_ready=true
+            break
+        fi
+        kill -0 "$QEMU_PID" 2>/dev/null || fail "QEMU exited before kiosk startup"
+        sleep 1
+    done
+    [ "$kiosk_ready" = true ] || \
+        fail "bootloader did not reach the kiosk service; check GRUB/ISOLINUX config"
 fi
 
 if [ "$POWERDOWN" = true ]; then

@@ -4,8 +4,10 @@
 #
 # Runs inside dbus-run-session.  Expects a single argument: the URL.
 # Manages pipewire, pipewire-pulse, wireplumber, and cage -- chromium.
-# When any process exits, the entire session is cleaned up and the
-# exit status is preserved.
+# Audio services are best-effort: Cage starts regardless of audio readiness,
+# and an audio process exit during the session does not terminate the kiosk.
+# When Cage exits, the entire session is cleaned up and the exit status is
+# preserved.
 set -euo pipefail
 
 if [ $# -ne 1 ]; then
@@ -205,9 +207,9 @@ while [ "${#SESSION_PIDS[@]}" -gt 0 ]; do
     if [ "$_EXITED_NAME" = "cage" ]; then
         break
     fi
-    # Audio process exited while cage is running - restart it rather than
-    # terminating the kiosk session.  Audio is best-effort; the game screen
-    # and user input take priority.
+    # Audio process exited while cage is running — continue the kiosk
+    # without audio.  These processes are removed from supervision above;
+    # only the cage exit stops the session.
 done
 set -e
 

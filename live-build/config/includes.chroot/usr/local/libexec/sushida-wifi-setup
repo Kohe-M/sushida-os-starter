@@ -787,32 +787,54 @@ def load_credentials() -> tuple[str, str] | None:
 
 
 def restore_saved_connection() -> None:
-    """Retry saved credential restoration with bounded exponential backoff.
+    """Retry saved credential restoration with bounded backoff.
 
-    The initial scan of Wi-Fi devices, AP firmwares, or kernel drivers may
-    not be ready at boot time.  A single pass would silently skip
-    restoration, leaving the user with the setup page even though a saved
-    credential exists.  The retry stops when the profile becomes active,
-    an interactive request supplies a new credential, the service stops,
-    or the maximum duration is reached.
+    The saved credential is loaded once per retry so a replacement written
+    by an interactive request is picked up.  The loop waits for the worker
+    to finish each attempt, backoffs on failure, and stops on any of:
+    the managed profile is already active, an interactive request loads a
+    new credential and succeeds, the saved credential disappears, or the
+    retry budget is exhausted.
     """
-    saved = load_credentials()
-    if saved is None:
-        return
-    delay = 1.0
+    BACKOFF_MIN = 2.0
+    BACKOFF_MAX = 16.0
+    MAX_RETRIES = 5
+    backoff = BACKOFF_MIN
+    retries = 0
     deadline = time.monotonic() + 120.0
-    while time.monotonic() < deadline:
+
+    while time.monotonic() < deadline and retries < MAX_RETRIES:
         if managed_wifi_active():
             return
-        if queue_connection(*saved):
-            start_queued_connection()
+        saved = load_credentials()
+        if saved is None:
             return
-        state, _message = connect_status()
-        if state == CONNECT_SUCCEEDED:
-            # An interactive or earlier restore succeeded; no retry needed.
-            return
-        time.sleep(delay)
-        delay = min(delay * 1.5, 16.0)
+        # If an interactive or previous restore attempt is still running,
+        # wait a moment and check again rather than racing.
+        if not queue_connection(*saved):
+            state, _msg = connect_status()
+            if state == CONNECT_SUCCEEDED:
+                return
+            time.sleep(1.0)
+            continue
+        start_queued_connection()
+        retries += 1
+
+        # Wait for the worker to complete this attempt.
+        while time.monotonic() < deadline:
+            time.sleep(1.0)
+            if managed_wifi_active():
+                return
+            state, _msg = connect_status()
+            if state == CONNECT_WORKING:
+                continue
+            if state == CONNECT_SUCCEEDED:
+                return
+            # IDLE or FAILED — the attempt concluded.
+            break
+
+        time.sleep(backoff)
+        backoff = min(backoff * 1.5, BACKOFF_MAX)
 
 
 def render_page(message: str = "", success: bool = False) -> bytes:
