@@ -24,6 +24,17 @@ launcher and session helper. Mutable browser/session state is volatile. The
 kiosk service has no shell-facing UI, SSH, general settings GUI, or second
 application. The local Wi-Fi page is restricted to scanning and connecting; it
 does not expose arbitrary NetworkManager settings, URLs, files, or commands.
+
+A blocked-navigation recovery service (`sushida-navigation-watch`) reads only
+the browser's own ephemeral session files (never the network or page content),
+detects a disallowed current-tab URL, and triggers a validated kiosk restart.
+The watcher runs as the `kiosk` user, uses no debug channels or extensions,
+and is fail-closed: any parse ambiguity or missing file means "no action."
+Because user-gesture popup windows cannot be prevented by managed policy alone
+in Chromium 150, the watcher checks every tab's current entry, so popup
+navigations to disallowed origins are also recovered. Normal Sushi-da gameplay
+never triggers a restart because every active URL is within the allowlist.
+
 Residual risks include Chromium/Cage/kernel vulnerabilities, unverified policy
 runtime semantics, PID-reuse races in network recovery, USB/input
 firmware behavior, and shortcuts not caught by the selected components.

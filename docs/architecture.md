@@ -249,6 +249,27 @@ JavaScript `fetch()`, whose failures are invisible. A terminal state
 (succeeded or failed) is reported through the status endpoint; the page
 either displays the outcome or reloads the interactive form.
 
+## Navigation recovery
+
+Even with the managed policy described above, a user who activates a
+non-allowlisted link still sees an `ERR_BLOCKED_BY_ADMINISTRATOR` page.
+Kiosk mode provides no back button, address bar, or tab strip, so the
+session would be stranded. The recovery layer is a separate systemd
+supervisor, `sushida-navigation-watch.service`, that runs as the `kiosk`
+user and reads only Chromium's own volatile session files.  It extracts
+each tab's current navigation URL from the session-file structure, checks
+it against the same allowlist the managed policy enforces, and calls a
+validated TERM on the kiosk MainPID (same UID and cgroup checks as the
+network route watcher) when a disallowed URL is detected.  Detection is
+fail-closed: a missing, unreadable, or structurally ambiguous session
+file produces "no action."
+
+Typical recovery latency is about 10 seconds (Chromium session flush ≤ 3 s,
+poll interval 2 s, systemd restart ~ 5 s).  Normal Sushi-da play (all URLs
+within the allowlist) never triggers a restart.  New window or popup
+navigations to disallowed origins are also caught because every tab's
+current URL is examined.
+
 ## What managed policy alone cannot prevent
 
 The following controls require system-level or hardware-level enforcement

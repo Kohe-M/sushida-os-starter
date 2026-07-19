@@ -93,7 +93,7 @@ def test_contract_allows_only_constrained_wifi_provisioning() -> None:
 
 def test_acceptance_maps_every_definition_of_done_item() -> None:
     text = (DOCS / "acceptance-tests.md").read_text()
-    for number in range(1, 22):
+    for number in range(1, 23):
         assert f"| D{number:02d} |" in text
     for evidence in ("Input latency", "GPU/WebGL", "Audio", "Power loss", "Representative hardware"):
         assert evidence in text

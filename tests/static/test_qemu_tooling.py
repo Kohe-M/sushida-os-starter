@@ -130,7 +130,7 @@ def test_smoke_report_distinguishes_automated_and_manual_checks() -> None:
     assert "UNVERIFIED" in text
     assert "login:" in text
     assert "ModuleNotFoundError" in text
-    assert "Wi-Fi setup service failure" in text
+    assert "Wi-Fi setup or watcher service failure" in text
     assert "Invalid pattern file://" in text
     assert "result_value()" in text
     assert "result_sha" in text

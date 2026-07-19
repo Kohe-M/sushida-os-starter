@@ -75,8 +75,8 @@ if grep -Eiq '(^|[^[:alpha:]])(login:|password:)' "$SERIAL"; then
     echo "ERROR: serial output contains a normal login prompt" >&2
     exit 1
 fi
-if grep -Eq 'sushida-(wifi-setup|network-watch).*(ERROR:|Traceback|ModuleNotFoundError)' "$SERIAL"; then
-    echo "ERROR: serial output contains a Wi-Fi setup service failure" >&2
+if grep -Eq 'sushida-(wifi-setup|network-watch|navigation-watch).*(ERROR:|Traceback|ModuleNotFoundError)' "$SERIAL"; then
+    echo "ERROR: serial output contains a Wi-Fi setup or watcher service failure" >&2
     exit 1
 fi
 if grep -Fq 'Invalid pattern file://' "$SERIAL"; then
@@ -94,6 +94,7 @@ for evidence in \
     'sushida-wifi-setup' \
     'sushida-kiosk' \
     'sushida-network-watch' \
+    'sushida-navigation-watch' \
     'graphical.target'; do
     grep -Fq "$evidence" "$SERIAL" || {
         echo "ERROR: serial output lacks boot evidence: $evidence" >&2

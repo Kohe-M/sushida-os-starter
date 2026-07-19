@@ -91,6 +91,7 @@
         'sushida-wifi-setup' \
         'sushida-kiosk' \
         'sushida-network-watch' \
+        'sushida-navigation-watch' \
         'graphical.target' > "$run_dir/serial.log"
     printf '%s\n' \
         'QEMU_STATUS=0' \

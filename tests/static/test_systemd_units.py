@@ -352,12 +352,13 @@ def test_hook_enables_kiosk_and_watcher() -> None:
     for cmd in enable_lines:
         parts = cmd.split()
         services_found.extend(p for p in parts if p.endswith(".service"))
-    assert len(services_found) == 4, (
-        f"Expected exactly 4 .service tokens, got {len(services_found)}: {services_found}"
+    assert len(services_found) == 5, (
+        f"Expected exactly 5 .service tokens, got {len(services_found)}: {services_found}"
     )
     expected = {
         "sushida-kiosk.service",
         "sushida-network-watch.service",
+        "sushida-navigation-watch.service",
         "sushida-config-prepare.service",
         "sushida-wifi-setup.service",
     }

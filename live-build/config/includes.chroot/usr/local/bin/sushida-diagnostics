@@ -99,6 +99,8 @@ capture() {
         --property=LoadState,ActiveState,SubState,Result,NRestarts --no-pager
     capture "Network watcher service" systemctl show sushida-network-watch.service \
         --property=LoadState,ActiveState,SubState,Result,NRestarts --no-pager
+    capture "Navigation watcher service" systemctl show sushida-navigation-watch.service \
+        --property=LoadState,ActiveState,SubState,Result,NRestarts --no-pager
     capture "Cage process IDs" pgrep -x cage
     capture "Chromium process IDs" pgrep -x chromium
 

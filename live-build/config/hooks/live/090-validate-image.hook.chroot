@@ -98,6 +98,7 @@ done
 for file in \
     /usr/local/bin/sushida-launch \
     /usr/local/bin/sushida-network-watch \
+    /usr/local/bin/sushida-navigation-watch \
     /usr/local/bin/sushida-diagnostics \
     /usr/local/libexec/sushida-session \
     /usr/local/libexec/sushida-config-prepare \
@@ -142,6 +143,7 @@ if grep -R -n -E 'acpid|systemctl[[:space:]]+enable[[:space:]]+poweroff\.target'
     fail "custom power event daemon or enabled poweroff target is present"
 fi
 for unit in sushida-kiosk.service sushida-network-watch.service \
+    sushida-navigation-watch.service \
     sushida-config-prepare.service sushida-wifi-setup.service \
     'var-lib-sushida\x2dconfig.mount'; do
     require_file "/etc/systemd/system/$unit"
@@ -157,6 +159,7 @@ done
 systemd-analyze verify \
     /etc/systemd/system/sushida-kiosk.service \
     /etc/systemd/system/sushida-network-watch.service \
+    /etc/systemd/system/sushida-navigation-watch.service \
     /etc/systemd/system/sushida-config-prepare.service \
     /etc/systemd/system/sushida-wifi-setup.service \
     '/etc/systemd/system/var-lib-sushida\x2dconfig.mount'
@@ -230,12 +233,14 @@ fi
 if grep -R -n -E 'TO''DO|FIX''ME|IMPLEMENT[[:space:]]+ME|REPLACE_WITH_' \
     /usr/local/bin/sushida-launch \
     /usr/local/bin/sushida-network-watch \
+    /usr/local/bin/sushida-navigation-watch \
     /usr/local/bin/sushida-diagnostics \
     /usr/local/libexec/sushida-session \
     /usr/local/libexec/sushida-config-prepare \
     /usr/local/libexec/sushida-wifi-setup \
     /etc/systemd/system/sushida-kiosk.service \
     /etc/systemd/system/sushida-network-watch.service \
+    /etc/systemd/system/sushida-navigation-watch.service \
     /etc/systemd/system/sushida-config-prepare.service \
     /etc/systemd/system/sushida-wifi-setup.service \
     /etc/chromium/policies/managed/sushida-os.json \

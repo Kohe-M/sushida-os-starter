@@ -1,0 +1,371 @@
+#!/usr/bin/env python3
+"""Return the managed kiosk to the allowed origin after a blocked navigation.
+
+Managed Chromium policy (URLBlocklist/URLAllowlist) replaces the current tab
+with an administrator block page when the user activates a link to a
+non-allowlisted origin, and a user-gesture popup window cannot be denied by
+policy either.  Kiosk mode offers no back button, address bar, or tab strip,
+so the session would be stranded on the block page.  This watcher reads only
+Chromium's own volatile session files -- never the network, never page
+content -- and restarts the managed kiosk session through the same validated
+MainPID path as the network route watcher whenever a current tab entry falls
+outside the fixed allowlist.  Detection is fail-closed: any structural
+ambiguity, missing file, or unknown URL class means "no action", so normal
+Sushi-da gameplay can never trigger a restart.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import signal
+import struct
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import NamedTuple
+from urllib.parse import urlsplit
+
+PROD_RUNTIME = Path("/run/sushida-os")
+PROD_SYSTEMCTL = "/usr/bin/systemctl"
+KIOSK_SERVICE = "sushida-kiosk.service"
+SESSIONS_SUBDIR = Path("chromium") / "Default" / "Sessions"
+
+MAGIC = b"SNSS"
+COMMAND_UPDATE_TAB_NAVIGATION = 0x06
+MAX_SESSION_BYTES = 4 * 1024 * 1024
+MAX_RECORD_BYTES = 65536
+MAX_URL_BYTES = 2048
+MAX_NAVIGATION_INDEX = 4096
+MAX_CANDIDATE_FILES = 64
+
+DEFAULT_POLL_SECONDS = 2.0
+DEFAULT_COOLDOWN_SECONDS = 30.0
+MIN_POLL_SECONDS = 0.05
+MAX_POLL_SECONDS = 60.0
+MAX_COOLDOWN_SECONDS = 600.0
+
+_STATE_TIMEOUT = 10
+
+
+def _test_mode() -> bool:
+    return os.environ.get("SUSHIDA_OS_TEST_MODE") == "1"
+
+
+def _test_path(name: str) -> str | None:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    if not _test_mode():
+        raise SystemExit(f"ERROR: {name} override requires SUSHIDA_OS_TEST_MODE=1")
+    if not value.startswith("/tmp/"):
+        raise SystemExit(f"ERROR: unsafe test path for {name}")
+    return value
+
+
+class Config(NamedTuple):
+    sessions_dir: Path
+    systemctl: str
+    cgroup_override: Path | None
+    poll_seconds: float
+    cooldown_seconds: float
+    max_iterations: int
+
+
+def _bounded_float(name: str, default: float, minimum: float, maximum: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    if not _test_mode():
+        raise SystemExit(f"ERROR: {name} override requires SUSHIDA_OS_TEST_MODE=1")
+    try:
+        value = float(raw)
+    except ValueError:
+        raise SystemExit(f"ERROR: {name} must be numeric: {raw}") from None
+    if not (minimum <= value <= maximum):
+        raise SystemExit(f"ERROR: {name} out of range: {raw}")
+    return value
+
+
+def load_config() -> Config:
+    runtime = _test_path("SUSHIDA_OS_RUNTIME")
+    runtime_dir = Path(runtime) if runtime else PROD_RUNTIME
+    systemctl = _test_path("SUSHIDA_NAV_WATCH_SYSTEMCTL") or PROD_SYSTEMCTL
+    cgroup = _test_path("SUSHIDA_OS_TEST_CGROUP_FILE")
+    raw_iterations = os.environ.get("SUSHIDA_OS_MAX_ITERATIONS", "0")
+    if raw_iterations != "0" and not _test_mode():
+        raise SystemExit(
+            "ERROR: SUSHIDA_OS_MAX_ITERATIONS override requires SUSHIDA_OS_TEST_MODE=1"
+        )
+    if not raw_iterations.isdigit():
+        raise SystemExit(f"ERROR: invalid SUSHIDA_OS_MAX_ITERATIONS: {raw_iterations}")
+    return Config(
+        sessions_dir=runtime_dir / SESSIONS_SUBDIR,
+        systemctl=systemctl,
+        cgroup_override=Path(cgroup) if cgroup else None,
+        poll_seconds=_bounded_float(
+            "SUSHIDA_NAV_WATCH_POLL_SECONDS",
+            DEFAULT_POLL_SECONDS, MIN_POLL_SECONDS, MAX_POLL_SECONDS,
+        ),
+        cooldown_seconds=_bounded_float(
+            "SUSHIDA_NAV_WATCH_COOLDOWN_SECONDS",
+            DEFAULT_COOLDOWN_SECONDS, 0.0, MAX_COOLDOWN_SECONDS,
+        ),
+        max_iterations=int(raw_iterations),
+    )
+
+
+# ── Session (SNSS) parsing ────────────────────────────────────────────────
+
+
+def iter_navigation_records(data: bytes):
+    """Yield (tab_id, nav_index, url) for each structurally valid record.
+
+    Only kCommandUpdateTabNavigation records are extracted.  Every candidate
+    must be fully self-consistent (bounded size, bounded index, exact URL
+    length, printable URL) or it is ignored, so torn writes and format
+    changes fail closed instead of producing a URL.
+    """
+    if len(data) < 8 or len(data) > MAX_SESSION_BYTES:
+        return
+    if data[:4] != MAGIC:
+        return
+    (version,) = struct.unpack_from("<i", data, 4)
+    if version < 1 or version > 99:
+        return
+    offset = 8
+    end = len(data)
+    while offset + 13 <= end:
+        if data[offset] == COMMAND_UPDATE_TAB_NAVIGATION:
+            (size,) = struct.unpack_from("<I", data, offset + 1)
+            if 13 <= size <= MAX_RECORD_BYTES and offset + 5 + size <= end:
+                payload = data[offset + 5 : offset + 5 + size]
+                (nav_index,) = struct.unpack_from("<I", payload, 4)
+                (url_len,) = struct.unpack_from("<I", payload, 8)
+                if (
+                    nav_index <= MAX_NAVIGATION_INDEX
+                    and 1 <= url_len <= MAX_URL_BYTES
+                    and 12 + url_len <= size
+                ):
+                    raw = payload[12 : 12 + url_len]
+                    try:
+                        url = raw.decode("utf-8", errors="strict")
+                    except UnicodeDecodeError:
+                        url = None
+                    if url is not None and all(
+                        ord(char) >= 0x21 and ord(char) != 0x7F for char in url
+                    ):
+                        yield (payload[0:4], nav_index, url)
+        offset += 1
+
+
+def current_entries(data: bytes) -> dict[bytes, str]:
+    """Return the latest navigation URL per tab, in file order."""
+    entries: dict[bytes, str] = {}
+    for tab_id, _index, url in iter_navigation_records(data):
+        entries[tab_id] = url
+    return entries
+
+
+def _session_candidates(sessions_dir: Path) -> list[Path]:
+    try:
+        names = os.listdir(sessions_dir)
+    except OSError:
+        return []
+    candidates: list[Path] = []
+    for name in names:
+        if not (name.startswith("Session_") or name.startswith("Tabs_")):
+            continue
+        path = sessions_dir / name
+        try:
+            info = path.lstat()
+        except OSError:
+            continue
+        if not stat_is_regular_file(info.st_mode):
+            continue
+        candidates.append(path)
+        if len(candidates) >= MAX_CANDIDATE_FILES:
+            break
+    return candidates
+
+
+def stat_is_regular_file(mode: int) -> bool:
+    return (mode & 0o170000) == 0o100000
+
+
+def assess_sessions(sessions_dir: Path) -> str:
+    """Return "blocked", "allowed", or "unknown" for the newest session.
+
+    "blocked" means at least one tab currently shows a URL outside the fixed
+    allowlist.  Missing, unreadable, or unparseable state is "unknown" and
+    never triggers a restart.
+    """
+    candidates = _session_candidates(sessions_dir)
+    if not candidates:
+        return "unknown"
+    try:
+        newest = max(
+            candidates,
+            key=lambda path: (path.stat().st_mtime_ns, path.name),
+        )
+    except OSError:
+        return "unknown"
+    try:
+        if newest.stat().st_size > MAX_SESSION_BYTES:
+            return "unknown"
+        data = newest.read_bytes()
+    except OSError:
+        return "unknown"
+    try:
+        entries = current_entries(data)
+    except Exception:  # noqa: BLE001 - parsing must fail closed
+        return "unknown"
+    state = "unknown"
+    for url in entries.values():
+        classification = classify_url(url)
+        if classification == "blocked":
+            return "blocked"
+        if classification == "allowed":
+            state = "allowed"
+    return state
+
+
+# ── URL classification (mirrors the managed policy exactly) ───────────────
+
+
+def classify_url(url: str) -> str:
+    """Classify a session entry as "allowed", "blocked", or "unknown".
+
+    Mirrors the managed policy boundary: the allowlist pattern
+    ``https://.sushida.net:443`` is an exact-host match, the setup origin is
+    the fixed loopback port, and the offline page is the single packaged
+    file.  Like the policy filter itself, userinfo is ignored.  about: and
+    unparsable entries are transient/unknown and never trigger recovery.
+    """
+    if not url or len(url) > MAX_URL_BYTES:
+        return "unknown"
+    if url.startswith("about:"):
+        return "unknown"
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "unknown"
+    scheme = parts.scheme
+    if scheme in ("http", "https"):
+        try:
+            port = parts.port
+        except ValueError:
+            return "unknown"
+        host = parts.hostname
+        if host is None:
+            return "unknown"
+        if scheme == "https":
+            if host == "sushida.net" and port in (None, 443):
+                return "allowed"
+            return "blocked"
+        if host == "127.0.0.1" and port == 8787:
+            return "allowed"
+        return "blocked"
+    if scheme == "file":
+        if (
+            parts.netloc in ("", "localhost")
+            and parts.path == "/usr/share/sushida-os/offline.html"
+        ):
+            return "allowed"
+        return "blocked"
+    if scheme in ("chrome-error", "chrome", "view-source", "javascript", "data"):
+        return "blocked"
+    if not scheme:
+        return "unknown"
+    return "blocked"
+
+
+# ── Validated kiosk restart ───────────────────────────────────────────────
+
+
+def _run_systemctl(config: Config, *args: str) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(
+            [config.systemctl, *args],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_STATE_TIMEOUT,
+            env={"LANG": "C", "LC_ALL": "C", "PATH": "/usr/sbin:/usr/bin:/sbin:/bin"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def restart_kiosk(config: Config) -> bool:
+    """Send TERM to the kiosk MainPID only after the same validations as the
+    network route watcher: active service, numeric MainPID > 1, same owner,
+    and the exact service name inside the process cgroup."""
+    active = _run_systemctl(config, "-q", "is-active", KIOSK_SERVICE)
+    if active is None or active.returncode != 0:
+        return False
+    shown = _run_systemctl(
+        config, "show", "--property", "MainPID", "--value", KIOSK_SERVICE
+    )
+    if shown is None or shown.returncode != 0:
+        return False
+    pid_text = shown.stdout.strip()
+    if not pid_text.isdigit():
+        return False
+    pid = int(pid_text)
+    if pid <= 1:
+        return False
+    try:
+        if os.stat(f"/proc/{pid}").st_uid != os.geteuid():
+            return False
+    except OSError:
+        return False
+    cgroup_path = config.cgroup_override or Path(f"/proc/{pid}/cgroup")
+    try:
+        cgroup = cgroup_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    if not re.search(r"(^|/)sushida-kiosk\.service($|/)", cgroup, re.MULTILINE):
+        return False
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return False
+    return True
+
+
+# ── Main loop ─────────────────────────────────────────────────────────────
+
+
+def _log(stage: str) -> None:
+    # Only stage names are recorded; URLs and file contents never enter logs.
+    print(f"navigation-watch: stage={stage}", flush=True)
+
+
+def main() -> int:
+    config = load_config()
+    _log("start")
+    last_term = 0.0
+    iteration = 0
+    while True:
+        if config.max_iterations and iteration >= config.max_iterations:
+            return 0
+        iteration += 1
+        state = assess_sessions(config.sessions_dir)
+        if state == "blocked":
+            now = time.monotonic()
+            if now - last_term >= config.cooldown_seconds:
+                _log("blocked-page")
+                if restart_kiosk(config):
+                    _log("kiosk-term")
+                else:
+                    _log("kiosk-term-unavailable")
+                last_term = now
+        time.sleep(config.poll_seconds)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

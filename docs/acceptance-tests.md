@@ -55,7 +55,18 @@
 | K38c | Submit WEP, 802.1X/Enterprise, OWE, SAE-only WPA3, hidden, or unknown security | A specific unsupported-mode Japanese message appears and no profile/radio change occurs |  |  | Backend re-scan owns the security decision; WPA2/WPA3 transition mode is supported as WPA Personal |
 | K38d | Submit a WPA Personal password containing spaces, a colon, and symbols | Association succeeds without the password appearing in argv, logs, or the HTTP response |  |  | Confirm with redacted diagnostics only |
 | K38e | Stop and restart the test AP after a successful WPA Personal setup | NetworkManager reconnects during the same boot without a second password entry |  |  | Confirm the runtime profile uses `psk-flags=0`; reboot recovery remains through `setup.json` |
+| K38f | Submit a Wi-Fi credential while the backend holds previous connection state | The response contains the connecting page, not a post-success form; the browser does not show `ERR_NETWORK_CHANGED` or any other error page, and the setup page eventually transitions to the success message or the interactive form depending on the outcome |  |  | The async state machine guarantees the HTTP response completes before NetworkManager is changed |
+| K38g | Submit two duplicate connection requests rapidly | The second request receives a `409 Conflict` response; exactly one connection attempt runs, and only the first credential is persisted |  |  | Duplicate POSTs are serialized; the second credential is never stored |
 
+## Navigation recovery
+
+| ID | Operation | Expected result | Actual result | Pass/Fail | Notes |
+|---|---|---|---|---|---|
+| K39 | Click a non-allowlisted link inside the Sushi-da play page | Within about 10 seconds the kiosk returns to the Sushi-da play page; no user interaction is required |  |  | The navigation watcher detects the blocked entry in Chromium's session file and restarts the kiosk |
+| K39a | Click a link with `target="_blank"` to a non-allowlisted origin | The popup window opens briefly but the kiosk returns to the Sushi-da play page within about 15 seconds |  |  | The watcher examines every tab's current entry; no managed policy can prevent user-gesture popups |
+| K39b | Press every non-allowlisted shortcut while the game is running | The kiosk remains on the Sushi-da play page; no unexpected restart occurs |  |  | Normal gameplay URLs are all within the allowlist; the watcher never triggers on allowed pages |
+| K39c | Disconnect the network while Sushi-da is displayed | The network watcher routes to the offline or setup page; the navigation watcher sees that page as allowed and does not restart the kiosk |  |  | The navigation watcher only acts on concretely disallowed URLs (blocked pages, error interstitials) |
+ 
 ## Gameplay input
 
 | ID | Operation | Expected result | Actual result | Pass/Fail | Notes |
@@ -125,6 +136,7 @@ configuration evidence and manual runtime evidence are complementary.
 | D19 | No secret committed | Git-aware secret tests and manual artifact distribution review |
 | D20 | `make test` succeeds | Retained full pytest/ShellCheck/BATS command output from the release commit |
 | D21 | Build, verification, installation, acceptance documented | Static documentation test plus operator review of all required docs |
+| D22 | Blocked navigation auto-recovers | Navigation watcher static tests; manual K39 series hardware validation |
 
 ## Evidence collection rules
 
