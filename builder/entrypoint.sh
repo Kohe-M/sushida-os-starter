@@ -17,4 +17,11 @@ if [ $# -eq 0 ]; then
     exec bash
 fi
 
+# Docker Desktop bind-mounts a host directory as root-owned.  Git refuses to
+# operate on a repository owned by a different user unless safe.directory is
+# set to the mount path.  Set it only for the expected repository root.
+if [ -d /sushida-os/.git ] || [ -f /sushida-os/.git ]; then
+    git config --global safe.directory /sushida-os
+fi
+
 exec "$@"
