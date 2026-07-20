@@ -15,10 +15,7 @@
     "metadata"
   ],
   "properties": {
-    "schema_version": {
-      "type": "integer",
-      "minimum": 1
-    },
+    "schema_version": { "const": 1 },
     "artifacts": {
       "type": "array",
       "items": {
@@ -26,7 +23,7 @@
         "additionalProperties": false,
         "required": ["name", "required", "checksum", "publish", "clean", "verify"],
         "properties": {
-          "name": { "type": "string" },
+          "name": { "type": "string", "pattern": "^[^/\\\\]+$" },
           "required": { "type": "boolean" },
           "checksum": { "type": "boolean" },
           "publish": { "type": "boolean" },
@@ -43,7 +40,7 @@
         "additionalProperties": false,
         "required": ["path", "region", "file_type", "required", "security_critical"],
         "properties": {
-          "path": { "type": "string" },
+          "path": { "type": "string", "pattern": "^/[^ ]+$" },
           "region": { "type": "string", "enum": ["iso-root", "squashfs"] },
           "file_type": { "type": "string" },
           "required": { "type": "boolean" },
@@ -63,8 +60,8 @@
           "required", "security_critical"
         ],
         "properties": {
-          "source": { "type": "string" },
-          "image_path": { "type": "string" },
+          "source": { "type": "string", "pattern": "^(?!\\.\\./)(?!\\.\\.$)[^ ][^ ]*$" },
+          "image_path": { "type": "string", "pattern": "^/[^ ]+$" },
           "region": { "type": "string", "enum": ["iso-root", "squashfs"] },
           "file_type": { "type": "string" },
           "mode": { "type": "string", "pattern": "^[0-7]{4}$" },
@@ -72,7 +69,10 @@
           "group": { "type": "string" },
           "comparison": { "type": "string", "enum": ["cmp", "presence", "size", "sha256"] },
           "required": { "type": "boolean" },
-          "security_critical": { "type": "boolean" }
+          "security_critical": { "type": "boolean" },
+          "declared": { "type": "boolean" },
+          "currently_checked": { "type": "boolean" },
+          "planned_for_full_verification": { "type": "boolean" }
         }
       },
       "uniqueItems": true
@@ -98,22 +98,21 @@
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "schema_version", "git_commit", "build_timestamp",
-        "architecture", "iso_sha256"
-      ],
+      "required": ["required_fields", "formats"],
       "properties": {
-        "schema_version": { "type": "integer", "minimum": 1 },
-        "git_commit": { "type": "string" },
-        "git_dirty": { "type": "boolean" },
-        "build_timestamp": { "type": "string", "format": "date-time" },
-        "architecture": { "type": "string" },
-        "iso_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "chromium_version": { "type": "string" },
-        "cage_version": { "type": "string" },
-        "live_build_version": { "type": "string" },
-        "debian_release": { "type": "string" },
-        "release_contract_hash": { "type": "string" }
+        "required_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "static_values": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "formats": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
       }
     }
   }

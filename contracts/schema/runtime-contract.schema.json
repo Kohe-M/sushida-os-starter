@@ -15,15 +15,11 @@
     "navigation"
   ],
   "properties": {
-    "schema_version": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Schema version number; increment when fields change"
-    },
+    "schema_version": { "const": 1 },
     "urls": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sushida_url", "setup_url", "offline_url", "nav_allowlist"],
+      "required": ["sushida_url", "setup_url", "offline_url"],
       "properties": {
         "sushida_url": {
           "type": "string",
@@ -39,20 +35,6 @@
           "type": "string",
           "format": "uri",
           "pattern": "^file://(/|localhost/).*offline\\.html$"
-        },
-        "time_sync_url": {
-          "type": "string",
-          "format": "uri"
-        },
-        "nav_allowlist": {
-          "type": "array",
-          "items": { "type": "string" },
-          "uniqueItems": true
-        },
-        "nav_blocklist": {
-          "type": "array",
-          "items": { "type": "string" },
-          "uniqueItems": true
         }
       }
     },
@@ -60,7 +42,8 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "runtime_dir", "active_route_file", "wifi_setup_runtime_dir",
+        "runtime_dir", "active_route_file", "time_sync_marker",
+        "wifi_setup_runtime_dir", "csrf_token_file",
         "config_mount_path", "config_storage_status", "credential_file",
         "chromium_profile_dir", "chromium_sessions_dir"
       ],
@@ -79,10 +62,7 @@
     },
     "routes": {
       "type": "array",
-      "items": {
-        "type": "string",
-        "enum": ["online", "setup", "offline"]
-      },
+      "items": { "type": "string", "enum": ["online", "setup", "offline"] },
       "uniqueItems": true,
       "minItems": 3
     },
@@ -111,25 +91,34 @@
       "required": [
         "network_setup_grace_seconds",
         "network_check_interval_seconds",
-        "wifi_connect_timeout_seconds",
+        "wifi_command_default_timeout_seconds",
+        "wifi_activation_wait_seconds",
+        "wifi_activation_process_timeout_seconds",
+        "restore_backoff_min_seconds",
+        "restore_backoff_max_seconds",
+        "restore_max_retries",
+        "restore_deadline_seconds",
         "nav_poll_interval_seconds",
         "nav_cooldown_seconds",
         "http_read_timeout_seconds",
-        "http_max_request_bytes"
+        "http_max_request_bytes",
+        "session_audio_timeout_seconds"
       ],
       "properties": {
-        "network_setup_grace_seconds":    { "type": "integer", "minimum": 0, "maximum": 60 },
-        "network_check_interval_seconds": { "type": "integer", "minimum": 30, "maximum": 3600 },
-        "wifi_connect_timeout_seconds":   { "type": "integer", "minimum": 1, "maximum": 120 },
-        "restore_backoff_min_seconds":    { "type": "number", "minimum": 0, "maximum": 60 },
-        "restore_backoff_max_seconds":    { "type": "number", "minimum": 1, "maximum": 120 },
-        "restore_max_retries":            { "type": "integer", "minimum": 1, "maximum": 100 },
-        "restore_deadline_seconds":       { "type": "integer", "minimum": 1, "maximum": 600 },
-        "nav_poll_interval_seconds":      { "type": "number", "minimum": 0.05, "maximum": 60 },
-        "nav_cooldown_seconds":           { "type": "number", "minimum": 0, "maximum": 600 },
-        "http_read_timeout_seconds":      { "type": "integer", "minimum": 1, "maximum": 300 },
-        "http_max_request_bytes":         { "type": "integer", "minimum": 128, "maximum": 65536 },
-        "session_audio_timeout_seconds":  { "type": "integer", "minimum": 1, "maximum": 60 }
+        "network_setup_grace_seconds":              { "type": "integer", "minimum": 0, "maximum": 60 },
+        "network_check_interval_seconds":           { "type": "integer", "minimum": 30, "maximum": 3600 },
+        "wifi_command_default_timeout_seconds":     { "type": "integer", "minimum": 1, "maximum": 120 },
+        "wifi_activation_wait_seconds":             { "type": "integer", "minimum": 1, "maximum": 120 },
+        "wifi_activation_process_timeout_seconds":  { "type": "integer", "minimum": 1, "maximum": 120 },
+        "restore_backoff_min_seconds":              { "type": "number", "minimum": 0, "maximum": 60 },
+        "restore_backoff_max_seconds":              { "type": "number", "minimum": 1, "maximum": 120 },
+        "restore_max_retries":                      { "type": "integer", "minimum": 1, "maximum": 100 },
+        "restore_deadline_seconds":                 { "type": "integer", "minimum": 1, "maximum": 600 },
+        "nav_poll_interval_seconds":                { "type": "number", "minimum": 0.05, "maximum": 60 },
+        "nav_cooldown_seconds":                     { "type": "number", "minimum": 0, "maximum": 600 },
+        "http_read_timeout_seconds":                { "type": "integer", "minimum": 1, "maximum": 300 },
+        "http_max_request_bytes":                   { "type": "integer", "minimum": 128, "maximum": 65536 },
+        "session_audio_timeout_seconds":            { "type": "integer", "minimum": 1, "maximum": 60 }
       }
     },
     "navigation": {
@@ -147,7 +136,7 @@
           "type": "array",
           "items": { "type": "string" },
           "uniqueItems": true,
-          "minItems": 4
+          "minItems": 5
         }
       }
     }

@@ -3,19 +3,7 @@
   "urls": {
     "sushida_url": "https://sushida.net/play.html",
     "setup_url": "http://127.0.0.1:8787/",
-    "offline_url": "file://localhost/usr/share/sushida-os/offline.html",
-    "nav_allowlist": [
-      "https://.sushida.net:443",
-      "file:///usr/share/sushida-os/offline.html",
-      "http://127.0.0.1:8787"
-    ],
-    "nav_blocklist": [
-      "*",
-      "view-source:*",
-      "chrome://*",
-      "chrome-untrusted://*",
-      "devtools://*"
-    ]
+    "offline_url": "file://localhost/usr/share/sushida-os/offline.html"
   },
   "runtime_paths": {
     "runtime_dir": "/run/sushida-os",
@@ -43,7 +31,9 @@
   "timeouts": {
     "network_setup_grace_seconds": 15,
     "network_check_interval_seconds": 30,
-    "wifi_connect_timeout_seconds": 40,
+    "wifi_command_default_timeout_seconds": 40,
+    "wifi_activation_wait_seconds": 30,
+    "wifi_activation_process_timeout_seconds": 35,
     "restore_backoff_min_seconds": 2.0,
     "restore_backoff_max_seconds": 16.0,
     "restore_max_retries": 5,
