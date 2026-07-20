@@ -95,7 +95,9 @@ for module in \
     "$backend_package/wifi/nmcli.py" \
     "$backend_package/wifi/coordinator.py" \
     "$backend_package/wifi/restore.py" \
-    "$backend_package/wifi/web.py"; do
+    "$backend_package/wifi/web.py" \
+    "$backend_package/runtime/__init__.py" \
+    "$backend_package/runtime/routes.py"; do
     require_file "$module"
     [ "$(stat -c '%U:%G:%a' "$module")" = "root:root:644" ] || \
         fail "unsafe owner or mode for $module: $(stat -c '%U:%G:%a' "$module")"
@@ -104,6 +106,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 - <<'PYEOF' || fail "Wi-Fi backend package doe
 import sushida_os.wifi.coordinator
 import sushida_os.wifi.restore
 import sushida_os.wifi.web
+import sushida_os.runtime.routes
 PYEOF
 if find "$backend_package" -name '__pycache__' -o -name '*.pyc' | grep -q .; then
     fail "Wi-Fi backend package must ship without bytecode caches"

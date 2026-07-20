@@ -49,6 +49,7 @@ def _build_minimal_repo(root: Path) -> None:
         "live-build/config/includes.chroot/usr/local/bin",
         "live-build/config/includes.chroot/usr/local/libexec",
         "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi",
+        "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/runtime",
         "live-build/config/includes.chroot/usr/share/sushida-os",
         "live-build/config/includes.chroot/etc/polkit-1/rules.d",
         "live-build/config/includes.chroot/etc/NetworkManager/conf.d",
@@ -233,6 +234,15 @@ def _build_minimal_repo(root: Path) -> None:
     )
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/__init__.py").write_text(
         '"""stub"""\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/runtime/__init__.py").write_text(
+        '"""stub"""\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/runtime/routes.py").write_text(
+        'ROUTE_ONLINE = "online"\n'
+        'ROUTE_SETUP = "setup"\n'
+        'ROUTE_OFFLINE = "offline"\n'
+        'ROUTES = (ROUTE_ONLINE, ROUTE_SETUP, ROUTE_OFFLINE)\n'
     )
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/__init__.py").write_text(
         '"""stub"""\n'
