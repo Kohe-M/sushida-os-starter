@@ -483,30 +483,64 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
                 result.error("DRIFT_SERVICE_MASK", "release", f"required_services.{name}",
                              str(validate_hook), f"service {name} not found in validate hook")
 
-    # Verify-iso.sh, clean.sh, run-qemu.sh — check artifact references
-    for script_name, script_rel in [
-        ("verify-iso.sh", "scripts/verify-iso.sh"),
-        ("clean.sh", "scripts/clean.sh"),
-        ("run-qemu.sh", "scripts/run-qemu.sh"),
-    ]:
+    # Verify-iso.sh, clean.sh, run-qemu.sh — check artifact references by boolean
+    _scripts_checks = [
+        ("verify-iso.sh", "scripts/verify-iso.sh", "verify"),
+        ("clean.sh", "scripts/clean.sh", "clean"),
+        ("run-qemu.sh", "scripts/run-qemu.sh", None),
+    ]
+    for script_name, script_rel, boolean_key in _scripts_checks:
         sp = _must_exist(root, script_rel, script_name, result, "release")
         if sp:
             _text = sp.read_text()
             for artifact in rc.get("artifacts", []):
                 name = artifact["name"]
-                if name not in _text:
-                    result.warn("RELEASE_ARTIFACT_REF", "release", f"artifacts.{name}",
-                                str(sp), f"artifact {name!r} not referenced in {script_name}")
+                # run-qemu.sh should reference the ISO
+                if boolean_key is None:
+                    if "iso" in name and name not in _text:
+                        result.error("RELEASE_ARTIFACT_REF", "release", f"artifacts.{name}",
+                                     str(sp), f"ISO artifact {name!r} not in {script_name}")
+                elif artifact.get(boolean_key, False) and name not in _text:
+                    result.error("RELEASE_ARTIFACT_REF", "release", f"artifacts.{name}",
+                                 str(sp), f"artifact {name!r} ({boolean_key}) not in {script_name}")
+                elif not artifact.get(boolean_key, False) and name in _text:
+                    result.warn("RELEASE_ARTIFACT_REF_UNEXPECTED", "release", f"artifacts.{name}",
+                                str(sp), f"artifact {name!r} ({boolean_key}=false) appears in {script_name}")
 
-    # Metadata required_fields check against build.sh
+    # Artifact checksum and publish verification
+    for artifact in rc.get("artifacts", []):
+        name = artifact["name"]
+        if artifact.get("checksum") and "sha256sum" not in (build_sh.read_text() if build_sh else ""):
+            result.error("RELEASE_CHECKSUM", "release", f"artifacts.{name}.checksum",
+                         "contract", f"artifact {name!r} requires checksum but no sha256sum in build.sh")
+        if artifact.get("publish") and "artifacts" not in (build_sh.read_text() if build_sh else ""):
+            result.error("RELEASE_PUBLISH", "release", f"artifacts.{name}.publish",
+                         "contract", f"artifact {name!r} requires publish but no artifacts/ in build.sh")
+
+    # Metadata required_fields — check each field appears in build.sh or is static
     meta = rc.get("metadata", {})
+    static_vals = meta.get("static_values", {})
     req_fields = meta.get("required_fields", [])
     if build_sh:
         btext = build_sh.read_text()
         for field in req_fields:
+            if field in static_vals:
+                continue  # static, no generative check needed
             if field == "git_commit" and "git rev-parse" not in btext:
+                result.error("DRIFT_METADATA", "release", "metadata.required_fields",
+                             str(build_sh), f"field {field!r} generation not found in build.sh")
+            elif field == "build_timestamp" and "date -u" not in btext:
+                result.error("DRIFT_METADATA", "release", "metadata.required_fields",
+                             str(build_sh), f"field {field!r} generation not found in build.sh")
+            elif field == "iso_sha256" and "sha256sum" not in btext:
+                result.error("DRIFT_METADATA", "release", "metadata.required_fields",
+                             str(build_sh), f"field {field!r} generation not found in build.sh")
+            elif field == "architecture" and "architectures" not in btext and field not in btext:
+                result.error("DRIFT_METADATA", "release", "metadata.required_fields",
+                             str(build_sh), f"field {field!r} not referenced in build.sh")
+            elif field == "chromium_version" and "package_version" not in btext and "chromium" not in btext:
                 result.warn("DRIFT_METADATA", "release", "metadata.required_fields",
-                            str(build_sh), f"field {field!r} not generated in build.sh")
+                            str(build_sh), f"field {field!r} generation not obvious in build.sh")
 
     # Source-image mappings: check source files exist
     for mapping in rc.get("source_image_mappings", []):

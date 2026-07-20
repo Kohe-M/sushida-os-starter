@@ -212,9 +212,20 @@ argv_contains() {
 }
 
 @test "doctor.sh reports pytest failure when module is missing" {
-    # Use run with combined stderr/stdout to avoid BW01 on exit 127
-    run "$REPO_ROOT/scripts/doctor.sh" test
-    [[ "$output" == *"pytest_module=PASS"* ]] || [[ "$output" == *"pytest_module=FAIL"* ]]
+    # Stub python3 to reject pytest import while keeping other commands working
+    real_python3="$(command -v python3)"
+    cat > "$TEST_ROOT/bin/python3" <<STUB
+#!/bin/sh
+if [ "\$1" = "-c" ] && [ "\$2" = "import pytest" ]; then
+    exit 1
+fi
+exec "$real_python3" "\$@"
+STUB
+    chmod +x "$TEST_ROOT/bin/python3"
+    run env PATH="$TEST_ROOT/bin:$PATH" \
+        "$REPO_ROOT/scripts/doctor.sh" test
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"pytest_module=FAIL"* ]]
 }
 
 @test "doctor.sh rejects unknown profile" {

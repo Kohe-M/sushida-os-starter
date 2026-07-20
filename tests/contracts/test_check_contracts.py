@@ -338,3 +338,24 @@ class TestCheckContracts:
         r = _run_checker(clean_repo)
         assert r.returncode == 1
         assert "DRIFT_TIMEOUT" in r.stdout
+
+    def test_verify_script_missing_artifact_exit_1(self, clean_repo: Path) -> None:
+        vs = clean_repo / "scripts/verify-iso.sh"
+        vs.write_text("echo no artifacts\n")
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "RELEASE_ARTIFACT_REF" in r.stdout
+
+    def test_run_qemu_missing_iso_exit_1(self, clean_repo: Path) -> None:
+        rq = clean_repo / "scripts/run-qemu.sh"
+        rq.write_text("echo no iso\n")
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "RELEASE_ARTIFACT_REF" in r.stdout
+
+    def test_checksum_missing_exit_1(self, clean_repo: Path) -> None:
+        bs = clean_repo / "scripts/build.sh"
+        bs.write_text("echo no sha256sum\n")
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "RELEASE_CHECKSUM" in r.stdout or "RELEASE_ARTIFACT" in r.stdout
