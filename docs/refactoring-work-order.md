@@ -195,8 +195,8 @@ git diff --stat
 | A-05 | 新規 adapter drift テスト | ✅ 48af5fa |
 | A-06 | MEDIUM: strict-markers 一元化 | ✅ 48af5fa |
 | A-07 | contract-inventory.md へ coverage 追記 | ✅ 48af5fa（レビュー修正で LOW 修正：timeout 数を 14 に訂正） |
-| A-08 | Stage A 検証 | ⬅ レビュー指摘 HIGH の config.env / MEDIUM の artifact 修正後 |
-| A-09 | P2-07 ゲート | A-08 完了後 |
+| A-08 | Stage A 検証 | ✅ c6749d9（全検証 PASS、終了コード提出済み） |
+| A-09 | P2-07 ゲート | ✅ 全条件を確認（A-08 結果 + レビュー最終判定表クリア） |
 
 ## A-01: BLOCKER 1 修正（static metadata ペア照合）
 
