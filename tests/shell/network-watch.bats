@@ -336,8 +336,13 @@ reject_url() {
 }
 
 @test "source validates UID cgroup and MainPID before TERM" {
-    grep -qF "MainPID" "$WATCHER"
-    grep -qF "stat -c '%u'" "$WATCHER"
-    grep -qF 'sushida-kiosk\.service' "$WATCHER"
-    grep -qF 'kill -TERM -- "$pid"' "$WATCHER"
+    # The validation chain lives in the shared signal helper; the watcher
+    # must delegate to it with the fixed reason and nothing else.
+    HELPER="live-build/config/includes.chroot/usr/local/libexec/sushida-kiosk-signal"
+    grep -qF 'sushida-kiosk-signal' "$WATCHER"
+    grep -qF -- '--reason route-mismatch' "$WATCHER"
+    grep -qF "MainPID" "$HELPER"
+    grep -qF "stat -c '%u'" "$HELPER"
+    grep -qF 'sushida-kiosk\.service' "$HELPER"
+    grep -qF 'kill -TERM -- "$pid"' "$HELPER"
 }

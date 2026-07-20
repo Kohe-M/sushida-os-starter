@@ -14,6 +14,7 @@ PACKAGE_LIST = Path("live-build/config/package-lists/kiosk.list.chroot")
 WATCHER = Path(
     "live-build/config/includes.chroot/usr/local/bin/sushida-network-watch"
 )
+ROOT = Path("live-build/config/includes.chroot")
 
 
 def _git_ls_files_stage(path: str) -> list[str]:
@@ -63,16 +64,26 @@ def test_watcher_never_starts_browser() -> None:
 def test_watcher_uses_networkmanager_connectivity_state() -> None:
     content = WATCHER.read_text()
     assert "LC_ALL=C nmcli -t -f STATE,CONNECTIVITY general" in content
-    assert '[ "$state" = connected ]' in content
-    assert '[ "$connectivity" = full ]' in content
+    # The connected/full comparison lives in the shared route model; the
+    # watcher forwards the observed values verbatim.
+    assert '--nm-state "$state" --nm-connectivity "$connectivity"' in content
+    routes_model = ROOT / (
+        "usr/lib/python3/dist-packages/sushida_os/runtime/routes.py"
+    )
+    model = routes_model.read_text()
+    assert 'inputs.nm_state == "connected"' in model
+    assert 'inputs.nm_connectivity == "full"' in model
 
 
 def test_watcher_validates_restart_target() -> None:
     content = WATCHER.read_text()
-    assert "MainPID" in content
-    assert "stat -c '%u'" in content
-    assert "sushida-kiosk\\.service" in content
-    assert 'kill -TERM -- "$pid"' in content
+    assert "sushida-kiosk-signal" in content
+    assert "--reason route-mismatch" in content
+    helper = (ROOT / "usr/local/libexec/sushida-kiosk-signal").read_text()
+    assert "MainPID" in helper
+    assert "stat -c '%u'" in helper
+    assert "sushida-kiosk\\.service" in helper
+    assert 'kill -TERM -- "$pid"' in helper
 
 
 def test_watcher_has_no_external_probe() -> None:

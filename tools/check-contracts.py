@@ -345,6 +345,8 @@ RUNTIME_SOURCE_FILES = {
     "wifi_web": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
                 "sushida_os/wifi/web.py",
     "configprep": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-config-prepare",
+    "runtime_routes": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
+                      "sushida_os/runtime/routes.py",
 }
 
 # Timeout adapters: (contract field, source key, regex template, min matches).
@@ -622,6 +624,14 @@ def _drift_routes(routes: list, texts: dict[str, str], labels: dict[str, str],
         if found != expected:
             result.error("DRIFT_ROUTE", "runtime", "routes", labels["netwatch"],
                          f"network watcher routes {sorted(found)} != contract {sorted(expected)}")
+    # The shared route model is the decision authority; its constants must
+    # carry exactly the contract's route set.
+    model = texts.get("runtime_routes")
+    if model is not None:
+        found = set(re.findall(r'^ROUTE_[A-Z_]+ = "([a-z-]+)"$', model, re.MULTILINE))
+        if found != expected:
+            result.error("DRIFT_ROUTE", "runtime", "routes", labels["runtime_routes"],
+                         f"route model constants {sorted(found)} != contract {sorted(expected)}")
 
 
 def _drift_runtime(contract: dict, root: Path, result: Result) -> None:

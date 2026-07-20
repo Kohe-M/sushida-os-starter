@@ -241,10 +241,15 @@ def test_setup_origin_is_allowed_at_both_browser_layers() -> None:
 def test_watcher_transitions_between_setup_and_online() -> None:
     text = WATCHER.read_text()
     assert "online|setup" in text
-    assert "printf '%s\\n' setup" in text
+    assert "sushida_os.runtime.routes" in text
+    assert "--setup-active" in text
     assert "sushida-wifi-setup.service" in text
     assert "MIN_INTERVAL=30" in text
-    assert "kill -TERM" in text
+    assert "sushida-kiosk-signal" in text
+    signal_helper = (
+        ROOT / "usr/local/libexec/sushida-kiosk-signal"
+    ).read_text()
+    assert "kill -TERM" in signal_helper
 
 
 def test_services_and_required_packages_are_enabled() -> None:

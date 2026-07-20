@@ -40,6 +40,14 @@ esac
 readonly ACTIVE_ROUTE_FILE="$RUNTIME_DIR/active-route"
 readonly TIME_SYNC_REQUIRED_MARKER="$RUNTIME_DIR/time-sync-required"
 
+# Resolve the shared route model and signal helper relative to this script
+# so the same paths work from the repository checkout and from the image
+# (/usr/local/bin -> /usr/lib/python3/dist-packages, /usr/local/libexec).
+SELF_DIR="$(dirname "$(readlink -f "$0")")"
+readonly SELF_DIR
+readonly RUNTIME_LIB="$SELF_DIR/../../lib/python3/dist-packages"
+readonly KIOSK_SIGNAL="$SELF_DIR/../libexec/sushida-kiosk-signal"
+
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "ERROR: Config file not found: $CONFIG_FILE" >&2; exit 1
 fi
@@ -85,43 +93,53 @@ case "$MAX_ITER" in
     ''|*[!0-9]*) echo "ERROR: Invalid SUSHIDA_OS_MAX_ITERATIONS: $MAX_ITER" >&2; exit 1 ;;
 esac
 
-for cmd in nmcli systemctl id stat grep kill sleep; do
+for cmd in nmcli systemctl id stat grep kill sleep python3 readlink; do
     if ! command -v "$cmd" > /dev/null 2>&1; then
         echo "ERROR: Required command not found: $cmd" >&2; exit 1
     fi
 done
+if [ ! -x "$KIOSK_SIGNAL" ]; then
+    echo "ERROR: Kiosk signal helper not found or not executable: $KIOSK_SIGNAL" >&2
+    exit 1
+fi
+
+route_model() {
+    PYTHONPATH="$RUNTIME_LIB" PYTHONDONTWRITEBYTECODE=1 \
+        python3 -m sushida_os.runtime.routes "$@" 2>/dev/null
+}
 
 desired_route() {
-    local status state connectivity
+    # Gather observations here; the route decision itself lives in the pure
+    # sushida_os.runtime.routes model.  A model failure fails closed to the
+    # offline route without signalling anything.
+    local status state connectivity route
+    local model_args=()
     if [ "$FORCE_OFFLINE" = true ]; then
-        printf '%s\n' offline
-        return
-    fi
-    if [ -f "$TIME_SYNC_REQUIRED_MARKER" ]; then
-        if timedatectl show -p NTPSynchronized --value 2>/dev/null | grep -qx yes; then
-            rm -f -- "$TIME_SYNC_REQUIRED_MARKER"
-        else
-            printf '%s\n' offline
-            return
-        fi
-    fi
-    # Fall through to normal NetworkManager-based route determination after
-    # the time-sync marker has been cleared or was never present.
-    if status=$(LC_ALL=C nmcli -t -f STATE,CONNECTIVITY general 2>/dev/null); then
-        state="${status%%:*}"
-        connectivity="${status#*:}"
-        if [ "$state" = connected ] && [ "$connectivity" = full ]; then
-            printf '%s\n' online
-        elif systemctl -q is-active sushida-wifi-setup.service 2>/dev/null; then
-            printf '%s\n' setup
-        else
-            printf '%s\n' offline
-        fi
-    elif systemctl -q is-active sushida-wifi-setup.service 2>/dev/null; then
-        printf '%s\n' setup
+        model_args+=(--force-offline)
     else
-        printf '%s\n' offline
+        if [ -f "$TIME_SYNC_REQUIRED_MARKER" ]; then
+            if timedatectl show -p NTPSynchronized --value 2>/dev/null | grep -qx yes; then
+                rm -f -- "$TIME_SYNC_REQUIRED_MARKER"
+            else
+                model_args+=(--time-sync-pending)
+            fi
+        fi
+        # Fall through to normal NetworkManager-based observation after the
+        # time-sync marker has been cleared or was never present.
+        if [ ${#model_args[@]} -eq 0 ]; then
+            if status=$(LC_ALL=C nmcli -t -f STATE,CONNECTIVITY general 2>/dev/null); then
+                state="${status%%:*}"
+                connectivity="${status#*:}"
+                model_args+=(--nm-ok --nm-state "$state" --nm-connectivity "$connectivity")
+            fi
+            if systemctl -q is-active sushida-wifi-setup.service 2>/dev/null; then
+                model_args+=(--setup-active)
+            fi
+        fi
     fi
+    route=$(route_model "${model_args[@]}") || route=""
+    case "$route" in online|setup|offline) ;; *) route=offline ;; esac
+    printf '%s\n' "$route"
 }
 
 read_active_route() {
@@ -132,20 +150,9 @@ read_active_route() {
 }
 
 restart_kiosk() {
-    systemctl -q is-active sushida-kiosk.service 2>/dev/null || return 1
-    local pid my_uid pid_uid cgroup_file
-    pid=$(systemctl show --property MainPID --value sushida-kiosk.service 2>/dev/null) || return 1
-    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
-    [ "$pid" -gt 1 ] || return 1
-    [ -d "/proc/$pid" ] || return 1
-    my_uid=$(id -u) || return 1
-    pid_uid=$(stat -c '%u' "/proc/$pid" 2>/dev/null) || return 1
-    [ "$pid_uid" = "$my_uid" ] || return 1
-    cgroup_file="/proc/$pid/cgroup"
-    if [ -n "$TEST_CGROUP_FILE" ]; then cgroup_file="$TEST_CGROUP_FILE"; fi
-    [ -f "$cgroup_file" ] || return 1
-    grep -Eq '(^|/)sushida-kiosk\.service($|/)' "$cgroup_file" || return 1
-    kill -TERM -- "$pid"
+    # The MainPID/UID/cgroup validation chain lives in the shared helper;
+    # only the fixed reason token is passed.
+    "$KIOSK_SIGNAL" --reason route-mismatch
 }
 
 iteration=0
