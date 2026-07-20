@@ -536,6 +536,11 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
         btext = build_sh.read_text()
         for field in req_fields:
             if field in static_vals:
+                expected_val = str(static_vals[field])
+                if expected_val not in btext and field not in btext:
+                    result.error("DRIFT_METADATA_STATIC", "release",
+                                 f"metadata.static_values.{field}", str(build_sh),
+                                 f"static value {expected_val!r} or field {field!r} not found in build.sh")
                 continue
             tokens = metadata_tokens.get(field)
             if tokens is None:

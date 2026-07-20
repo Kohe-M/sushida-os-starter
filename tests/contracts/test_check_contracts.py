@@ -121,6 +121,8 @@ def _build_minimal_repo(root: Path) -> None:
         'package_version cage\n'
         'lb --version\n'
         'sha256sum ...\n'
+        'architecture=amd64\n'
+        'debian_release=trixie\n'
     )
     (root / "scripts/flash.sh").write_text('ISO="sushida-os-amd64.iso"\n')
     (root / "scripts/clean.sh").write_text(
