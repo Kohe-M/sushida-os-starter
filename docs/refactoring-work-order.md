@@ -3,7 +3,7 @@
 - 作成日: 2026-07-20
 - 対象リポジトリ: `Kohe-M/sushida-os-starter`
 - 基準 HEAD: `2f72ac0402e58b6cb7452f9a0d268ab8c18f81f5` (branch: `main`)
-- 最新 HEAD: `48af5fa`（Stage A 実装コミット。レビュー修正前）
+- 最新 HEAD: `1a85fb3`（Stage A 実装 + レビュー修正反映済み）
 - **この文書のベースラインは `2f72ac0` 時点であり、進捗は別途追跡する。**
 - 上位計画書: `docs/sushida-os-development-hardening-phases-1-6.md`（背景・設計の正本）
 - 本文書の位置づけ: **実行の正本**。コーディング担当エージェントはこの文書の手順どおりに
@@ -17,8 +17,8 @@
 
 | 項目 | 状態 |
 |---|---|
-| HEAD / branch | `48af5fa` / `main`（detached ではない） |
-| 作業ツリー（WSL 内） | clean（Stage A 全実装をコミット 48af5fa 済み。レビュー修正は本ファイル更新時点では未反映） |
+| HEAD / branch | `1a85fb3` / `main`（detached ではない） |
+| 作業ツリー（WSL 内） | clean（Stage A 全実装 + レビュー修正をコミット済み） |
 | Phase 1（開発基盤） | ほぼ完了（commit `50b501b`〜`264ef8d`）。doctor/container wrapper/CI あり |
 | Phase 2（contract checker） | Stage A 実装完了（48af5fa）。レビュー指摘あり→修正中 |
 | `tests/static/test_wifi_setup_backend.py` | 1160 行・約45件。**Phase 3 の characterization test は実質済み** |
