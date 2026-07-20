@@ -23,6 +23,17 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from sushida_os.wifi.types import (
+    CONNECTION_NAME,
+    CONNECT_FAILED,
+    CONNECT_IDLE,
+    CONNECT_SUCCEEDED,
+    CONNECT_WORKING,
+    _validate_password_shape,
+    _validate_ssid,
+    validate_credentials,
+)
+
 
 HOST = "127.0.0.1"
 PORT = 8787
@@ -33,7 +44,6 @@ CONFIG_FILE = CONFIG_DIR / "setup.json"
 STORAGE_STATUS = Path("/run/sushida-config/config-storage")
 CSRF_TOKEN_FILE = Path("/run/sushida-wifi-setup/csrf-token")
 NMCLI = "/usr/bin/nmcli"
-CONNECTION_NAME = "sushida-os-wifi"
 FILESYSTEM_LABEL = "SUSHIDA-CFG"
 MAX_REQUEST_BYTES = 8192
 MAX_CONFIG_BYTES = 8192
@@ -52,10 +62,7 @@ CONNECT_LOCK = threading.Lock()
 # single worker thread that performs the staged nmcli operations.  The
 # browser learns the outcome through the read-only /status.json endpoint,
 # which never contains the SSID or password.
-CONNECT_IDLE = "idle"
-CONNECT_WORKING = "connecting"
-CONNECT_SUCCEEDED = "succeeded"
-CONNECT_FAILED = "failed"
+# CONNECT_* state strings live in sushida_os.wifi.types.
 
 _state_lock = threading.Lock()
 _connect_state = CONNECT_IDLE
@@ -473,35 +480,6 @@ def classify_security(security: str) -> str:
     if "WPA3" in tokens:
         return "unsupported"
     return "unsupported"
-
-
-def _validate_ssid(ssid: str) -> str | None:
-    if not ssid or "\ufffd" in ssid or len(ssid.encode("utf-8")) > 32:
-        return "SSIDが不正です。"
-    if any(ord(char) < 32 or ord(char) == 127 for char in ssid):
-        return "制御文字を含むSSIDには対応していません。"
-
-
-def _validate_password_shape(password: str) -> str | None:
-    if "\x00" in password or "\n" in password or "\r" in password:
-        return "パスワードに使用できない文字が含まれています。"
-
-
-def validate_credentials(ssid: str, password: str) -> str | None:
-    """Validate fields without trusting the browser's advertised security."""
-    ssid_error = _validate_ssid(ssid)
-    if ssid_error:
-        return ssid_error
-    password_error = _validate_password_shape(password)
-    if password_error:
-        return password_error
-    password_bytes = password.encode("utf-8")
-    raw_psk = len(password) == 64 and all(
-        character in "0123456789abcdefABCDEF" for character in password
-    )
-    if password and not (8 <= len(password_bytes) <= 63 or raw_psk):
-        return "Wi-Fiパスワードは8〜63バイト、または64桁の16進数で入力してください。"
-    return None
 
 
 def connect_wifi(ssid: str, password: str) -> tuple[bool, str]:

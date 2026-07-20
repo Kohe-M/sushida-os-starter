@@ -29,11 +29,24 @@ sys.dont_write_bytecode = True
 BACKEND = Path(
     "live-build/config/includes.chroot/usr/local/libexec/sushida-wifi-setup"
 )
+DIST_PACKAGES = Path(
+    "live-build/config/includes.chroot/usr/lib/python3/dist-packages"
+).resolve()
+if str(DIST_PACKAGES) not in sys.path:
+    sys.path.insert(0, str(DIST_PACKAGES))
 TEST_SSID = "Fixture:Guest"
 TEST_PASSWORD = "symbol : pass!"
 
 
 def _load_backend():
+    # Purge previously loaded backend modules so each test gets a completely
+    # fresh module state, matching the pre-split per-test module reload.
+    for _name in [
+        module_name
+        for module_name in sys.modules
+        if module_name == "sushida_wifi_setup" or module_name.startswith("sushida_os")
+    ]:
+        del sys.modules[_name]
     loader = importlib.machinery.SourceFileLoader("sushida_wifi_setup", str(BACKEND))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     assert spec is not None
