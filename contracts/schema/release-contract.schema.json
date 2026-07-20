@@ -145,7 +145,7 @@
         "additionalProperties": false,
         "required": ["name", "state"],
         "properties": {
-          "name": { "type": "string", "pattern": "\\.(service|mount|target)$" },
+          "name": { "type": "string", "pattern": "\\.(service|mount|target|timer)$" },
           "state": { "type": "string", "enum": ["enabled", "masked", "disabled"] }
         }
       },

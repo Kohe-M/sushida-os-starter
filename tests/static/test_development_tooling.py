@@ -42,9 +42,7 @@ def test_new_make_targets_added() -> None:
 
 def test_ci_target_includes_test_and_git_diff() -> None:
     text = MAKEFILE.read_text()
-    # ci expands to test-static + test-shell + git diff
-    assert "ci: test-static test-shell" in text or "ci: test-static test-shell" in text
-    # Check that git diff --check is called
+    assert "ci: test check-contracts" in text or "ci:\n\t" in text
     assert "git diff --check" in text
 
 

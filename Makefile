@@ -6,7 +6,7 @@ BUILDER_TAG ?= trixie
 CONTAINER_ENGINE_NAME := $(notdir $(CONTAINER_ENGINE))
 CONTAINER_ENGINE_ARGS := $(if $(filter podman,$(CONTAINER_ENGINE_NAME)),--cgroup-manager=cgroupfs,)
 
-.PHONY: builder configure iso test test-static test-shell test-qemu test-qemu-boot test-qemu-runtime test-qemu-powerdown qemu verify clean distclean help doctor doctor-build doctor-qemu ci container-test container-shell container-configure container-iso container-verify
+.PHONY: builder configure iso test test-static test-shell test-contracts check-contracts test-qemu test-qemu-boot test-qemu-runtime test-qemu-powerdown qemu verify clean distclean help doctor doctor-build doctor-qemu ci container-test container-shell container-configure container-iso container-verify
 
 help:
 	@echo 'Sushi-da OS development targets'
@@ -15,10 +15,12 @@ help:
 	@echo '    make test          Run static tests then shell tests'
 	@echo '    make test-static   Python/pytest static tests'
 	@echo '    make test-shell    ShellCheck + BATS'
+	@echo '    make test-contracts Contract schema + fixture tests'
+	@echo '    make check-contracts  Check contracts against current source'
 	@echo '    make doctor        Check host prerequisites (profile: test)'
 	@echo '    make doctor-build  Check prerequisites for ISO build'
 	@echo '    make doctor-qemu   Check prerequisites for QEMU tests'
-	@echo '    make ci            Non-destructive checks (test + git diff)'
+	@echo '    make ci            Contracts + test + git diff'
 	@echo ''
 	@echo '  Container (Docker or Podman):'
 	@echo '    make builder             Build the container image'
@@ -52,10 +54,16 @@ configure:
 iso:
 	./scripts/build.sh
 
-test: test-static test-shell
+test: test-static test-contracts test-shell
 
 test-static:
 	$(PYTHON) -m pytest tests/static/ --strict-markers -ra
+
+test-contracts:
+	$(PYTHON) -m pytest tests/contracts/ --strict-markers -ra
+
+check-contracts:
+	$(PYTHON) tools/check-contracts.py
 
 test-shell:
 	shellcheck -S warning $$(./scripts/shellcheck-targets.sh)
@@ -93,7 +101,7 @@ doctor-build:
 doctor-qemu:
 	./scripts/doctor.sh qemu
 
-ci: test-static test-shell
+ci: test check-contracts
 	git diff --check
 
 container-test:
