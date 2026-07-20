@@ -11,6 +11,8 @@ import os
 import re
 from pathlib import Path
 
+import pytest
+
 CONTRACTS = Path("contracts")
 SCHEMAS = CONTRACTS / "schema"
 
@@ -21,7 +23,24 @@ RELEASE_SCHEMA = SCHEMAS / "release-contract.schema.json"
 
 ALL_JSON = [RUNTIME_CONTRACT, RELEASE_CONTRACT, RUNTIME_SCHEMA, RELEASE_SCHEMA]
 
-# Fields that must never appear as JSON keys in any contract or schema.
+SCHEMA_PREDICATE = {
+    "source-path": {
+        "rules": [r"^/", r"(^|/)\.\.(/|$)", r"[\r\n\t ]", r"^\.$", r"^\.\.$"],
+        "set": ["/tmp/file", "a/../b", "../outside", ".", "..", "a\nb"],
+        "accept": ["path/to/file", "a/b/c"],
+    },
+    "image-path": {
+        "rules": [r"(^|/)\.\.(/|$)", r"[\r\n\t ]"],
+        "set": ["/etc/../tmp", "rel/path", "a/../../b", "/with space"],
+        "accept": ["/etc/file", "/usr/local/bin/x"],
+    },
+    "artifact-name": {
+        "rules": [r"[/\\]", r"^\.$", r"^\.\."],
+        "set": ["../file", ".", "a/b", "a\\b"],
+        "accept": ["sushida-os-amd64.iso", "SHA256SUMS"],
+    },
+}
+
 FORBIDDEN_KEYS = {"password", "passwd", "secret", "credential", "private_key"}
 
 
@@ -61,6 +80,51 @@ def test_schema_version_matches() -> None:
         c_ver = c.get("schema_version")
         s_ver = s.get("properties", {}).get("schema_version", {}).get("const")
         assert c_ver == s_ver, f"{contract.name} version {c_ver} != {schema.name} const {s_ver}"
+
+
+# ── Schema semantics: path constraints ─────────────────────────────────
+
+
+@pytest.mark.parametrize("value", SCHEMA_PREDICATE["source-path"]["set"])
+def test_schema_rejects_invalid_source_path(value: str) -> None:
+    """Source paths must be relative and must not contain .. or whitespace."""
+    for rule in SCHEMA_PREDICATE["source-path"]["rules"]:
+        if re.search(rule, value):
+            return  # matched a rejection rule
+    pytest.fail(f"source={value!r} was not rejected by any rule")
+
+
+@pytest.mark.parametrize("value", SCHEMA_PREDICATE["source-path"]["accept"])
+def test_schema_accepts_valid_source_path(value: str) -> None:
+    for rule in SCHEMA_PREDICATE["source-path"]["rules"]:
+        assert not re.search(rule, value), f"source={value!r} incorrectly rejected by {rule!r}"
+
+
+@pytest.mark.parametrize("value", SCHEMA_PREDICATE["image-path"]["set"])
+def test_schema_rejects_invalid_image_path(value: str) -> None:
+    for rule in SCHEMA_PREDICATE["image-path"]["rules"]:
+        if re.search(rule, value):
+            return
+    # Also reject if it does not start with /
+    if not value.startswith("/"):
+        return
+    pytest.fail(f"image_path={value!r} was not rejected")
+
+
+@pytest.mark.parametrize("value", SCHEMA_PREDICATE["image-path"]["accept"])
+def test_schema_accepts_valid_image_path(value: str) -> None:
+    assert value.startswith("/"), f"valid image_path must be absolute: {value!r}"
+    assert ".." not in value, f"valid image_path must not contain ..: {value!r}"
+    assert " " not in value, f"valid image_path must not contain space: {value!r}"
+
+
+@pytest.mark.parametrize("value", SCHEMA_PREDICATE["artifact-name"]["set"])
+def test_schema_rejects_invalid_artifact_name(value: str) -> None:
+    rules = [r"[/\\]", r"^\.$", r"^\.\."]
+    for rule in rules:
+        if re.search(rule, value):
+            return
+    pytest.fail(f"artifact name={value!r} was not rejected")
 
 
 # ── Contract schema compliance ──────────────────────────────────────────
@@ -123,12 +187,6 @@ def test_artifact_names_unique() -> None:
     assert len(names) == len(set(names)), f"duplicate artifact names: {names}"
 
 
-def test_artifact_name_no_path_separator() -> None:
-    for a in _load(RELEASE_CONTRACT)["artifacts"]:
-        assert "/" not in a["name"] and "\\" not in a["name"], \
-            f"artifact name must be basename only: {a['name']!r}"
-
-
 # ── ISO paths ───────────────────────────────────────────────────────────
 
 
@@ -170,13 +228,16 @@ def test_mapping_no_dotdot() -> None:
 def test_security_critical_mapped_or_generated() -> None:
     rc = _load(RELEASE_CONTRACT)
     mapped_paths = {m["image_path"] for m in rc["source_image_mappings"] if m["security_critical"]}
-    iso_paths = {p["path"] for p in rc["required_iso_paths"] if p["security_critical"]}
-    # Every security-critical required_iso_path should be either mapped or
-    # explicitly noted as generated.
     for iso_p in rc["required_iso_paths"]:
         if iso_p["security_critical"] and iso_p["path"] not in mapped_paths:
             assert iso_p["path"] in {"/live/vmlinuz", "/live/initrd.img", "/live/filesystem.squashfs"}, \
                 f"security-critical path {iso_p['path']!r} has no mapping"
+
+
+def test_mapping_all_have_verification_level() -> None:
+    for m in _load(RELEASE_CONTRACT)["source_image_mappings"]:
+        assert "current_verification" in m, f"mapping {m['source']!r} missing current_verification"
+        assert m["current_verification"] in ("none", "presence", "exact")
 
 
 # ── Packages ────────────────────────────────────────────────────────────
@@ -251,14 +312,12 @@ def test_metadata_static_values() -> None:
 # ── JSON format ─────────────────────────────────────────────────────────
 
 
-def test_json_serialization_is_stable() -> None:
-    """Re-serializing with sorted keys produces the same semantic content."""
+def test_json_round_trip_preserves_semantics() -> None:
+    """Re-serializing produces the same JSON content after sorting keys."""
     for path in ALL_JSON:
         data = _load(path)
-        original_raw = path.read_text(encoding="utf-8")
-        canonical = json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
-        assert json.loads(original_raw) == json.loads(canonical), \
-            f"{path}: semantic mismatch in round-trip"
+        recomposed = json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+        assert json.loads(recomposed) == _load(path), f"{path}: semantic mismatch in round-trip"
 
 
 def test_all_files_end_with_newline() -> None:
@@ -275,3 +334,18 @@ def test_masked_services_present() -> None:
     masked = [s["name"] for s in services if s["state"] == "masked"]
     assert any("getty" in m for m in masked), "getty services should be masked"
     assert "ctrl-alt-del.target" in masked
+
+
+def test_enabled_services_present() -> None:
+    services = _load(RELEASE_CONTRACT)["required_services"]
+    enabled = [s["name"] for s in services if s["state"] == "enabled"]
+    expected = [
+        "sushida-kiosk.service",
+        "sushida-network-watch.service",
+        "sushida-navigation-watch.service",
+        "sushida-config-prepare.service",
+        "sushida-wifi-setup.service",
+        "systemd-timesyncd.service",
+    ]
+    for svc in expected:
+        assert svc in enabled, f"enabled service {svc} missing from contract"

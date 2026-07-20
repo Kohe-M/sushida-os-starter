@@ -23,7 +23,17 @@
         "additionalProperties": false,
         "required": ["name", "required", "checksum", "publish", "clean", "verify"],
         "properties": {
-          "name": { "type": "string", "pattern": "^[^/\\\\]+$" },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {"not": {"pattern": "[/\\\\]"}},
+              {"not": {"pattern": "(^|/)\\.\\.(/|$)"}},
+              {"not": {"pattern": "[\\r\\n\\t ]"}},
+              {"not": {"pattern": "[.]{2}$"}},
+              {"not": {"pattern": "^[.]$"}}
+            ]
+          },
           "required": { "type": "boolean" },
           "checksum": { "type": "boolean" },
           "publish": { "type": "boolean" },
@@ -40,7 +50,17 @@
         "additionalProperties": false,
         "required": ["path", "region", "file_type", "required", "security_critical"],
         "properties": {
-          "path": { "type": "string", "pattern": "^/[^ ]+$" },
+          "path": {
+            "type": "string",
+            "minLength": 2,
+            "allOf": [
+              {"pattern": "^/"},
+              {"not": {"pattern": "(^|/)\\.\\.(/|$)"}},
+              {"not": {"pattern": "[\\r\\n\\t ]"}}
+            ]
+          },
+          "path_pattern": { "type": "string" },
+          "match_type": { "type": "string", "enum": ["literal", "regex"] },
           "region": { "type": "string", "enum": ["iso-root", "squashfs"] },
           "file_type": { "type": "string" },
           "required": { "type": "boolean" },
@@ -57,11 +77,28 @@
         "required": [
           "source", "image_path", "region", "file_type",
           "mode", "owner", "group", "comparison",
-          "required", "security_critical"
+          "required", "security_critical",
+          "current_verification", "planned_for_full_verification"
         ],
         "properties": {
-          "source": { "type": "string", "pattern": "^(?!\\.\\./)(?!\\.\\.$)[^ ][^ ]*$" },
-          "image_path": { "type": "string", "pattern": "^/[^ ]+$" },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "allOf": [
+              {"not": {"pattern": "^/"}},
+              {"not": {"pattern": "(^|/)\\.\\.(/|$)"}},
+              {"not": {"pattern": "[\\r\\n\\t ]"}}
+            ]
+          },
+          "image_path": {
+            "type": "string",
+            "minLength": 2,
+            "allOf": [
+              {"pattern": "^/"},
+              {"not": {"pattern": "(^|/)\\.\\.(/|$)"}},
+              {"not": {"pattern": "[\\r\\n\\t ]"}}
+            ]
+          },
           "region": { "type": "string", "enum": ["iso-root", "squashfs"] },
           "file_type": { "type": "string" },
           "mode": { "type": "string", "pattern": "^[0-7]{4}$" },
@@ -70,8 +107,10 @@
           "comparison": { "type": "string", "enum": ["cmp", "presence", "size", "sha256"] },
           "required": { "type": "boolean" },
           "security_critical": { "type": "boolean" },
-          "declared": { "type": "boolean" },
-          "currently_checked": { "type": "boolean" },
+          "current_verification": {
+            "type": "string",
+            "enum": ["none", "presence", "exact"]
+          },
           "planned_for_full_verification": { "type": "boolean" }
         }
       },
