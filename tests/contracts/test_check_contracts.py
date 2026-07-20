@@ -214,10 +214,12 @@ def _build_minimal_repo(root: Path) -> None:
         'PORT = 8787\n'
         'MAX_REQUEST_BYTES = 8192\n'
         'REQUEST_READ_TIMEOUT_SECONDS = 5\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/restore.py").write_text(
         '    BACKOFF_MIN = 2.0\n'
         '    BACKOFF_MAX = 16.0\n'
         '    MAX_RETRIES = 5\n'
-        '    deadline = time.monotonic() + 120.0\n'
+        '    deadline = monotonic() + 120.0\n'
     )
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/nmcli.py").write_text(
         'COMMAND_TIMEOUT_SECONDS = 40\n'
@@ -508,13 +510,13 @@ class TestCheckContracts:
              '"--wait", "30"', '"--wait", "25"'),
             ("usr/lib/python3/dist-packages/sushida_os/wifi/nmcli.py",
              "timeout=35", "timeout=36"),
-            ("usr/local/libexec/sushida-wifi-setup",
+            ("usr/lib/python3/dist-packages/sushida_os/wifi/restore.py",
              "BACKOFF_MIN = 2.0", "BACKOFF_MIN = 3.0"),
-            ("usr/local/libexec/sushida-wifi-setup",
+            ("usr/lib/python3/dist-packages/sushida_os/wifi/restore.py",
              "MAX_RETRIES = 5", "MAX_RETRIES = 6"),
-            ("usr/local/libexec/sushida-wifi-setup",
-             "deadline = time.monotonic() + 120.0",
-             "deadline = time.monotonic() + 130.0"),
+            ("usr/lib/python3/dist-packages/sushida_os/wifi/restore.py",
+             "deadline = monotonic() + 120.0",
+             "deadline = monotonic() + 130.0"),
             ("usr/local/bin/sushida-navigation-watch",
              "DEFAULT_POLL_SECONDS = 2.0", "DEFAULT_POLL_SECONDS = 5.0"),
             ("usr/local/bin/sushida-navigation-watch",

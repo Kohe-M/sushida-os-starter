@@ -37,6 +37,7 @@ from sushida_os.wifi.coordinator import (
     restore_cancelled,
     start_queued_connection,
 )
+from sushida_os.wifi.restore import restore_saved_connection
 from sushida_os.wifi.nmcli import (
     COMMAND_TIMEOUT_SECONDS,
     CONNECT_LOCK,
@@ -102,69 +103,6 @@ REQUEST_READ_TIMEOUT_SECONDS = 5
 # browser learns the outcome through the read-only /status.json endpoint,
 # which never contains the SSID or password.
 # CONNECT_* state strings live in sushida_os.wifi.types.
-
-def restore_saved_connection() -> None:
-    """Retry saved credential restoration with bounded backoff.
-
-    Each retry reloads the persisted credential so a replacement written by
-    an interactive request is picked up.  A failed attempt resets the
-    shared state to IDLE explicitly before the next queue attempt.  When an
-    interactive POST succeeds (CONNECT_SUCCEEDED) or sets the cancellation
-    event, the restore loop terminates permanently for this boot.
-    """
-    BACKOFF_MIN = 2.0
-    BACKOFF_MAX = 16.0
-    MAX_RETRIES = 5
-    backoff = BACKOFF_MIN
-    retries = 0
-    deadline = time.monotonic() + 120.0
-
-    while time.monotonic() < deadline and retries < MAX_RETRIES:
-        if restore_cancelled():
-            return
-        if managed_wifi_active():
-            return
-        # If an interactive request was submitted while we were in backoff
-        # or about to retry, stop immediately — the worker will handle it.
-        if interactive_pending():
-            return
-        saved = load_credentials()
-        if saved is None:
-            return
-        # If the shared state was left in FAILED by a previous restore
-        # attempt that did not pass through the HTTP handler, clear it so
-        # queue_connection will accept the next retry.
-        _reset_failure()
-        if not queue_connection(*saved):
-            # Another request is in flight.  Check the outcome.
-            state, _msg = connect_status()
-            if state == CONNECT_SUCCEEDED:
-                return
-            time.sleep(1.0)
-            continue
-        start_queued_connection()
-        retries += 1
-
-        # Wait for the worker to complete this attempt.
-        while time.monotonic() < deadline:
-            time.sleep(1.0)
-            if restore_cancelled():
-                return
-            if managed_wifi_active():
-                return
-            if interactive_pending():
-                return
-            state, _msg = connect_status()
-            if state == CONNECT_WORKING:
-                continue
-            if state == CONNECT_SUCCEEDED:
-                return
-            # IDLE or FAILED — the attempt concluded.
-            break
-
-        time.sleep(backoff)
-        backoff = min(backoff * 1.5, BACKOFF_MAX)
-
 
 def render_page(message: str = "", success: bool = False) -> bytes:
     # A successful nmcli activation has already waited for NetworkManager.

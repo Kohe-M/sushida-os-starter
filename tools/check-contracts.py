@@ -338,6 +338,8 @@ RUNTIME_SOURCE_FILES = {
     "wifi": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-wifi-setup",
     "wifi_nmcli": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
                   "sushida_os/wifi/nmcli.py",
+    "wifi_restore": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
+                    "sushida_os/wifi/restore.py",
     "wifi_storage": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
                     "sushida_os/wifi/storage.py",
     "configprep": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-config-prepare",
@@ -354,14 +356,16 @@ _TIMEOUT_ADAPTERS = (
      r'"--wait",\s*"{value}"', 2),
     ("wifi_activation_process_timeout_seconds", "wifi_nmcli",
      r'"up"[\s\S]{0,160}?timeout={value}\b', 2),
-    ("restore_backoff_min_seconds", "wifi",
+    ("restore_backoff_min_seconds", "wifi_restore",
      r"BACKOFF_MIN\s*=\s*{value}\b", 1),
-    ("restore_backoff_max_seconds", "wifi",
+    ("restore_backoff_max_seconds", "wifi_restore",
      r"BACKOFF_MAX\s*=\s*{value}\b", 1),
-    ("restore_max_retries", "wifi",
+    ("restore_max_retries", "wifi_restore",
      r"MAX_RETRIES\s*=\s*{value}\b", 1),
-    ("restore_deadline_seconds", "wifi",
-     r"deadline\s*=\s*time\.monotonic\(\)\s*\+\s*{value}\b", 1),
+    # The restore module receives an injectable clock, so both the direct
+    # time.monotonic() call and the injected monotonic() form are accepted.
+    ("restore_deadline_seconds", "wifi_restore",
+     r"deadline\s*=\s*(?:time\.)?monotonic\(\)\s*\+\s*{value}\b", 1),
     ("nav_poll_interval_seconds", "navwatch",
      r"DEFAULT_POLL_SECONDS\s*=\s*{value}\b", 1),
     ("nav_cooldown_seconds", "navwatch",
