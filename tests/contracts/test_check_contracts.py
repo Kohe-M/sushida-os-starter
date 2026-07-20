@@ -244,6 +244,9 @@ def _build_minimal_repo(root: Path) -> None:
         'ROUTE_OFFLINE = "offline"\n'
         'ROUTES = (ROUTE_ONLINE, ROUTE_SETUP, ROUTE_OFFLINE)\n'
     )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/runtime/runtime_state.py").write_text(
+        'STATE_BASENAME = "runtime-state.json"\n'
+    )
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/__init__.py").write_text(
         '"""stub"""\n'
     )
