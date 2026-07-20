@@ -146,7 +146,8 @@ def _check_schema(contract: dict, schema: dict, ctx: str, result: Result) -> Non
     addl = schema.get("additionalProperties", True)
     contract_name = os.path.basename(ctx).replace(".schema.json", "")
 
-    # Unsupported keyword detection
+    # Unsupported keyword detection — scans schema node only.  A recursive
+    # pass is called separately before validation (see _scan_schema_keywords).
     for key in schema:
         if key not in SUPPORTED_SCHEMA_KEYWORDS:
             result.error("UNSUPPORTED_KEYWORD", contract_name, key, ctx,
@@ -202,7 +203,8 @@ def _check_schema(contract: dict, schema: dict, ctx: str, result: Result) -> Non
         items_def = pd.get("items", {})
         if isinstance(val, list) and items_def:
             for i, item in enumerate(val):
-                if isinstance(item, dict):
+                _validate_value(item, items_def, contract_name, f"{ctx}.{key}", f"{key}[{i}]", result)
+                if isinstance(item, dict) and items_def.get("properties", {}):
                     _check_schema(item, items_def, f"{ctx}.{key}[{i}]", result)
 
 
@@ -418,7 +420,7 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
         for artifact in rc.get("artifacts", []):
             name = artifact["name"]
             if name not in text:
-                result.warn("RELEASE_ARTIFACT", "release", f"artifacts.{name}",
+                result.error("RELEASE_ARTIFACT", "release", f"artifacts.{name}",
                             str(build_sh), f"artifact {name!r} not found in build.sh")
 
     # Flash script ISO name
@@ -427,7 +429,7 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
         flash_text = flash_sh.read_text()
         iso_name = "sushida-os-amd64.iso"
         if iso_name not in flash_text:
-            result.warn("RELEASE_ISO_NAME", "release", "artifacts.iso_name",
+            result.error("RELEASE_ISO_NAME", "release", "artifacts.iso_name",
                         str(flash_sh), f"ISO name {iso_name!r} not in flash.sh")
 
     # Package list
