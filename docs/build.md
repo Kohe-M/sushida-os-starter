@@ -19,9 +19,11 @@ make doctor-qemu      # also check QEMU, OVMF, socat
 
 ```bash
 make test-static      # static pytest suite
+make test-contracts   # contract schema + invariant tests
 make test-shell       # ShellCheck + BATS suite
-make test             # both of the above
-make ci               # test + git diff --check
+make test             # all of the above
+make check-contracts  # standalone drift checker against current source
+make ci               # test + check-contracts + git diff --check
 ```
 
 ### Container testing

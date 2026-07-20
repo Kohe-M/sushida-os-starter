@@ -517,30 +517,38 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
             result.error("RELEASE_PUBLISH", "release", f"artifacts.{name}.publish",
                          "contract", f"artifact {name!r} requires publish but no artifacts/ in build.sh")
 
-    # Metadata required_fields — check each field appears in build.sh or is static
+    # Metadata required_fields — dictionary-based adapter
     meta = rc.get("metadata", {})
     static_vals = meta.get("static_values", {})
     req_fields = meta.get("required_fields", [])
+    metadata_tokens: dict[str, tuple[str, ...]] = {
+        "git_commit": ("rev-parse",),
+        "git_dirty": ("git_dirty",),
+        "build_timestamp": ("date -u",),
+        "architecture": (),
+        "debian_release": (),
+        "chromium_version": ("chromium_version", "package_version chromium"),
+        "cage_version": ("cage_version", "package_version cage"),
+        "live_build_version": ("lb --version", "live_build_version"),
+        "iso_sha256": ("sha256sum",),
+    }
     if build_sh:
         btext = build_sh.read_text()
         for field in req_fields:
             if field in static_vals:
-                continue  # static, no generative check needed
-            if field == "git_commit" and "rev-parse" not in btext:
-                result.error("DRIFT_METADATA", "release", "metadata.required_fields",
-                             str(build_sh), f"field {field!r} generation not found in build.sh")
-            elif field == "build_timestamp" and "date -u" not in btext:
-                result.error("DRIFT_METADATA", "release", "metadata.required_fields",
-                             str(build_sh), f"field {field!r} generation not found in build.sh")
-            if field == "git_commit" and "git" in btext and "rev-parse" not in btext:
-                result.error("DRIFT_METADATA", "release", "metadata.required_fields",
-                             str(build_sh), f"field {field!r} generation not found in build.sh")
-            elif field == "architecture" and "architectures" not in btext and field not in btext:
-                result.error("DRIFT_METADATA", "release", "metadata.required_fields",
-                             str(build_sh), f"field {field!r} not referenced in build.sh")
-            elif field == "chromium_version" and "package_version" not in btext and "chromium" not in btext:
-                result.warn("DRIFT_METADATA", "release", "metadata.required_fields",
-                            str(build_sh), f"field {field!r} generation not obvious in build.sh")
+                continue
+            tokens = metadata_tokens.get(field)
+            if tokens is None:
+                result.error("DRIFT_METADATA_UNSUPPORTED", "release",
+                             f"metadata.required_fields.{field}",
+                             str(build_sh),
+                             f"field {field!r} has no adapter; implement or remove")
+            elif tokens:
+                if not any(tok in btext for tok in tokens):
+                    result.error("DRIFT_METADATA", "release",
+                                 f"metadata.required_fields.{field}",
+                                 str(build_sh),
+                                 f"field {field!r} generation not found in build.sh")
 
     # Source-image mappings: check source files exist
     for mapping in rc.get("source_image_mappings", []):

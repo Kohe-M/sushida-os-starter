@@ -31,8 +31,9 @@ not infer those results from static tests or package presence.
 
 ```bash
 make doctor           # check host prerequisites
-make test             # run static tests and shell tests
-make ci               # non-destructive checks (test + git diff)
+make test             # run static tests, contract tests, shell tests
+make check-contracts  # verify contracts against current source
+make ci               # non-destructive checks (test + check-contracts + git diff)
 ```
 
 ## Quick start (Docker/Podman)
