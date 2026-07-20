@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sushida.os/contracts/schema/release-contract.schema.json",
+  "title": "Sushi-da OS release contract",
+  "description": "Expected artifacts, ISO paths, packages, and services in a release build.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifacts",
+    "required_iso_paths",
+    "source_image_mappings",
+    "required_packages",
+    "required_services",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "required", "checksum", "publish", "clean", "verify"],
+        "properties": {
+          "name": { "type": "string" },
+          "required": { "type": "boolean" },
+          "checksum": { "type": "boolean" },
+          "publish": { "type": "boolean" },
+          "clean": { "type": "boolean" },
+          "verify": { "type": "boolean" }
+        }
+      },
+      "uniqueItems": true
+    },
+    "required_iso_paths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "region", "file_type", "required", "security_critical"],
+        "properties": {
+          "path": { "type": "string" },
+          "region": { "type": "string", "enum": ["iso-root", "squashfs"] },
+          "file_type": { "type": "string" },
+          "required": { "type": "boolean" },
+          "security_critical": { "type": "boolean" }
+        }
+      },
+      "uniqueItems": true
+    },
+    "source_image_mappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source", "image_path", "region", "file_type",
+          "mode", "owner", "group", "comparison",
+          "required", "security_critical"
+        ],
+        "properties": {
+          "source": { "type": "string" },
+          "image_path": { "type": "string" },
+          "region": { "type": "string", "enum": ["iso-root", "squashfs"] },
+          "file_type": { "type": "string" },
+          "mode": { "type": "string", "pattern": "^[0-7]{4}$" },
+          "owner": { "type": "string" },
+          "group": { "type": "string" },
+          "comparison": { "type": "string", "enum": ["cmp", "presence", "size", "sha256"] },
+          "required": { "type": "boolean" },
+          "security_critical": { "type": "boolean" }
+        }
+      },
+      "uniqueItems": true
+    },
+    "required_packages": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "required_services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "state"],
+        "properties": {
+          "name": { "type": "string", "pattern": "\\.(service|mount|target)$" },
+          "state": { "type": "string", "enum": ["enabled", "masked", "disabled"] }
+        }
+      },
+      "uniqueItems": true
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "git_commit", "build_timestamp",
+        "architecture", "iso_sha256"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "git_commit": { "type": "string" },
+        "git_dirty": { "type": "boolean" },
+        "build_timestamp": { "type": "string", "format": "date-time" },
+        "architecture": { "type": "string" },
+        "iso_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "chromium_version": { "type": "string" },
+        "cage_version": { "type": "string" },
+        "live_build_version": { "type": "string" },
+        "debian_release": { "type": "string" },
+        "release_contract_hash": { "type": "string" }
+      }
+    }
+  }
+}

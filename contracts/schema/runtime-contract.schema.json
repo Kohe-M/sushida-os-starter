@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sushida.os/contracts/schema/runtime-contract.schema.json",
+  "title": "Sushi-da OS runtime contract",
+  "description": "Expected runtime behaviour and configuration of the kiosk image.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "urls",
+    "runtime_paths",
+    "routes",
+    "services",
+    "timeouts",
+    "navigation"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version number; increment when fields change"
+    },
+    "urls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sushida_url", "setup_url", "offline_url", "nav_allowlist"],
+      "properties": {
+        "sushida_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://sushida\\.net/"
+        },
+        "setup_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^http://127\\.0\\.0\\.1:8787/"
+        },
+        "offline_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^file://(/|localhost/).*offline\\.html$"
+        },
+        "time_sync_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "nav_allowlist": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "nav_blocklist": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "runtime_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_dir", "active_route_file", "wifi_setup_runtime_dir",
+        "config_mount_path", "config_storage_status", "credential_file",
+        "chromium_profile_dir", "chromium_sessions_dir"
+      ],
+      "properties": {
+        "runtime_dir":                { "type": "string", "pattern": "^/" },
+        "active_route_file":         { "type": "string", "pattern": "^/" },
+        "time_sync_marker":          { "type": "string", "pattern": "^/" },
+        "wifi_setup_runtime_dir":    { "type": "string", "pattern": "^/" },
+        "csrf_token_file":           { "type": "string", "pattern": "^/" },
+        "config_mount_path":         { "type": "string", "pattern": "^/" },
+        "config_storage_status":     { "type": "string", "pattern": "^/" },
+        "credential_file":           { "type": "string", "pattern": "^/" },
+        "chromium_profile_dir":      { "type": "string", "pattern": "^/" },
+        "chromium_sessions_dir":     { "type": "string", "pattern": "^/" }
+      }
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["online", "setup", "offline"]
+      },
+      "uniqueItems": true,
+      "minItems": 3
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kiosk_service", "wifi_setup_service", "network_watch_service",
+        "navigation_watch_service", "config_prepare_service",
+        "config_mount_unit", "time_sync_service", "network_manager_service"
+      ],
+      "properties": {
+        "kiosk_service":              { "type": "string", "pattern": "\\.service$" },
+        "wifi_setup_service":         { "type": "string", "pattern": "\\.service$" },
+        "network_watch_service":      { "type": "string", "pattern": "\\.service$" },
+        "navigation_watch_service":   { "type": "string", "pattern": "\\.service$" },
+        "config_prepare_service":     { "type": "string", "pattern": "\\.service$" },
+        "config_mount_unit":          { "type": "string", "pattern": "\\.(service|mount)$" },
+        "time_sync_service":          { "type": "string", "pattern": "\\.service$" },
+        "network_manager_service":    { "type": "string", "pattern": "\\.service$" }
+      }
+    },
+    "timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "network_setup_grace_seconds",
+        "network_check_interval_seconds",
+        "wifi_connect_timeout_seconds",
+        "nav_poll_interval_seconds",
+        "nav_cooldown_seconds",
+        "http_read_timeout_seconds",
+        "http_max_request_bytes"
+      ],
+      "properties": {
+        "network_setup_grace_seconds":    { "type": "integer", "minimum": 0, "maximum": 60 },
+        "network_check_interval_seconds": { "type": "integer", "minimum": 30, "maximum": 3600 },
+        "wifi_connect_timeout_seconds":   { "type": "integer", "minimum": 1, "maximum": 120 },
+        "restore_backoff_min_seconds":    { "type": "number", "minimum": 0, "maximum": 60 },
+        "restore_backoff_max_seconds":    { "type": "number", "minimum": 1, "maximum": 120 },
+        "restore_max_retries":            { "type": "integer", "minimum": 1, "maximum": 100 },
+        "restore_deadline_seconds":       { "type": "integer", "minimum": 1, "maximum": 600 },
+        "nav_poll_interval_seconds":      { "type": "number", "minimum": 0.05, "maximum": 60 },
+        "nav_cooldown_seconds":           { "type": "number", "minimum": 0, "maximum": 600 },
+        "http_read_timeout_seconds":      { "type": "integer", "minimum": 1, "maximum": 300 },
+        "http_max_request_bytes":         { "type": "integer", "minimum": 128, "maximum": 65536 },
+        "session_audio_timeout_seconds":  { "type": "integer", "minimum": 1, "maximum": 60 }
+      }
+    },
+    "navigation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowlist", "blocklist"],
+      "properties": {
+        "allowlist": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "minItems": 3
+        },
+        "blocklist": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "minItems": 4
+        }
+      }
+    }
+  }
+}

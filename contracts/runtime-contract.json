@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "urls": {
+    "sushida_url": "https://sushida.net/play.html",
+    "setup_url": "http://127.0.0.1:8787/",
+    "offline_url": "file://localhost/usr/share/sushida-os/offline.html",
+    "nav_allowlist": [
+      "https://.sushida.net:443",
+      "file:///usr/share/sushida-os/offline.html",
+      "http://127.0.0.1:8787"
+    ],
+    "nav_blocklist": [
+      "*",
+      "view-source:*",
+      "chrome://*",
+      "chrome-untrusted://*",
+      "devtools://*"
+    ]
+  },
+  "runtime_paths": {
+    "runtime_dir": "/run/sushida-os",
+    "active_route_file": "/run/sushida-os/active-route",
+    "time_sync_marker": "/run/sushida-os/time-sync-required",
+    "wifi_setup_runtime_dir": "/run/sushida-wifi-setup",
+    "csrf_token_file": "/run/sushida-wifi-setup/csrf-token",
+    "config_mount_path": "/var/lib/sushida-config",
+    "config_storage_status": "/run/sushida-config/config-storage",
+    "credential_file": "/var/lib/sushida-config/network/setup.json",
+    "chromium_profile_dir": "/run/sushida-os/chromium",
+    "chromium_sessions_dir": "/run/sushida-os/chromium/Default/Sessions"
+  },
+  "routes": ["online", "setup", "offline"],
+  "services": {
+    "kiosk_service": "sushida-kiosk.service",
+    "wifi_setup_service": "sushida-wifi-setup.service",
+    "network_watch_service": "sushida-network-watch.service",
+    "navigation_watch_service": "sushida-navigation-watch.service",
+    "config_prepare_service": "sushida-config-prepare.service",
+    "config_mount_unit": "var-lib-sushida\\x2dconfig.mount",
+    "time_sync_service": "systemd-timesyncd.service",
+    "network_manager_service": "NetworkManager.service"
+  },
+  "timeouts": {
+    "network_setup_grace_seconds": 15,
+    "network_check_interval_seconds": 30,
+    "wifi_connect_timeout_seconds": 40,
+    "restore_backoff_min_seconds": 2.0,
+    "restore_backoff_max_seconds": 16.0,
+    "restore_max_retries": 5,
+    "restore_deadline_seconds": 120,
+    "nav_poll_interval_seconds": 2.0,
+    "nav_cooldown_seconds": 30.0,
+    "http_read_timeout_seconds": 5,
+    "http_max_request_bytes": 8192,
+    "session_audio_timeout_seconds": 3
+  },
+  "navigation": {
+    "allowlist": [
+      "https://.sushida.net:443",
+      "file:///usr/share/sushida-os/offline.html",
+      "http://127.0.0.1:8787"
+    ],
+    "blocklist": [
+      "*",
+      "view-source:*",
+      "chrome://*",
+      "chrome-untrusted://*",
+      "devtools://*"
+    ]
+  }
+}
