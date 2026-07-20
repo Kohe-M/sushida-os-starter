@@ -190,93 +190,114 @@ def _check_schema(contract: dict, schema: dict, ctx: str, result: Result) -> Non
         if key not in props:
             continue
         pd = props[key]
+        _validate_value(val, pd, contract_name, ctx, key, result)
 
-        # const
-        c = pd.get("const")
-        if c is not None:
-            if val != c:
-                result.error("SCHEMA_CONST", contract_name, key, ctx,
-                             f"expected const {c!r}, got {val!r}")
+    # Recurse sub-objects (from properties not yet handled)
+    for key, val in contract.items():
+        if key not in props:
             continue
-
-        # type
-        errs = _validate_type(val, pd.get("type", "object"), f"{ctx}.{key}")
-        for e in errs:
-            result.error("SCHEMA_TYPE", contract_name, key, ctx, e)
-
-        # minLength
-        minl = pd.get("minLength")
-        if minl is not None and isinstance(val, str) and len(val) < minl:
-            result.error("SCHEMA_MINLENGTH", contract_name, key, ctx,
-                         f"len {len(val)} < min {minl}")
-
-        # pattern
-        if isinstance(val, str):
-            pat = pd.get("pattern")
-            if pat and not re.search(pat, val):
-                result.error("SCHEMA_PATTERN", contract_name, key, ctx,
-                             f"value {val!r} does not match pattern {pat!r}")
-
-        # format (best-effort)
-        if isinstance(val, str):
-            fmt = pd.get("format")
-            if fmt == "uri" and not (val.startswith("http") or val.startswith("file") or val.startswith("/")):
-                result.warn("SCHEMA_FORMAT", contract_name, key, ctx,
-                            f"value {val!r} may not be a valid URI")
-
-        # enum
-        enum = pd.get("enum")
-        if enum and val not in enum:
-            result.error("SCHEMA_ENUM", contract_name, key, ctx,
-                         f"value {val!r} not in {enum}")
-
-        # integer/number bounds
-        if isinstance(val, (int, float)):
-            pmin = pd.get("minimum")
-            pmax = pd.get("maximum")
-            if pmin is not None and val < pmin:
-                result.error("SCHEMA_BOUND", contract_name, key, ctx,
-                             f"value {val} < minimum {pmin}")
-            if pmax is not None and val > pmax:
-                result.error("SCHEMA_BOUND", contract_name, key, ctx,
-                             f"value {val} > maximum {pmax}")
-
-        # minItems / uniqueItems
-        if isinstance(val, list):
-            min_items = pd.get("minItems")
-            if min_items is not None and len(val) < min_items:
-                result.error("SCHEMA_MINITEMS", contract_name, key, ctx,
-                             f"expected >= {min_items} items, got {len(val)}")
-            unique = pd.get("uniqueItems", False)
-            if unique:
-                seen = set()
-                for item in val:
-                    if isinstance(item, str):
-                        if item in seen:
-                            result.error("SCHEMA_DUPLICATE", contract_name, key, ctx,
-                                         f"duplicate {item!r}")
-                        seen.add(item)
-
-        # Recurse sub-objects
-        sub_props = pd.get("properties", {})
-        if isinstance(val, dict) and sub_props:
+        pd = props[key]
+        if isinstance(val, dict) and pd.get("properties", {}):
             _check_schema(val, pd, f"{ctx}.{key}", result)
-
-        # Recurse array items with type/enum
         items_def = pd.get("items", {})
         if isinstance(val, list) and items_def:
             for i, item in enumerate(val):
                 if isinstance(item, dict):
                     _check_schema(item, items_def, f"{ctx}.{key}[{i}]", result)
-                elif isinstance(item, str):
-                    item_pat = items_def.get("pattern")
-                    if item_pat and not re.search(item_pat, item):
-                        result.error("SCHEMA_PATTERN", contract_name, f"{key}[{i}]", ctx,
-                                     f"value {item!r} does not match pattern {item_pat!r}")
-                    item_enum = items_def.get("enum")
-                    if item_enum and item not in item_enum:
-                        result.error("SCHEMA_ENUM", contract_name, f"{key}[{i}]", ctx,
-                                     f"value {item!r} not in {item_enum}")
+
+
+def _validate_value(val: Any, pd: dict, contract_name: str, ctx: str, key: str, result: Result) -> None:
+    """Validate a single value against its property definition, recursing into allOf/not/if/then."""
+    fctx = f"{ctx}.{key}"
+
+    # const
+    c = pd.get("const")
+    if c is not None:
+        if val != c:
+            result.error("SCHEMA_CONST", contract_name, key, ctx, f"expected const {c!r}, got {val!r}")
+        return
+
+    # allOf — every sub-condition must pass
+    for cond in pd.get("allOf", []):
+        _validate_value(val, cond, contract_name, fctx, key, result)
+
+    # not — must fail
+    n = pd.get("not")
+    if n:
+        nr = Result()
+        _validate_value(val, n, contract_name, fctx, key, nr)
+        if nr.ok:
+            result.error("SCHEMA_NOT", contract_name, key, ctx, "value matches 'not' constraint")
+
+    # if/then/else
+    ifc = pd.get("if")
+    if ifc:
+        matched = True
+        if isinstance(val, dict):
+            for f in ifc.get("required", []):
+                if f not in val:
+                    matched = False
+            for fk, fpd in ifc.get("properties", {}).items():
+                fv = val.get(fk)
+                if fv is not None:
+                    fc = fpd.get("const")
+                    if fc is not None and fv != fc:
+                        matched = False
+        if matched and "then" in pd:
+            _validate_value(val, pd["then"], contract_name, fctx, key, result)
+        elif not matched and "else" in pd:
+            _validate_value(val, pd["else"], contract_name, fctx, key, result)
+
+    # type
+    et = pd.get("type")
+    if et:
+        errs = _validate_type(val, et, fctx)
+        for e in errs:
+            result.error("SCHEMA_TYPE", contract_name, key, ctx, e)
+        if errs:
+            return
+
+    # minLength
+    ml = pd.get("minLength")
+    if ml is not None and isinstance(val, str) and len(val) < ml:
+        result.error("SCHEMA_MINLENGTH", contract_name, key, ctx, f"len {len(val)} < min {ml}")
+
+    # pattern / format
+    if isinstance(val, str):
+        pat = pd.get("pattern")
+        if pat and not re.search(pat, val):
+            result.error("SCHEMA_PATTERN", contract_name, key, ctx, f"value {val!r} does not match {pat!r}")
+        fmt = pd.get("format")
+        if fmt == "uri" and not (val.startswith("http") or val.startswith("file") or val.startswith("/") or val.startswith("chrome")):
+            result.error("SCHEMA_FORMAT", contract_name, key, ctx, f"value {val!r} is not a valid URI")
+
+    # enum
+    enum = pd.get("enum")
+    if enum and val not in enum:
+        result.error("SCHEMA_ENUM", contract_name, key, ctx, f"value {val!r} not in {enum}")
+
+    # bounds
+    if isinstance(val, (int, float)):
+        pmin = pd.get("minimum")
+        pmax = pd.get("maximum")
+        if pmin is not None and val < pmin:
+            result.error("SCHEMA_BOUND", contract_name, key, ctx, f"{val} < min {pmin}")
+        if pmax is not None and val > pmax:
+            result.error("SCHEMA_BOUND", contract_name, key, ctx, f"{val} > max {pmax}")
+
+    # minItems / uniqueItems (object arrays via canonical JSON)
+    if isinstance(val, list):
+        mi = pd.get("minItems")
+        if mi is not None and len(val) < mi:
+            result.error("SCHEMA_MINITEMS", contract_name, key, ctx, f"expected >= {mi}, got {len(val)}")
+        ui = pd.get("uniqueItems", False)
+        if ui:
+            seen = set()
+            for item in val:
+                sig = json.dumps(item, sort_keys=True, separators=(",", ":")) if not isinstance(item, str) else item
+                if sig in seen:
+                    result.error("SCHEMA_DUPLICATE", contract_name, key, ctx, "duplicate in array")
+                seen.add(sig)
 
 
 def _schema_cond_matches(data: dict, cond: dict) -> bool:
@@ -560,6 +581,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         sys.stdout.write(result.human_report())
 
+    # Exit 2 for internal errors, 1 for contract/drift, 0 for clean
+    has_internal = any(e["code"] == "INTERNAL_ERROR" for e in result.errors)
+    if has_internal:
+        return 2
     return 0 if result.ok else 1
 
 
