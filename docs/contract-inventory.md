@@ -179,7 +179,7 @@ behaviour change is performed.
 | `runtime_paths.config_mount_path` | Literals in wifi-setup, config-prepare, mount unit `Where=` |
 | `runtime_paths.config_storage_status` / `credential_file` | Literals + derived components in wifi-setup + config-prepare |
 | `runtime_paths.chromium_profile_dir` / `chromium_sessions_dir` | Basename in launch/session; `SESSIONS_SUBDIR` chain in navwatch |
-| `timeouts.*` (12 fields) | Literal values in the corresponding production scripts (Python/shell), with min-count checks for multi-site activation calls |
+| `timeouts.*` (14 fields: 2 in config.env + 12 in production scripts) | Literal values in the corresponding production sources, with config.env verbatim comparison and min-count checks for multi-site activation calls |
 | `routes` | Set comparison: contract routes == launcher `ACTIVE_ROUTE=` literals == netwatch `printf`/`case` route literals |
 | `navigation` allowlist/blocklist | Chromium managed policy JSON `URLAllowlist`/`URLBlocklist` |
 | `services.*` | Unit file existence in `includes.chroot/etc/systemd/system` |

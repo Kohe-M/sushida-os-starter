@@ -626,3 +626,83 @@ class TestCheckContracts:
         r = _run_checker(clean_repo)
         assert r.returncode == 1
         assert "DRIFT_METADATA_FORMAT" in r.stdout
+
+    # ── config.env strict parser — missing / quoted / whitespace ───
+
+    def test_config_env_missing_sushida_url_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_URL" in r.stdout
+
+    def test_config_env_quoted_sushida_url_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'SUSHIDA_URL="https://sushida.net/play.html"\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "RUNTIME_URL_MISMATCH" in r.stdout or "DRIFT_URL" in r.stdout
+
+    def test_config_env_missing_network_check_interval_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'SUSHIDA_URL=https://sushida.net/play.html\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_TIMEOUT" in r.stdout
+
+    def test_config_env_missing_network_setup_grace_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'SUSHIDA_URL=https://sushida.net/play.html\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_TIMEOUT" in r.stdout
+
+    def test_config_env_leading_whitespace_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            ' SUSHIDA_URL=https://sushida.net/play.html\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_URL" in r.stdout
+
+    # ── Artifact boolean drift: clean/verify false but referenced ───
+
+    def test_verify_false_but_referenced_exit_1(self, clean_repo: Path) -> None:
+        rc = clean_repo / "contracts/release-contract.json"
+        data = json.loads(rc.read_text())
+        for artifact in data["artifacts"]:
+            if artifact.get("verify"):
+                artifact["verify"] = False
+                break
+        rc.write_text(json.dumps(data))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "RELEASE_ARTIFACT_REF_UNEXPECTED" in r.stdout
+
+    def test_clean_false_but_referenced_exit_1(self, clean_repo: Path) -> None:
+        rc = clean_repo / "contracts/release-contract.json"
+        data = json.loads(rc.read_text())
+        for artifact in data["artifacts"]:
+            if artifact.get("clean"):
+                artifact["clean"] = False
+                break
+        rc.write_text(json.dumps(data))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "RELEASE_ARTIFACT_REF_UNEXPECTED" in r.stdout

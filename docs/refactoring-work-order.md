@@ -3,6 +3,8 @@
 - 作成日: 2026-07-20
 - 対象リポジトリ: `Kohe-M/sushida-os-starter`
 - 基準 HEAD: `2f72ac0402e58b6cb7452f9a0d268ab8c18f81f5` (branch: `main`)
+- 最新 HEAD: `48af5fa`（Stage A 実装コミット。レビュー修正前）
+- **この文書のベースラインは `2f72ac0` 時点であり、進捗は別途追跡する。**
 - 上位計画書: `docs/sushida-os-development-hardening-phases-1-6.md`（背景・設計の正本）
 - 本文書の位置づけ: **実行の正本**。コーディング担当エージェントはこの文書の手順どおりに
   1 タスクずつ実施する。旧 `docs/phase2b2-work-order.md` は本文書 Stage A に統合済み。
@@ -15,10 +17,10 @@
 
 | 項目 | 状態 |
 |---|---|
-| HEAD / branch | `2f72ac0` / `main`（detached ではない） |
-| 作業ツリー（WSL 内） | `tools/check-contracts.py` 変更1件（**Stage A の A-00 済み分、未コミット**）+ untracked 文書2件 |
+| HEAD / branch | `48af5fa` / `main`（detached ではない） |
+| 作業ツリー（WSL 内） | clean（Stage A 全実装をコミット 48af5fa 済み。レビュー修正は本ファイル更新時点では未反映） |
 | Phase 1（開発基盤） | ほぼ完了（commit `50b501b`〜`264ef8d`）。doctor/container wrapper/CI あり |
-| Phase 2（contract checker） | 途中。レビューで BLOCKER 1〜4 + MEDIUM 指摘あり |
+| Phase 2（contract checker） | Stage A 実装完了（48af5fa）。レビュー指摘あり→修正中 |
 | `tests/static/test_wifi_setup_backend.py` | 1160 行・約45件。**Phase 3 の characterization test は実質済み** |
 | `STRUCTURE.txt` | **陳腐化**（contracts/, tools/, tests/contracts/, 多数の新規ファイルが未掲載） |
 | `TASKS.md` | 旧形式（実装タスク 1〜20）のまま |
@@ -184,16 +186,16 @@ git diff --stat
 
 | Step | 内容 | 状態 |
 |---|---|---|
-| A-00 | runtime adapters（URLs/paths/timeouts/routes）実装 | ✅ **済（未コミット）**。実リポジトリで `check-contracts` exit 0 確認済み。触らない |
-| A-01 | BLOCKER 1: static metadata ペア照合 | ⬅ ここから |
-| A-02 | BLOCKER 4: release adapters | 未着手 |
-| A-03 | fixture 更新（production 形式 + chmod 同期） | 未着手 |
-| A-04 | BLOCKER 2: static metadata negative fixtures（双方向） | 未着手 |
-| A-05 | 新規 adapter drift テスト | 未着手 |
-| A-06 | MEDIUM: strict-markers 一元化（**test_development_tooling.py も更新**） | 未着手 |
-| A-07 | contract-inventory.md へ coverage 追記 | 未着手 |
-| A-08 | Stage A 検証 | 未着手 |
-| A-09 | P2-07 ゲート | 未着手 |
+| A-00 | runtime adapters（URLs/paths/timeouts/routes）実装 | ✅ 48af5fa |
+| A-01 | BLOCKER 1: static metadata ペア照合 | ✅ 48af5fa |
+| A-02 | BLOCKER 4: release adapters | ✅ 48af5fa |
+| A-03 | fixture 更新（production 形式 + chmod 同期） | ✅ 48af5fa |
+| A-04 | BLOCKER 2: static metadata negative fixtures（双方向） | ✅ 48af5fa |
+| A-05 | 新規 adapter drift テスト | ✅ 48af5fa |
+| A-06 | MEDIUM: strict-markers 一元化 | ✅ 48af5fa |
+| A-07 | contract-inventory.md へ coverage 追記 | ✅ 48af5fa（レビュー修正で LOW 修正：timeout 数を 14 に訂正） |
+| A-08 | Stage A 検証 | ⬅ レビュー指摘 HIGH の config.env / MEDIUM の artifact 修正後 |
+| A-09 | P2-07 ゲート | A-08 完了後 |
 
 ## A-01: BLOCKER 1 修正（static metadata ペア照合）
 

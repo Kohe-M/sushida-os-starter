@@ -622,30 +622,50 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     timeouts = c.get("timeouts", {})
 
     # Production URL from config.env
+    # The production launcher and network-watch parse config.env verbatim:
+    # only CR is stripped; quotes and leading whitespace are NOT removed.
+    # A missing required key or a quoted value causes a startup failure.
     config_env = _must_exist(root, f"{PRODUCTION_ROOT}/etc/sushida-os/config.env",
                              "config.env", result, "runtime")
     if config_env:
-        for line in config_env.read_text().splitlines():
-            line = line.strip()
+        seen_url = False
+        seen_interval = False
+        seen_grace = False
+        for raw_line in config_env.read_text().splitlines():
+            line = raw_line.rstrip("\r")
+            if not line or line.startswith("#"):
+                continue
             if line.startswith("SUSHIDA_URL="):
-                val = line.split("=", 1)[1].strip("\"'")
+                val = line.split("=", 1)[1]
+                seen_url = True
                 expected = urls.get("sushida_url", "")
                 if val != expected:
                     result.error("RUNTIME_URL_MISMATCH", "runtime",
                                  "urls.sushida_url", str(config_env),
                                  f"config.env has {val!r}, contract expects {expected!r}")
             elif line.startswith("NETWORK_CHECK_INTERVAL_SECONDS="):
-                val = line.split("=", 1)[1].strip("\"'")
+                val = line.split("=", 1)[1]
+                seen_interval = True
                 expected = str(timeouts.get("network_check_interval_seconds", ""))
                 if val != expected:
                     result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_check_interval_seconds",
                                  str(config_env), f"config.env has {val}, contract expects {expected}")
             elif line.startswith("NETWORK_SETUP_GRACE_SECONDS="):
-                val = line.split("=", 1)[1].strip("\"'")
+                val = line.split("=", 1)[1]
+                seen_grace = True
                 expected = str(timeouts.get("network_setup_grace_seconds", ""))
                 if val != expected:
                     result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_setup_grace_seconds",
                                  str(config_env), f"config.env has {val}, contract expects {expected}")
+        if not seen_url:
+            result.error("DRIFT_URL", "runtime", "urls.sushida_url", str(config_env),
+                         "config.env missing SUSHIDA_URL")
+        if not seen_interval:
+            result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_check_interval_seconds",
+                         str(config_env), "config.env missing NETWORK_CHECK_INTERVAL_SECONDS")
+        if not seen_grace:
+            result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_setup_grace_seconds",
+                         str(config_env), "config.env missing NETWORK_SETUP_GRACE_SECONDS")
 
     # Production runtime sources shared by the adapters below.  Unit files are
     # loaded silently: their existence is enforced by the services loop.
@@ -888,7 +908,7 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
                     result.error("RELEASE_ARTIFACT_REF", "release", f"artifacts.{name}",
                                  str(sp), f"artifact {name!r} ({boolean_key}) not in {script_name}")
                 elif not artifact.get(boolean_key, False) and name in _text:
-                    result.warn("RELEASE_ARTIFACT_REF_UNEXPECTED", "release", f"artifacts.{name}",
+                    result.error("RELEASE_ARTIFACT_REF_UNEXPECTED", "release", f"artifacts.{name}",
                                 str(sp), f"artifact {name!r} ({boolean_key}=false) appears in {script_name}")
 
     # Artifact checksum and publish verification
