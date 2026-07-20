@@ -1002,10 +1002,16 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
                                  str(build_sh),
                                  f"field {field!r} generation not found in build.sh")
 
-    # Source-image mappings: check source files exist
+    # Source-image mappings: check source files exist and are regular files.
+    # A symlinked source would let verification compare against content
+    # outside the tracked tree, so it is rejected outright.
     for mapping in rc.get("source_image_mappings", []):
         src = root / mapping["source"]
-        if not src.is_file() and not src.is_symlink():
+        if src.is_symlink():
+            result.error("RELEASE_MAPPING_SOURCE", "release",
+                         f"source_image_mappings.{mapping['source']}", str(src),
+                         f"mapping source is a symlink: {mapping['source']}")
+        elif not src.is_file():
             result.error("RELEASE_MAPPING_SOURCE", "release",
                          f"source_image_mappings.{mapping['source']}", str(src),
                          f"mapping source not found: {mapping['source']}")

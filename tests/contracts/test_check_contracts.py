@@ -55,6 +55,8 @@ def _build_minimal_repo(root: Path) -> None:
         "live-build/config/includes.chroot/etc/NetworkManager/conf.d",
         "live-build/config/package-lists",
         "live-build/config/hooks/live",
+        "live-build/config/bootloaders/grub-pc",
+        "live-build/config/bootloaders/isolinux",
         "scripts",
     ]
     for d in dirs:
@@ -136,6 +138,16 @@ def _build_minimal_repo(root: Path) -> None:
     (root / "scripts/verify-iso.sh").write_text(
         'sushida-os-amd64.iso\nSHA256SUMS\npackage-manifest.txt\nbuild-info.json\n'
         '/live/filesystem.squashfs\n/live/vmlinuz\n/live/initrd.img\n'
+        '/boot/grub/grub.cfg\n/isolinux/isolinux.cfg\n/isolinux/live.cfg\n'
+    )
+    (root / "live-build/config/bootloaders/grub-pc/config.cfg").write_text(
+        'set timeout=0\n'
+    )
+    (root / "live-build/config/bootloaders/isolinux/isolinux.cfg").write_text(
+        'include live.cfg\n'
+    )
+    (root / "live-build/config/bootloaders/isolinux/live.cfg").write_text(
+        'label live\n'
     )
     (root / "scripts/run-qemu.sh").write_text('ISO="sushida-os-amd64.iso"\n')
 
@@ -397,6 +409,29 @@ class TestCheckContracts:
         r = _run_checker(clean_repo)
         assert r.returncode == 1
         assert "MISSING_SOURCE" in r.stdout or "RELEASE_MAPPING_SOURCE" in r.stdout
+
+    # ── Mapping source replaced by a symlink ────────────────────────
+
+    def test_mapping_source_symlink_exit_1(self, clean_repo: Path) -> None:
+        src = clean_repo / "live-build/config/includes.chroot/usr/local/bin/sushida-launch"
+        replacement = clean_repo / "outside-launch"
+        replacement.write_text(src.read_text())
+        replacement.chmod(0o755)
+        src.unlink()
+        src.symlink_to(replacement)
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "RELEASE_MAPPING_SOURCE" in r.stdout
+        assert "symlink" in r.stdout
+
+    # ── Bootloader ISO path must be referenced by the verifier ──────
+
+    def test_bootloader_iso_path_not_verified_exit_1(self, clean_repo: Path) -> None:
+        vs = clean_repo / "scripts/verify-iso.sh"
+        vs.write_text(vs.read_text().replace("/boot/grub/grub.cfg\n", ""))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_ISO_PATH" in r.stdout
 
     # ── Unknown contract field ──────────────────────────────────────
 

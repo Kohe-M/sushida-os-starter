@@ -96,6 +96,12 @@ grep -Eq "^'?/live/vmlinuz([.-][^/]*)?'?$" "$iso_listing" || \
     fail "live kernel missing from ISO"
 grep -Eq "^'?/live/initrd\.img([.-][^/]*)?'?$" "$iso_listing" || \
     fail "live initrd missing from ISO"
+grep -Eq "^'?/boot/grub/grub\.cfg'?$" "$iso_listing" || \
+    fail "required ISO path missing: /boot/grub/grub.cfg"
+grep -Eq "^'?/isolinux/isolinux\.cfg'?$" "$iso_listing" || \
+    fail "required ISO path missing: /isolinux/isolinux.cfg"
+grep -Eq "^'?/isolinux/live\.cfg'?$" "$iso_listing" || \
+    fail "required ISO path missing: /isolinux/live.cfg"
 
 system_area="$VERIFY_ROOT/system-area.txt"
 xorriso -indev "$iso" -report_system_area plain > "$system_area" \
