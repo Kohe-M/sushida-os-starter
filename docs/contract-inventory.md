@@ -22,7 +22,7 @@ Every column and its meaning:
 | ID | Domain | Contract item | Current value | Production source | Other references | Mismatch | Candidate contract field | Automatable | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 | URL-01 | url | Sushi-da play URL | `https://sushida.net/play.html` | `config.env` | launcher, session, policy allowlist, watcher test | NO | `sushida_url` | YES | Default; overridable via `SUSHIDA_URL` in config.env |
-| URL-02 | url | Setup page URL | `http://127.0.0.1:8787/` | wifi-setup backend (HOST+PORT) | launcher, session, policy allowlist, launcher SETUP_URL | NO | `setup_url` | YES | Scheme, host, port are fixed |
+| URL-02 | url | Setup page URL | `http://127.0.0.1:8787/` | sushida_os/wifi/web.py (HOST+PORT) | launcher, session, policy allowlist, launcher SETUP_URL | NO | `setup_url` | YES | Scheme, host, port are fixed |
 | URL-03 | url | Offline page URL | `file://localhost/usr/share/sushida-os/offline.html` | launcher (OFFLINE_URL) | session, policy allowlist, docs | NO | `offline_url` | YES | Both `file://localhost/...` and `file:///...` forms exist |
 | URL-04 | url | Time-sync page URL | (not implemented) | — | — | N/A | `time_sync_url` | YES | Future: `file:///usr/share/sushida-os/time-sync.html` |
 | URL-05 | url | Navigation allowlist | `https://.sushida.net:443` | Chromium policy JSON | launcher patterns, watcher classify_url | NO | `nav_allowlist` | YES | Leading dot = exact host match (no subdomains) |
@@ -35,11 +35,11 @@ Every column and its meaning:
 | RTP-01 | path | Runtime directory | `/run/sushida-os` | kiosk.service (RuntimeDirectory) | launcher, watchers, tmpfiles.d | NO | `runtime_dir` | YES | 0750, user kiosk |
 | RTP-02 | path | Active route file | `$RUNTIME_DIR/active-route` | sushida-launch (route_tmp) | network-watch (ACTIVE_ROUTE_FILE) | NO | `active_route_file` | YES | Written by launcher, read by watcher |
 | RTP-03 | path | Time-sync marker | `$RUNTIME_DIR/time-sync-required` | sushida-launch | network-watch (TIME_SYNC_REQUIRED_MARKER) | NO | `time_sync_marker` | YES | Created when clock implausible, cleared on sync |
-| RTP-04 | path | Wi-Fi setup runtime state | `/run/sushida-wifi-setup/` | wifi-setup.service (RuntimeDirectory) | sushida-wifi-setup (CSRF_TOKEN_FILE) | NO | `wifi_setup_runtime_dir` | YES | 0700, user wifi-setup |
-| RTP-05 | path | CSRF token file | `/run/sushida-wifi-setup/csrf-token` | sushida-wifi-setup (CSRF_TOKEN_FILE) | — | NO | `csrf_token_file` | YES | 0600, preserved across restart |
-| RTP-06 | path | Config mount path | `/var/lib/sushida-config` | mount unit (Where=) | config-prepare (CONFIG_MOUNT), wifi-setup | NO | `config_mount_path` | YES | ext4, rw, nodev, nosuid, noexec, noatime |
-| RTP-07 | path | Config storage status | `/run/sushida-config/config-storage` | sushida-config-prepare | wifi-setup (STORAGE_STATUS) | NO | `config_storage_status` | YES | 0644, content "ready" or "unavailable" |
-| RTP-08 | path | Credential file | `$CONFIG_MOUNT/network/setup.json` | sushida-wifi-setup (CONFIG_FILE) | persist_credentials, load_credentials | NO | `credential_file` | YES | 0600, wifi-setup owned |
+| RTP-04 | path | Wi-Fi setup runtime state | `/run/sushida-wifi-setup/` | wifi-setup.service (RuntimeDirectory) | sushida_os/wifi/storage.py (CSRF_TOKEN_FILE) | NO | `wifi_setup_runtime_dir` | YES | 0700, user wifi-setup |
+| RTP-05 | path | CSRF token file | `/run/sushida-wifi-setup/csrf-token` | sushida_os/wifi/storage.py (CSRF_TOKEN_FILE) | — | NO | `csrf_token_file` | YES | 0600, preserved across restart |
+| RTP-06 | path | Config mount path | `/var/lib/sushida-config` | mount unit (Where=) | config-prepare (CONFIG_MOUNT), sushida_os/wifi/storage.py | NO | `config_mount_path` | YES | ext4, rw, nodev, nosuid, noexec, noatime |
+| RTP-07 | path | Config storage status | `/run/sushida-config/config-storage` | sushida-config-prepare | sushida_os/wifi/storage.py (STORAGE_STATUS) | NO | `config_storage_status` | YES | 0644, content "ready" or "unavailable" |
+| RTP-08 | path | Credential file | `$CONFIG_MOUNT/network/setup.json` | sushida_os/wifi/storage.py (CONFIG_FILE) | persist_credentials, load_credentials | NO | `credential_file` | YES | 0600, wifi-setup owned |
 | RTP-09 | path | Chromium profile | `$RUNTIME_DIR/chromium` | sushida-launch | sushida-session (--user-data-dir) | NO | `chromium_profile_dir` | YES | Volatile tmpfs |
 | RTP-10 | path | Chromium session file | `$RUNTIME_DIR/chromium/Default/Sessions` | sushida-navigation-watch | sushida-session | NO | `chromium_sessions_dir` | YES | SNSS-format binary files |
 | RTP-11 | path | QEMU smoke markers | `systemd.setenv=WLR_RENDERER=pixman, WLR_RENDERER_ALLOW_SOFTWARE=1, SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1, SUSHIDA_QEMU_FORCE_OFFLINE=1` | scripts/run-qemu.sh | sushida-launch, sushida-navigation-watch (env checks) | NO | `qemu_smoke_markers` | YES | Kernel cmdline env vars, only in direct-kernel boot path |
@@ -73,15 +73,15 @@ Every column and its meaning:
 |---|---|---|---|---|---|---|---|---|---|
 | TMO-01 | timeout | Network setup grace | 15 | config.env (NETWORK_SETUP_GRACE_SECONDS) | sushida-launch | NO | `network_setup_grace_seconds` | YES | Default; configurable |
 | TMO-02 | timeout | Network check interval | 30 | config.env (NETWORK_CHECK_INTERVAL_SECONDS) | sushida-network-watch | NO | `network_check_interval_seconds` | YES | Default; configurable, min 30 max 3600 |
-| TMO-03 | timeout | Wi-Fi connect timeout | 40 | sushida-wifi-setup (COMMAND_TIMEOUT_SECONDS) | nmcli --wait 30 in connect_wifi | NO | `wifi_connect_timeout_seconds` | PARTIAL | Nmcli per-stage timeout |
-| TMO-04 | timeout | Restore retry backoff min | 2.0 (seconds) | sushida-wifi-setup (BACKOFF_MIN) | — | NO | `restore_backoff_min_seconds` | PARTIAL | Bounded exponential backoff |
-| TMO-05 | timeout | Restore retry backoff max | 16.0 (seconds) | sushida-wifi-setup (BACKOFF_MAX) | — | NO | `restore_backoff_max_seconds` | PARTIAL | Bounded exponential backoff |
-| TMO-06 | timeout | Restore max retries | 5 | sushida-wifi-setup (MAX_RETRIES) | — | NO | `restore_max_retries` | YES | Integer count |
-| TMO-07 | timeout | Restore deadline | 120 (seconds) | sushida-wifi-setup (deadline) | — | NO | `restore_deadline_seconds` | YES | Total retry window |
+| TMO-03 | timeout | Wi-Fi connect timeout | 40 | sushida_os/wifi/nmcli.py (COMMAND_TIMEOUT_SECONDS) | nmcli --wait 30 in connect_wifi | NO | `wifi_connect_timeout_seconds` | PARTIAL | Nmcli per-stage timeout |
+| TMO-04 | timeout | Restore retry backoff min | 2.0 (seconds) | sushida_os/wifi/restore.py (BACKOFF_MIN) | — | NO | `restore_backoff_min_seconds` | PARTIAL | Bounded exponential backoff |
+| TMO-05 | timeout | Restore retry backoff max | 16.0 (seconds) | sushida_os/wifi/restore.py (BACKOFF_MAX) | — | NO | `restore_backoff_max_seconds` | PARTIAL | Bounded exponential backoff |
+| TMO-06 | timeout | Restore max retries | 5 | sushida_os/wifi/restore.py (MAX_RETRIES) | — | NO | `restore_max_retries` | YES | Integer count |
+| TMO-07 | timeout | Restore deadline | 120 (seconds) | sushida_os/wifi/restore.py (deadline) | — | NO | `restore_deadline_seconds` | YES | Total retry window |
 | TMO-08 | timeout | Navigation poll interval | 2.0 (seconds) | sushida-navigation-watch (DEFAULT_POLL_SECONDS) | — | NO | `nav_poll_interval_seconds` | YES | Configurable for tests |
 | TMO-09 | timeout | Navigation cooldown | 30.0 (seconds) | sushida-navigation-watch (DEFAULT_COOLDOWN_SECONDS) | — | NO | `nav_cooldown_seconds` | YES | Between restarts |
-| TMO-10 | timeout | HTTP read timeout | 5 (seconds) | sushida-wifi-setup (REQUEST_READ_TIMEOUT_SECONDS) | — | NO | `http_read_timeout_seconds` | YES | Per-request |
-| TMO-11 | timeout | HTTP max body size | 8192 (bytes) | sushida-wifi-setup (MAX_REQUEST_BYTES) | — | NO | `http_max_request_bytes` | YES | Upper bound |
+| TMO-10 | timeout | HTTP read timeout | 5 (seconds) | sushida_os/wifi/web.py (REQUEST_READ_TIMEOUT_SECONDS) | — | NO | `http_read_timeout_seconds` | YES | Per-request |
+| TMO-11 | timeout | HTTP max body size | 8192 (bytes) | sushida_os/wifi/web.py (MAX_REQUEST_BYTES) | — | NO | `http_max_request_bytes` | YES | Upper bound |
 | TMO-12 | timeout | Session audio timeout | 3 (seconds) | sushida-session (AUDIO_TIMEOUT) | — | NO | `session_audio_timeout_seconds` | YES | Best-effort |
 
 ## Release inventory
@@ -118,6 +118,14 @@ Every column and its meaning:
 | ISO-16 | iso-path | Wi-Fi backend | `/usr/local/libexec/sushida-wifi-setup` | Production script | validate hook | NO | `wifi_setup_lib_path` | YES | Security-critical |
 | ISO-17 | iso-path | Offline HTML | `/usr/share/sushida-os/offline.html` | HTML file | policy allowlist | NO | `offline_html_path` | YES | Static local page |
 | ISO-18 | iso-path | Config env | `/etc/sushida-os/config.env` | Config file | launcher | NO | `config_env_path` | YES | Contains SUSHIDA_URL |
+| ISO-19 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/__init__.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-20 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/wifi/__init__.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-21 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/wifi/types.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-22 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/wifi/storage.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-23 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/wifi/nmcli.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-24 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/wifi/coordinator.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-25 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/wifi/restore.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-26 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/wifi/web.py` | Python module | validate hook | NO | — | YES | Security-critical |
 
 ### Source-image mappings
 
@@ -145,6 +153,14 @@ Every column and its meaning:
 | SIM-20 | mapping | ISO bootloader (generated by live-build) | `boot/grub/grub.cfg` | iso-root | file | `cmp` | YES |
 | SIM-21 | mapping | `live-build/config/bootloaders/grub-pc/config.cfg` | (input to bootloader config) | — | file | `cmp` | YES |
 | SIM-22 | mapping | `live-build/config/bootloaders/isolinux/live.cfg` | (input to bootloader config) | — | file | `cmp` | YES |
+| SIM-23 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/__init__.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-24 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/wifi/__init__.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-25 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/wifi/types.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-26 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/wifi/storage.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-27 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/wifi/nmcli.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-28 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/wifi/coordinator.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-29 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/wifi/restore.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-30 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/wifi/web.py` | squashfs | file (Python module) | `cmp` | YES |
 
 ### Metadata
 
@@ -171,13 +187,13 @@ behaviour change is performed.
 | Domain | What is checked |
 |---|---|
 | `urls.sushida_url` | `config.env` `SUSHIDA_URL=` value |
-| `urls.setup_url` | Literal URL in `sushida-launch` / `sushida-session`; port match in `sushida-wifi-setup` (`PORT`) |
+| `urls.setup_url` | Literal URL in `sushida-launch` / `sushida-session`; port match in `sushida_os/wifi/web.py` (`PORT`) |
 | `urls.offline_url` | Literal URL in `sushida-launch` / `sushida-session` |
 | `runtime_paths.runtime_dir` | `PROD_RUNTIME` in launch/netwatch/navwatch; `RuntimeDirectory=` in kiosk unit |
 | `runtime_paths.active_route_file` / `time_sync_marker` | Relative to runtime_dir (internal consistency); basename references in launch + netwatch |
-| `runtime_paths.wifi_setup_runtime_dir` / `csrf_token_file` | Dirname consistency; `CSRF_TOKEN_FILE` literal in wifi-setup; `RuntimeDirectory=` in wifi unit |
-| `runtime_paths.config_mount_path` | Literals in wifi-setup, config-prepare, mount unit `Where=` |
-| `runtime_paths.config_storage_status` / `credential_file` | Literals + derived components in wifi-setup + config-prepare |
+| `runtime_paths.wifi_setup_runtime_dir` / `csrf_token_file` | Dirname consistency; `CSRF_TOKEN_FILE` literal in `sushida_os/wifi/storage.py`; `RuntimeDirectory=` in wifi unit |
+| `runtime_paths.config_mount_path` | Literals in `sushida_os/wifi/storage.py`, config-prepare, mount unit `Where=` |
+| `runtime_paths.config_storage_status` / `credential_file` | Literals + derived components in `sushida_os/wifi/storage.py` + config-prepare |
 | `runtime_paths.chromium_profile_dir` / `chromium_sessions_dir` | Basename in launch/session; `SESSIONS_SUBDIR` chain in navwatch |
 | `timeouts.*` (14 fields: 2 in config.env + 12 in production scripts) | Literal values in the corresponding production sources, with config.env verbatim comparison and min-count checks for multi-site activation calls |
 | `routes` | Set comparison: contract routes == launcher `ACTIVE_ROUTE=` literals == netwatch `printf`/`case` route literals |

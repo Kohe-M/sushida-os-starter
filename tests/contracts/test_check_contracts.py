@@ -231,6 +231,18 @@ def _build_minimal_repo(root: Path) -> None:
         '                "activation", "--wait", "30", "connection", "up",\n'
         '                "id", CONNECTION_NAME, timeout=35,\n'
     )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/__init__.py").write_text(
+        '"""stub"""\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/__init__.py").write_text(
+        '"""stub"""\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/types.py").write_text(
+        'CONNECTION_NAME = "sushida-os-wifi"\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/coordinator.py").write_text(
+        'class ConnectionCoordinator:\n    pass\n'
+    )
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/storage.py").write_text(
         'from pathlib import Path\n'
         'CONFIG_MOUNT = Path("/var/lib/sushida-config")\n'

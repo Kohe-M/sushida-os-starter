@@ -82,6 +82,33 @@ done
 python3 -c 'import hashlib, hmac, html, http.server, json, secrets, threading, urllib.parse' || \
     fail "Wi-Fi setup Python standard library is incomplete"
 
+# Wi-Fi backend package: every module must be present with safe modes and
+# importable.  The image ships source-only Python: import verification runs
+# with PYTHONDONTWRITEBYTECODE=1 and any leftover bytecode cache fails the
+# build, so the squashfs never contains .pyc files for these modules.
+backend_package=/usr/lib/python3/dist-packages/sushida_os
+for module in \
+    "$backend_package/__init__.py" \
+    "$backend_package/wifi/__init__.py" \
+    "$backend_package/wifi/types.py" \
+    "$backend_package/wifi/storage.py" \
+    "$backend_package/wifi/nmcli.py" \
+    "$backend_package/wifi/coordinator.py" \
+    "$backend_package/wifi/restore.py" \
+    "$backend_package/wifi/web.py"; do
+    require_file "$module"
+    [ "$(stat -c '%U:%G:%a' "$module")" = "root:root:644" ] || \
+        fail "unsafe owner or mode for $module: $(stat -c '%U:%G:%a' "$module")"
+done
+PYTHONDONTWRITEBYTECODE=1 python3 - <<'PYEOF' || fail "Wi-Fi backend package does not import"
+import sushida_os.wifi.coordinator
+import sushida_os.wifi.restore
+import sushida_os.wifi.web
+PYEOF
+if find "$backend_package" -name '__pycache__' -o -name '*.pyc' | grep -q .; then
+    fail "Wi-Fi backend package must ship without bytecode caches"
+fi
+
 # Production image must not expose a shell, desktop, display manager, remote
 # administration service, proprietary NVIDIA stack, or persistence tooling.
 for package in \

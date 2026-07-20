@@ -160,6 +160,16 @@ sandboxing prevent it from becoming a general browser or network service. If
 the backend or persistent filesystem is unavailable, the launcher uses the
 static offline page or refuses saving without preventing boot.
 
+The backend implementation lives in the `sushida_os.wifi` package under
+`/usr/lib/python3/dist-packages` (`types` / `storage` / `nmcli` /
+`coordinator` / `restore` / `web`); `/usr/local/libexec/sushida-wifi-setup`
+is a thin wiring entrypoint and the systemd `ExecStart` path is unchanged.
+The package ships source-only: no `.pyc` is generated into the image.  The
+image validation hook imports the package with `PYTHONDONTWRITEBYTECODE=1`,
+requires `root:root` mode-`0644` module files, and fails the build if any
+`__pycache__`/`.pyc` remains; the test loader likewise sets
+`sys.dont_write_bytecode = True`.
+
 The root preparation service owns a separate `/run/sushida-config` runtime
 directory for its atomic readiness marker. It does not share the
 `/run/sushida-os` lifecycle: the latter is intentionally recreated with each
