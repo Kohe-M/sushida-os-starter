@@ -343,6 +343,18 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
                     result.error("RUNTIME_URL_MISMATCH", "runtime",
                                  "urls.sushida_url", str(config_env),
                                  f"config.env has {val!r}, contract expects {expected!r}")
+            elif line.startswith("NETWORK_CHECK_INTERVAL_SECONDS="):
+                val = line.split("=", 1)[1].strip("\"'")
+                expected = str(c.get("timeouts", {}).get("network_check_interval_seconds", ""))
+                if val != expected:
+                    result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_check_interval_seconds",
+                                 str(config_env), f"config.env has {val}, contract expects {expected}")
+            elif line.startswith("NETWORK_SETUP_GRACE_SECONDS="):
+                val = line.split("=", 1)[1].strip("\"'")
+                expected = str(c.get("timeouts", {}).get("network_setup_grace_seconds", ""))
+                if val != expected:
+                    result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_setup_grace_seconds",
+                                 str(config_env), f"config.env has {val}, contract expects {expected}")
 
     # Chromium managed policy URL allowlist and blocklist
     policy_file = _must_exist(root, f"{PRODUCTION_ROOT}/etc/chromium/policies/managed/sushida-os.json",
@@ -470,6 +482,31 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
             if state == "masked" and name not in vtext:
                 result.error("DRIFT_SERVICE_MASK", "release", f"required_services.{name}",
                              str(validate_hook), f"service {name} not found in validate hook")
+
+    # Verify-iso.sh, clean.sh, run-qemu.sh — check artifact references
+    for script_name, script_rel in [
+        ("verify-iso.sh", "scripts/verify-iso.sh"),
+        ("clean.sh", "scripts/clean.sh"),
+        ("run-qemu.sh", "scripts/run-qemu.sh"),
+    ]:
+        sp = _must_exist(root, script_rel, script_name, result, "release")
+        if sp:
+            _text = sp.read_text()
+            for artifact in rc.get("artifacts", []):
+                name = artifact["name"]
+                if name not in _text:
+                    result.warn("RELEASE_ARTIFACT_REF", "release", f"artifacts.{name}",
+                                str(sp), f"artifact {name!r} not referenced in {script_name}")
+
+    # Metadata required_fields check against build.sh
+    meta = rc.get("metadata", {})
+    req_fields = meta.get("required_fields", [])
+    if build_sh:
+        btext = build_sh.read_text()
+        for field in req_fields:
+            if field == "git_commit" and "git rev-parse" not in btext:
+                result.warn("DRIFT_METADATA", "release", "metadata.required_fields",
+                            str(build_sh), f"field {field!r} not generated in build.sh")
 
     # Source-image mappings: check source files exist
     for mapping in rc.get("source_image_mappings", []):

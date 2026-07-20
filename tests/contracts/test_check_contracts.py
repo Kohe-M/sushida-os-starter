@@ -327,3 +327,14 @@ class TestCheckContracts:
         r = _run_checker(clean_repo)
         assert r.returncode == 1
         assert "MISSING_SOURCE" in r.stdout
+
+    def test_timeout_drift_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'SUSHIDA_URL=https://sushida.net/play.html\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=9999\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_TIMEOUT" in r.stdout
