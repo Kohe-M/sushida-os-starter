@@ -780,3 +780,26 @@ class TestCheckContracts:
         r = _run_checker(clean_repo)
         assert r.returncode == 1
         assert "DRIFT_CONFIG_FORMAT" in r.stdout
+
+    # ── Secret non-exposure ────────────────────────────────────────
+
+    def test_config_env_error_does_not_expose_line_content(
+            self, clean_repo: Path) -> None:
+        secret = "SUPER_SECRET_SENTINEL_12345"
+        cfg = clean_repo / (
+            "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        )
+        cfg.write_text(
+            "SUSHIDA_URL=https://sushida.net/play.html\n"
+            "NETWORK_CHECK_INTERVAL_SECONDS=30\n"
+            "NETWORK_SETUP_GRACE_SECONDS=15\n"
+            f"{secret}\n"
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_CONFIG_FORMAT" in r.stdout
+        assert secret not in r.stdout
+        assert secret not in r.stderr
+        j = _run_checker(clean_repo, "--json")
+        assert j.returncode == 1
+        assert secret not in j.stdout

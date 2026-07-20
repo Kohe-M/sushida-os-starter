@@ -626,30 +626,34 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     # only CR is stripped; quotes and leading whitespace are NOT removed.
     # Unknown keys, lines without '=', and duplicate keys all cause a startup
     # failure, so the checker must reject them too.
+    #
+    # Error messages must never include config.env line content or values
+    # because they could contain secrets.  Report line numbers only.
     config_env = _must_exist(root, f"{PRODUCTION_ROOT}/etc/sushida-os/config.env",
                              "config.env", result, "runtime")
     if config_env:
         allowed = {"SUSHIDA_URL", "NETWORK_CHECK_INTERVAL_SECONDS", "NETWORK_SETUP_GRACE_SECONDS"}
         seen: set[str] = set()
-        for raw_line in config_env.read_text().splitlines():
+        for line_number, raw_line in enumerate(
+                config_env.read_text().splitlines(), start=1):
             line = raw_line.rstrip("\r")
             if not line or line.startswith("#"):
                 continue
             if "=" not in line:
                 result.error("DRIFT_CONFIG_FORMAT", "runtime", "config.env",
                              str(config_env),
-                             f"invalid config line without '=': {line!r}")
+                             f"invalid config line without '=' at line {line_number}")
                 continue
             key, value = line.split("=", 1)
             if key not in allowed:
-                result.error("DRIFT_CONFIG_KEY", "runtime", key,
+                result.error("DRIFT_CONFIG_KEY", "runtime", "config.env",
                              str(config_env),
-                             f"unknown config key: {key!r}")
+                             f"unknown config key at line {line_number}")
                 continue
             if key in seen:
                 result.error("DRIFT_CONFIG_DUPLICATE", "runtime", key,
                              str(config_env),
-                             f"duplicate config key: {key!r}")
+                             f"duplicate config key: {key}")
                 continue
             seen.add(key)
             if key == "SUSHIDA_URL":
@@ -657,17 +661,17 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
                 if value != expected:
                     result.error("RUNTIME_URL_MISMATCH", "runtime",
                                  "urls.sushida_url", str(config_env),
-                                 f"config.env has {value!r}, contract expects {expected!r}")
+                                 "config.env SUSHIDA_URL does not match the runtime contract")
             elif key == "NETWORK_CHECK_INTERVAL_SECONDS":
                 expected = str(timeouts.get("network_check_interval_seconds", ""))
                 if value != expected:
                     result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_check_interval_seconds",
-                                 str(config_env), f"config.env has {value}, contract expects {expected}")
+                                 str(config_env), "config.env NETWORK_CHECK_INTERVAL_SECONDS does not match the runtime contract")
             elif key == "NETWORK_SETUP_GRACE_SECONDS":
                 expected = str(timeouts.get("network_setup_grace_seconds", ""))
                 if value != expected:
                     result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_setup_grace_seconds",
-                                 str(config_env), f"config.env has {value}, contract expects {expected}")
+                                 str(config_env), "config.env NETWORK_SETUP_GRACE_SECONDS does not match the runtime contract")
         if "SUSHIDA_URL" not in seen:
             result.error("DRIFT_URL", "runtime", "urls.sushida_url", str(config_env),
                          "config.env missing SUSHIDA_URL")

@@ -13,19 +13,21 @@
 
 # 0. はじめに
 
-## 0.1 現状スナップショット（検証済み事実・2026-07-20 時点）
+## 0.1 作業書作成時のベースライン（2026-07-20・固定。現在の commit ではない）
 
-| 項目 | 状態 |
+| 項目 | 作成時の状態 |
 |---|---|
-| HEAD / branch | `1a85fb3` / `main`（Stage A 初期実装 + 1回目レビュー修正反映済み。2回目修正は本編集時未反映） |
-| 作業ツリー（WSL 内） | 作業中（本修正未 commit） |
-| Phase 2（contract checker） | Stage A 実装中。1回目レビュー修正済み、2回目レビュー修正進行中 |
-| `tests/static/test_wifi_setup_backend.py` | 1160 行・約45件。**Phase 3 の characterization test は実質済み** |
-| `STRUCTURE.txt` | **陳腐化**（contracts/, tools/, tests/contracts/, 多数の新規ファイルが未掲載） |
+| HEAD / branch | `2f72ac0` / `main` |
+| Phase 1（開発基盤） | ほぼ完了（commit `50b501b`〜`264ef8d`）。doctor/container wrapper/CI あり |
+| Phase 2（contract checker） | 途中。レビューで BLOCKER 1〜4 + MEDIUM 指摘あり |
+| `tests/static/test_wifi_setup_backend.py` | 1160 行・約45件。Phase 3 の characterization test は実質済み |
+| `STRUCTURE.txt` | 陳腐化（contracts/, tools/, tests/contracts/, 多数の新規ファイルが未掲載） |
 | `TASKS.md` | 旧形式（実装タスク 1〜20）のまま |
 | `docs/acceptance-tests.md` | ID 表あり。commit / ISO SHA / 確認日の列がない |
 | `README.md` | 既に最小化済みに近い |
 | `Makefile` / CI | `make ci = test + check-contracts + git diff --check`、GitHub Actions は builder 内で `make ci` を実行 |
+
+**進捗追跡は Stage 表の commit 欄と各タスクの完了報告で行う。この表は更新しない。**
 
 ## 0.2 環境と制約（全タスク共通・必読）
 
