@@ -865,6 +865,42 @@ make container-test  CONTAINER_ENGINE=podman   # make test 相当
 `contracts/release-contract.json`（C-08 のみ）、`tools/check-contracts.py`（C-08 のみ）、
 `docs/`（該当節）。
 
+| Step | 内容 | 状態 |
+|---|---|---|
+| C-00 | 分割前の基準線確認 | ✅ 66/66 pass + checker exit 0 を記録（9f4210d 時点） |
+| C-01 | types.py 抽出 | ✅ e825678 |
+| C-02 | nmcli.py 抽出 | ✅ 716ac14 |
+| C-03 | storage.py 抽出 | ✅ 68538cd |
+| C-04 | coordinator.py 抽出 | ✅ 976e641 |
+| C-05 | restore.py 抽出 | ✅ 5f7f74d |
+| C-06 | web.py 抽出 | ✅ 2e6a148 |
+| C-07 | entrypoint 薄型化（103 行） | ✅ 05a37be |
+| C-08 | package image 配置 + checker/contract 追随 | ✅ 2203eb4 |
+| C-09 | Phase 3 統合ゲート | ✅ 下記の完了報告参照 |
+
+**実施時の逸脱（記録）**:
+1. checker/contract fixture の追随（C-08 手順 2 相当）は、各分割コミットを
+   単独で緑に保つため C-02〜C-06 の各コミットに同伴させた（DRIFT adapter は
+   ソースキー `wifi_nmcli`/`wifi_storage`/`wifi_restore`/`wifi_web` へ付け替え）。
+2. `tests/static/test_wifi_setup.py`（production ソースのパターン検査）は
+   定数移動に伴い entrypoint + package 全体を走査する `_backend_text()` に
+   切り替えた（アサーションの意図は不変）。
+3. `tests/static/test_wifi_setup_backend.py` は loader 部分のみ変更:
+   dist-packages の sys.path 追加、sushida_os モジュールのテスト毎 purge、
+   `monkeypatch.setattr(backend, ...)` を定義元 module へ鏡映する
+   `_BackendModule`。テスト本体は 1 行も変更していない。
+
+**C-09 結果（2026-07-21）**: `pytest tests/static/`（618 pass）+
+`tests/contracts/`（110 pass）、`make container-shell`（bats 168 pass）、
+`make container-test`（コンテナ内 make test 全 pass, exit 0）、
+`python3 tools/check-contracts.py` exit 0、`git diff --check` クリーン。
+コンテナ内 `make iso` / `make verify` は**未実行**。実機回帰項目
+（Wi-Fi 設定ページ表示、接続成功、寿司打への遷移、restore 中 interactive、
+再起動後 restore、password 非露出）も**未実行**。
+補足: `tests/static/fixtures/snss/*.bin` が working tree 上で mode 0600 に
+なっており container 内（別 UID）から読めず navigation-watch テストが
+失敗したため 0644 へ chmod（git 追跡対象外の変更、Stage C とは無関係）。
+
 ## C-00: 分割準備（前提確認タスク）
 
 **手順**:
