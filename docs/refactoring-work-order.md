@@ -1040,6 +1040,45 @@ kiosk 再起動処理を共通化する。**挙動変更を行わない**。
 `/usr/local/libexec/sushida-kiosk-signal`（新規）、`tools/check-contracts.py`、
 `contracts/`（runtime contract 拡張時のみ）、`tests/**`、`docs/`。
 
+| Step | 内容 | 状態 |
+|---|---|---|
+| D-01 | route 状態モデル定義（routes.py + 行列テスト） | ✅ 04f3f64 |
+| D-02 | runtime state protocol（runtime-state.json schema 1） | ✅ d143102 |
+| D-03 | safe signal helper（sushida-kiosk-signal + bats 19件） | ✅ 0d2de99 |
+| D-04 | network watcher の route model 移行 | ✅ cbda54a |
+| D-05 | navigation watcher の signal helper 移行 | ✅ 64875f4 |
+| D-06 | launcher の route 出力統合 | ✅ 3fe79ab |
+| D-07 | route integration test | ✅ 02f989d |
+| D-08 | Phase 4 ゲート | ✅ 下記の完了報告参照 |
+
+**実施時の逸脱（記録）**:
+1. 上位計画書 `docs/sushida-os-development-hardening-phases-1-6.md` は
+   リポジトリに存在しないため、P4-07 の表は3スクリプトの現行実挙動から
+   導出した（`tests/static/test_route_decision.py` の ROUTE_MATRIX）。
+2. helper は **bash** で実装した。network-watch.bats の fail-closed テストが
+   PATH shim（偽 `stat`/`systemctl`）前提のため、Python helper では挙動
+   テストを無変更で通せない。
+3. navigation watcher は helper の subprocess 呼び出しではなく、同一検証の
+   Python 双子 `sushida_os/runtime/kiosk_signal.py` へ **in-process 委譲**
+   とした。`monkeypatch.setattr(os, "geteuid")` を使う既存テストが
+   subprocess 委譲では成立しないため。`test_navigation_watch.py` は
+   **1行も変更せず** 74件 pass。
+4. active-route / time-sync marker の state protocol への「移行」は
+   **dual-write** に留めた（launcher が runtime-state.json を追加発行、
+   旧ファイルが watcher の正本のまま）。bats（launch/network-watch）と
+   checker の DRIFT_PATH が旧ファイルを直接検証しており、完全移行は
+   挙動・テスト不変と両立しない。完全移行は後続 Stage の判断に委ねる。
+5. ソースパターン検査（network-watch.bats の1件、`test_networking.py` の
+   2件、`test_wifi_setup.py` の1件）は移動先（helper / routes model）を
+   検査するよう追随させた。挙動テストは全て無変更。
+
+**D-08 結果（2026-07-21）**: `make container-test`（static 658 + contracts
+110 + bats 188 全 pass, exit 0）、`python3 tools/check-contracts.py` exit 0、
+`git diff --check` クリーン。`make iso` / `make verify` /
+`make test-qemu-runtime` は**未実行**。実機確認項目（offline 起動、setup
+起動、Wi-Fi 接続、接続中 setup 維持、time sync 待機、prohibited navigation
+からの復帰、unnecessary restart なし）も**未実行**。
+
 ## D-01: route 状態モデル定義（P4-01）
 
 **新規**: `live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/runtime/__init__.py`、`.../runtime/routes.py`

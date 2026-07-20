@@ -126,6 +126,11 @@ Every column and its meaning:
 | ISO-24 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/wifi/coordinator.py` | Python module | validate hook | NO | — | YES | Security-critical |
 | ISO-25 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/wifi/restore.py` | Python module | validate hook | NO | — | YES | Security-critical |
 | ISO-26 | iso-path | Wi-Fi backend module | `/usr/lib/python3/dist-packages/sushida_os/wifi/web.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-27 | iso-path | Runtime module | `/usr/lib/python3/dist-packages/sushida_os/runtime/__init__.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-28 | iso-path | Route decision model | `/usr/lib/python3/dist-packages/sushida_os/runtime/routes.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-29 | iso-path | Runtime state protocol | `/usr/lib/python3/dist-packages/sushida_os/runtime/runtime_state.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-30 | iso-path | Kiosk signal module | `/usr/lib/python3/dist-packages/sushida_os/runtime/kiosk_signal.py` | Python module | validate hook | NO | — | YES | Security-critical |
+| ISO-31 | iso-path | Kiosk signal helper | `/usr/local/libexec/sushida-kiosk-signal` | Production script | validate hook | NO | — | YES | Security-critical |
 
 ### Source-image mappings
 
@@ -161,6 +166,11 @@ Every column and its meaning:
 | SIM-28 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/wifi/coordinator.py` | squashfs | file (Python module) | `cmp` | YES |
 | SIM-29 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/wifi/restore.py` | squashfs | file (Python module) | `cmp` | YES |
 | SIM-30 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/wifi/web.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-31 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/runtime/__init__.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-32 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/runtime/routes.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-33 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/runtime/runtime_state.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-34 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/runtime/kiosk_signal.py` | squashfs | file (Python module) | `cmp` | YES |
+| SIM-35 | mapping | (via auto/config) | `/usr/local/libexec/sushida-kiosk-signal` | squashfs | file (script) | `cmp` | YES |
 
 ### Metadata
 
@@ -196,7 +206,7 @@ behaviour change is performed.
 | `runtime_paths.config_storage_status` / `credential_file` | Literals + derived components in `sushida_os/wifi/storage.py` + config-prepare |
 | `runtime_paths.chromium_profile_dir` / `chromium_sessions_dir` | Basename in launch/session; `SESSIONS_SUBDIR` chain in navwatch |
 | `timeouts.*` (14 fields: 2 in config.env + 12 in production scripts) | Literal values in the corresponding production sources, with config.env verbatim comparison and min-count checks for multi-site activation calls |
-| `routes` | Set comparison: contract routes == launcher `ACTIVE_ROUTE=` literals == netwatch `printf`/`case` route literals |
+| `routes` | Set comparison: contract routes == launcher `ACTIVE_ROUTE=` literals == netwatch route `case` literals == `sushida_os/runtime/routes.py` `ROUTE_*` constants |
 | `navigation` allowlist/blocklist | Chromium managed policy JSON `URLAllowlist`/`URLBlocklist` |
 | `services.*` | Unit file existence in `includes.chroot/etc/systemd/system` |
 

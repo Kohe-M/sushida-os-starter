@@ -58,6 +58,7 @@ mounts as tmpfs:
 | Synthetic home | `/run/sushida-os/home` | None |
 | Wayland/PipeWire/session sockets | `/run/sushida-os/xdg-runtime` | None |
 | Selected network route | `/run/sushida-os/active-route` | None |
+| Route state protocol (schema 1) | `/run/sushida-os/runtime-state.json` | None |
 | Config-storage readiness | `/run/sushida-config/config-storage` | None |
 | Wi-Fi credential | `/var/lib/sushida-config/network/setup.json` | `SUSHIDA-CFG` only |
 | system journal | `/run/log/journal` (`Storage=volatile`) | None |
@@ -85,6 +86,19 @@ session. The independently supervised loopback Wi-Fi backend remains available,
 so setup is not a first-boot-only path. There is intentionally no settings
 navigation from the official page while NetworkManager reports full
 connectivity.
+
+The route decision itself (online/setup/offline from connectivity,
+time-sync hold, and setup-service availability) is a pure function in
+`sushida_os.runtime.routes`; the launcher and watchers only gather
+observations.  Kiosk restarts go through a single validated signal path —
+`/usr/local/libexec/sushida-kiosk-signal` for shell callers and
+`sushida_os.runtime.kiosk_signal` in-process for the navigation watcher —
+which accepts only a fixed reason token, never a PID, signal, or service
+name.  The launcher additionally publishes
+`/run/sushida-os/runtime-state.json` (schema 1: `active_route`,
+`time_sync_required`, `connection_in_progress`, `last_reason`); during the
+transition the legacy `active-route` and `time-sync-required` files remain
+the values the watchers read.
 
 - `https://sushida.net` — bare domain
 - `https://sushida.net/` — bare domain with slash
