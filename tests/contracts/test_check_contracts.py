@@ -210,7 +210,9 @@ def _build_minimal_repo(root: Path) -> None:
     )
     (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-wifi-setup").write_text(
         '#!/usr/bin/env python3\n'
-        'from pathlib import Path\n'
+        'from sushida_os.wifi.web import HOST, PORT, SetupHandler\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/web.py").write_text(
         'PORT = 8787\n'
         'MAX_REQUEST_BYTES = 8192\n'
         'REQUEST_READ_TIMEOUT_SECONDS = 5\n'
@@ -521,9 +523,9 @@ class TestCheckContracts:
              "DEFAULT_POLL_SECONDS = 2.0", "DEFAULT_POLL_SECONDS = 5.0"),
             ("usr/local/bin/sushida-navigation-watch",
              "DEFAULT_COOLDOWN_SECONDS = 30.0", "DEFAULT_COOLDOWN_SECONDS = 31.0"),
-            ("usr/local/libexec/sushida-wifi-setup",
+            ("usr/lib/python3/dist-packages/sushida_os/wifi/web.py",
              "REQUEST_READ_TIMEOUT_SECONDS = 5", "REQUEST_READ_TIMEOUT_SECONDS = 6"),
-            ("usr/local/libexec/sushida-wifi-setup",
+            ("usr/lib/python3/dist-packages/sushida_os/wifi/web.py",
              "MAX_REQUEST_BYTES = 8192", "MAX_REQUEST_BYTES = 4096"),
             ("usr/local/libexec/sushida-session",
              "_raw_at=3", "_raw_at=4"),

@@ -342,6 +342,8 @@ RUNTIME_SOURCE_FILES = {
                     "sushida_os/wifi/restore.py",
     "wifi_storage": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
                     "sushida_os/wifi/storage.py",
+    "wifi_web": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
+                "sushida_os/wifi/web.py",
     "configprep": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-config-prepare",
 }
 
@@ -370,9 +372,9 @@ _TIMEOUT_ADAPTERS = (
      r"DEFAULT_POLL_SECONDS\s*=\s*{value}\b", 1),
     ("nav_cooldown_seconds", "navwatch",
      r"DEFAULT_COOLDOWN_SECONDS\s*=\s*{value}\b", 1),
-    ("http_read_timeout_seconds", "wifi",
+    ("http_read_timeout_seconds", "wifi_web",
      r"REQUEST_READ_TIMEOUT_SECONDS\s*=\s*{value}\b", 1),
-    ("http_max_request_bytes", "wifi",
+    ("http_max_request_bytes", "wifi_web",
      r"MAX_REQUEST_BYTES\s*=\s*{value}\b", 1),
     ("session_audio_timeout_seconds", "session",
      r"_raw_at={value}\b", 1),
@@ -445,7 +447,7 @@ def _drift_urls(urls: dict, texts: dict[str, str], labels: dict[str, str],
     if setup:
         port = urlsplit(setup).port
         if port is not None:
-            _expect_pattern(texts, labels, "wifi", rf"^PORT\s*=\s*{port}\b",
+            _expect_pattern(texts, labels, "wifi_web", rf"^PORT\s*=\s*{port}\b",
                             result, "DRIFT_URL", "urls.setup_url",
                             f"wifi backend PORT does not match setup URL port {port}")
 
