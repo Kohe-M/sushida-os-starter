@@ -2,8 +2,9 @@
 
 setup() {
     TEST_ROOT="$BATS_TEST_TMPDIR/repository"
-    mkdir -p "$TEST_ROOT/scripts" "$TEST_ROOT/build" "$TEST_ROOT/artifacts" "$TEST_ROOT/local"
+    mkdir -p "$TEST_ROOT/scripts/lib" "$TEST_ROOT/build" "$TEST_ROOT/artifacts" "$TEST_ROOT/local"
     cp scripts/clean.sh scripts/verify-iso.sh "$TEST_ROOT/scripts/"
+    cp scripts/lib/iso-extract.sh "$TEST_ROOT/scripts/lib/"
     chmod 0755 "$TEST_ROOT/scripts/clean.sh" "$TEST_ROOT/scripts/verify-iso.sh"
     touch "$TEST_ROOT/build/.gitkeep" "$TEST_ROOT/artifacts/.gitkeep"
     echo secret > "$TEST_ROOT/local/wifi.nmconnection"

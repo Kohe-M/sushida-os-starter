@@ -7,9 +7,15 @@ from pathlib import Path
 
 BUILD = Path("scripts/build.sh")
 VERIFY = Path("scripts/verify-iso.sh")
+ISO_LIB = Path("scripts/lib/iso-extract.sh")
 CLEAN = Path("scripts/clean.sh")
 MAKEFILE = Path("Makefile")
 DOCKERFILE = Path("builder/Dockerfile")
+
+
+def _verify_text() -> str:
+    """Verifier implementation: entry script + sourced extraction library."""
+    return VERIFY.read_text() + "\n" + ISO_LIB.read_text()
 
 
 def test_artifact_scripts_exist_and_are_executable() -> None:
@@ -84,7 +90,7 @@ def test_verify_checks_checksum_metadata_and_manifest() -> None:
 
 
 def test_verify_checks_iso_and_squashfs_contents() -> None:
-    text = VERIFY.read_text()
+    text = _verify_text()
     assert "xorriso" in text
     assert "-find / -type f -exec echo" in text
     assert "-find / -type f -print" not in text
@@ -104,7 +110,7 @@ def test_verify_checks_iso_and_squashfs_contents() -> None:
 
 
 def test_verify_rejects_stale_wifi_runtime_files() -> None:
-    text = VERIFY.read_text()
+    text = _verify_text()
     assert "cmp -s" in text
     assert "ISO contains a stale Wi-Fi setup backend" in text
     assert "ISO contains a stale Wi-Fi setup service" in text
