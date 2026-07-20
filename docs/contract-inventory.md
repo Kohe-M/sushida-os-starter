@@ -159,3 +159,72 @@ Every column and its meaning:
 | META-07 | metadata | cage_version | build.sh (from package manifest) | From binary.packages |
 | META-08 | metadata | live_build_version | build.sh (lb --version) | From tool |
 | META-09 | metadata | debian_release | build.sh (hardcoded) | trixie |
+
+## Checker coverage (`tools/check-contracts.py`)
+
+The contract checker implements the following check-only verifications against
+the current production source tree.  No ISO image extraction or runtime
+behaviour change is performed.
+
+### Runtime verifications
+
+| Domain | What is checked |
+|---|---|
+| `urls.sushida_url` | `config.env` `SUSHIDA_URL=` value |
+| `urls.setup_url` | Literal URL in `sushida-launch` / `sushida-session`; port match in `sushida-wifi-setup` (`PORT`) |
+| `urls.offline_url` | Literal URL in `sushida-launch` / `sushida-session` |
+| `runtime_paths.runtime_dir` | `PROD_RUNTIME` in launch/netwatch/navwatch; `RuntimeDirectory=` in kiosk unit |
+| `runtime_paths.active_route_file` / `time_sync_marker` | Relative to runtime_dir (internal consistency); basename references in launch + netwatch |
+| `runtime_paths.wifi_setup_runtime_dir` / `csrf_token_file` | Dirname consistency; `CSRF_TOKEN_FILE` literal in wifi-setup; `RuntimeDirectory=` in wifi unit |
+| `runtime_paths.config_mount_path` | Literals in wifi-setup, config-prepare, mount unit `Where=` |
+| `runtime_paths.config_storage_status` / `credential_file` | Literals + derived components in wifi-setup + config-prepare |
+| `runtime_paths.chromium_profile_dir` / `chromium_sessions_dir` | Basename in launch/session; `SESSIONS_SUBDIR` chain in navwatch |
+| `timeouts.*` (12 fields) | Literal values in the corresponding production scripts (Python/shell), with min-count checks for multi-site activation calls |
+| `routes` | Set comparison: contract routes == launcher `ACTIVE_ROUTE=` literals == netwatch `printf`/`case` route literals |
+| `navigation` allowlist/blocklist | Chromium managed policy JSON `URLAllowlist`/`URLBlocklist` |
+| `services.*` | Unit file existence in `includes.chroot/etc/systemd/system` |
+
+### Release verifications
+
+| Domain | What is checked |
+|---|---|
+| `artifacts` | Names referenced in `build.sh` / `flash.sh` / `clean.sh` / `verify-iso.sh` / `run-qemu.sh` |
+| `required_packages` | Package list `kiosk.list.chroot` membership |
+| `required_services` (enable) | Hook `020-enable-services.hook.chroot` references |
+| `required_services` (mask) | Hook `090-validate-image.hook.chroot` references |
+| `source_image_mappings` existence | Source files in the repository |
+| `source_image_mappings` correspondence | squashfs region: `source == includes.chroot + image_path`; owner/group must be `root:root` |
+| `source_image_mappings` mode | Filesystem mode matches contract declaration |
+| `source_image_mappings` consistency | `current_verification: exact` ⇒ `comparison` must be `cmp` or `sha256` |
+| `required_iso_paths` ↔ mappings | Every squashfs path has a mapping with matching `region/file_type/required/security_critical` |
+| `required_iso_paths` iso-root | Path (or regex-escaped form) referenced in `verify-iso.sh` |
+| `path_pattern` / `match_type` | When `match_type=regex`, the `path_pattern` must compile and match its own `path` |
+| `metadata.required_fields` | Token presence in `build.sh` (git rev-parse, date, package_version, etc.) |
+| `metadata.static_values` | Field/value pair match in `build.sh` (`--arg` jq form or `=` assignment) |
+| `metadata.formats` | Keys must be a subset of `required_fields`; format names must be known (`git-sha`, `date-time`, `sha256`) |
+
+### Deferred to subsequent phases
+
+The checker operates on the **source tree only** (check-only, no ISO access).
+The following are explicitly out of scope for this Phase and belong to later
+stages of the refactoring programme:
+
+- ISO image extraction (xorriso/unsquashfs) and byte-for-byte content comparison → **Phase 5**.
+- `current_verification` upgrade from `presence` to `exact` → **Phase 5**.
+- Runtime validation of generated `build-info.json` content (schema version, manifest hash, ISO SHA cross-check) → **Phase 5**.
+- Bootloader region source mappings (SIM-19–22 in this inventory) are not yet registered in `release-contract.json` → **Phase 5** manifest canonicalisation.
+
+### Error codes
+
+| Code | Domain |
+|---|---|
+| `RUNTIME_URL_MISMATCH` / `DRIFT_URL` | URL mismatch |
+| `DRIFT_PATH` | Runtime path mismatch |
+| `DRIFT_TIMEOUT` | Timeout literal mismatch |
+| `DRIFT_ROUTE` | Route set mismatch |
+| `RUNTIME_ALLOWLIST_MISMATCH` / `RUNTIME_BLOCKLIST_MISMATCH` | Policy ↔ contract mismatch |
+| `RUNTIME_SERVICE_MISSING` | Unit file not found |
+| `DRIFT_METADATA_STATIC` / `DRIFT_METADATA` / `DRIFT_METADATA_FORMAT` / `DRIFT_METADATA_UNSUPPORTED` | Metadata inconsistency |
+| `DRIFT_MAPPING_PATH` / `DRIFT_MAPPING_MODE` / `DRIFT_MAPPING_OWNER` / `DRIFT_COMPARISON` | Mapping inconsistency |
+| `DRIFT_ISO_PATH` / `DRIFT_ISO_PATH_ATTR` / `DRIFT_PATH_PATTERN` | ISO path inconsistency |
+| `RELEASE_ARTIFACT` / `RELEASE_ARTIFACT_REF` / `RELEASE_PACKAGE_MISSING` / `DRIFT_SERVICE_ENABLE` / `DRIFT_SERVICE_MASK` / `RELEASE_CHECKSUM` / `RELEASE_PUBLISH` | Release consistency |

@@ -15,6 +15,7 @@ DOCTOR = Path("scripts/doctor.sh")
 SHELLCHECK_TARGETS = Path("scripts/shellcheck-targets.sh")
 BUILD_DOCS = Path("docs/build.md")
 README = Path("README.md")
+PYPROJECT = Path("pyproject.toml")
 
 
 # ── Makefile targets ─────────────────────────────────────────────────────
@@ -46,10 +47,16 @@ def test_ci_target_includes_test_and_git_diff() -> None:
     assert "git diff --check" in text
 
 
-def test_test_static_uses_strict_flags() -> None:
-    text = MAKEFILE.read_text()
+def test_pytest_strict_flags_in_pyproject() -> None:
+    """Common pytest flags live in pyproject.toml, not duplicated in Makefile."""
+    text = PYPROJECT.read_text()
     assert "--strict-markers" in text
     assert "-ra" in text
+
+
+def test_makefile_does_not_duplicate_pytest_flags() -> None:
+    text = MAKEFILE.read_text()
+    assert "--strict-markers" not in text
 
 
 # ── CI workflow ──────────────────────────────────────────────────────────

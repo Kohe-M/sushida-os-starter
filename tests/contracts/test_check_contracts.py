@@ -71,18 +71,21 @@ def _build_minimal_repo(root: Path) -> None:
         "URLBlocklist": ["*", "view-source:*", "chrome://*", "chrome-untrusted://*", "devtools://*"],
     }))
 
-    # Custom unit files named per the contract services
-    for svc in (
-        "sushida-kiosk.service",
-        "sushida-network-watch.service",
-        "sushida-navigation-watch.service",
-        "sushida-config-prepare.service",
-        "sushida-wifi-setup.service",
-        "var-lib-sushida\\x2dconfig.mount",
-    ):
-        (root / f"live-build/config/includes.chroot/etc/systemd/system/{svc}").write_text(
-            "[Service]\nExecStart=/bin/true\n[Install]\n"
-        )
+    # Custom unit files — individual content for adapter checks
+    unit_contents = {
+        "sushida-kiosk.service":
+            "[Service]\nRuntimeDirectory=sushida-os\nRuntimeDirectoryMode=0750\n",
+        "sushida-network-watch.service": "[Service]\n",
+        "sushida-navigation-watch.service": "[Service]\n",
+        "sushida-config-prepare.service":
+            "[Service]\nRuntimeDirectory=sushida-config\n",
+        "sushida-wifi-setup.service":
+            "[Service]\nRuntimeDirectory=sushida-wifi-setup\nRuntimeDirectoryMode=0700\n",
+        "var-lib-sushida\\x2dconfig.mount":
+            "[Mount]\nWhere=/var/lib/sushida-config\n",
+    }
+    for svc, content in unit_contents.items():
+        (root / f"live-build/config/includes.chroot/etc/systemd/system/{svc}").write_text(content)
 
     # Enable and validate hooks
     (root / "live-build/config/hooks/live/020-enable-services.hook.chroot").write_text(
@@ -121,8 +124,8 @@ def _build_minimal_repo(root: Path) -> None:
         'package_version cage\n'
         'lb --version\n'
         'sha256sum ...\n'
-        'architecture=amd64\n'
-        'debian_release=trixie\n'
+        '--arg architecture "amd64"\n'
+        '--arg debian_release "trixie"\n'
     )
     (root / "scripts/flash.sh").write_text('ISO="sushida-os-amd64.iso"\n')
     (root / "scripts/clean.sh").write_text(
@@ -130,6 +133,7 @@ def _build_minimal_repo(root: Path) -> None:
     )
     (root / "scripts/verify-iso.sh").write_text(
         'sushida-os-amd64.iso\nSHA256SUMS\npackage-manifest.txt\nbuild-info.json\n'
+        '/live/filesystem.squashfs\n/live/vmlinuz\n/live/initrd.img\n'
     )
     (root / "scripts/run-qemu.sh").write_text('ISO="sushida-os-amd64.iso"\n')
 
@@ -153,16 +157,90 @@ def _build_minimal_repo(root: Path) -> None:
         "\n".join(pkgs) + "\n"
     )
 
-    # Production binaries and scripts referenced by mappings
-    for _bin in ("sushida-launch", "sushida-network-watch", "sushida-navigation-watch", "sushida-diagnostics"):
-        (root / f"live-build/config/includes.chroot/usr/local/bin/{_bin}").write_text("#!/bin/sh\nexit 0\n")
-    for _lib in ("sushida-session", "sushida-config-prepare", "sushida-wifi-setup"):
-        (root / f"live-build/config/includes.chroot/usr/local/libexec/{_lib}").write_text("#!/bin/sh\nexit 0\n")
+    # Production scripts — realistic stubs matching all runtime adapters
+    (root / "live-build/config/includes.chroot/usr/local/bin/sushida-launch").write_text(
+        '#!/usr/bin/env bash\n'
+        'readonly PROD_CONFIG="/etc/sushida-os/config.env"\n'
+        'readonly PROD_RUNTIME="/run/sushida-os"\n'
+        'readonly OFFLINE_URL="file://localhost/usr/share/sushida-os/offline.html"\n'
+        'readonly SETUP_URL="http://127.0.0.1:8787/"\n'
+        'mkdir -p "$BASE_RUNTIME"/{chromium,cache,tmp,downloads,xdg-runtime}\n'
+        'rm -f -- "$BASE_RUNTIME/time-sync-required"\n'
+        ': > "$BASE_RUNTIME/time-sync-required"\n'
+        'route_tmp=$(mktemp "$BASE_RUNTIME/.active-route.XXXXXXXX")\n'
+        'mv -f -- "$route_tmp" "$BASE_RUNTIME/active-route"\n'
+        'ACTIVE_ROUTE="offline"\n'
+        'ACTIVE_ROUTE="setup"\n'
+        'ACTIVE_ROUTE="online"\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/local/bin/sushida-network-watch").write_text(
+        '#!/usr/bin/env bash\n'
+        'readonly PROD_RUNTIME="/run/sushida-os"\n'
+        'readonly ACTIVE_ROUTE_FILE="$RUNTIME_DIR/active-route"\n'
+        'readonly TIME_SYNC_REQUIRED_MARKER="$RUNTIME_DIR/time-sync-required"\n'
+        "printf '%s\\n' online\n"
+        "printf '%s\\n' setup\n"
+        "printf '%s\\n' offline\n"
+        'case "$route" in online|setup|offline) printf \'%s\\n\' "$route" ;; *) return 1 ;; esac\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/local/bin/sushida-navigation-watch").write_text(
+        '#!/usr/bin/env python3\n'
+        'from pathlib import Path\n'
+        'PROD_RUNTIME = Path("/run/sushida-os")\n'
+        'SESSIONS_SUBDIR = Path("chromium") / "Default" / "Sessions"\n'
+        'DEFAULT_POLL_SECONDS = 2.0\n'
+        'DEFAULT_COOLDOWN_SECONDS = 30.0\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/local/bin/sushida-diagnostics").write_text(
+        '#!/bin/sh\nexit 0\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-session").write_text(
+        '#!/usr/bin/env bash\n'
+        'readonly OFFLINE_URL="file://localhost/usr/share/sushida-os/offline.html"\n'
+        'readonly SETUP_URL="http://127.0.0.1:8787/"\n'
+        '    _raw_at=3\n'
+        '--user-data-dir="${XDG_RUNTIME_DIR%/xdg-runtime}/chromium"\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-config-prepare").write_text(
+        '#!/usr/bin/env bash\n'
+        'CONFIG_MOUNT="/var/lib/sushida-config"\n'
+        'STATUS_DIR="/run/sushida-config"\n'
+        'readonly STATUS_FILE="$STATUS_DIR/config-storage"\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-wifi-setup").write_text(
+        '#!/usr/bin/env python3\n'
+        'from pathlib import Path\n'
+        'PORT = 8787\n'
+        'CONFIG_MOUNT = Path("/var/lib/sushida-config")\n'
+        'CONFIG_DIR = CONFIG_MOUNT / "network"\n'
+        'CONFIG_FILE = CONFIG_DIR / "setup.json"\n'
+        'STORAGE_STATUS = Path("/run/sushida-config/config-storage")\n'
+        'CSRF_TOKEN_FILE = Path("/run/sushida-wifi-setup/csrf-token")\n'
+        'MAX_REQUEST_BYTES = 8192\n'
+        'COMMAND_TIMEOUT_SECONDS = 40\n'
+        'REQUEST_READ_TIMEOUT_SECONDS = 5\n'
+        '    BACKOFF_MIN = 2.0\n'
+        '    BACKOFF_MAX = 16.0\n'
+        '    MAX_RETRIES = 5\n'
+        '    deadline = time.monotonic() + 120.0\n'
+        '                    "activation", "--wait", "30", "connection", "up",\n'
+        '                    "id", CONNECTION_NAME, "passwd-file", passwd_path,\n'
+        '                    timeout=35, pass_fds=(passwd_fd,),\n'
+        '                "activation", "--wait", "30", "connection", "up",\n'
+        '                "id", CONNECTION_NAME, timeout=35,\n'
+    )
 
     # Polkit, NM config, offline page referenced by mappings
     (root / "live-build/config/includes.chroot/etc/polkit-1/rules.d/60-sushida-wifi-setup.rules").write_text("// polkit\n")
     (root / "live-build/config/includes.chroot/etc/NetworkManager/conf.d/90-sushida-os.conf").write_text("# NM config\n")
     (root / "live-build/config/includes.chroot/usr/share/sushida-os/offline.html").write_text("<html></html>\n")
+
+    # Align fixture file modes with the contract mapping declarations
+    rc_data = json.loads((root / "contracts/release-contract.json").read_text())
+    for mapping in rc_data["source_image_mappings"]:
+        p = root / mapping["source"]
+        if p.is_file():
+            p.chmod(int(mapping["mode"], 8))
 
 
 def _run_checker(root: Path, *extra: str) -> subprocess.CompletedProcess[str]:
@@ -366,3 +444,185 @@ class TestCheckContracts:
         r = _run_checker(clean_repo)
         assert r.returncode == 1
         assert "RELEASE_CHECKSUM" in r.stdout or "RELEASE_ARTIFACT" in r.stdout
+
+    # ── Static metadata drift (contract side) ──────────────────────
+
+    @pytest.mark.parametrize(
+        ("field", "wrong_value"),
+        [
+            ("architecture", "arm64"),
+            ("debian_release", "bookworm"),
+        ],
+    )
+    def test_static_metadata_drift_exit_1(self, clean_repo: Path,
+                                          field: str, wrong_value: str) -> None:
+        rc = clean_repo / "contracts/release-contract.json"
+        data = json.loads(rc.read_text())
+        data["metadata"]["static_values"][field] = wrong_value
+        rc.write_text(json.dumps(data))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_METADATA_STATIC" in r.stdout
+
+    # ── Static metadata drift (production side) ────────────────────
+
+    @pytest.mark.parametrize(
+        ("field", "good_value", "wrong_value"),
+        [
+            ("architecture", "amd64", "arm64"),
+            ("debian_release", "trixie", "bookworm"),
+        ],
+    )
+    def test_static_metadata_production_drift_exit_1(
+            self, clean_repo: Path, field: str, good_value: str, wrong_value: str) -> None:
+        bs = clean_repo / "scripts/build.sh"
+        bs.write_text(bs.read_text().replace(
+            f'{field} "{good_value}"', f'{field} "{wrong_value}"'))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_METADATA_STATIC" in r.stdout
+
+    def test_static_metadata_equals_form_accepted(self, clean_repo: Path) -> None:
+        """The architecture=amd64 assignment form must also be recognised."""
+        bs = clean_repo / "scripts/build.sh"
+        bs.write_text(bs.read_text()
+                      .replace('--arg architecture "amd64"', 'architecture="amd64"')
+                      .replace('--arg debian_release "trixie"', 'debian_release="trixie"'))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 0, f"checker failed:\n{r.stdout}"
+
+    # ── Runtime timeout adapter drift ──────────────────────────────
+
+    @pytest.mark.parametrize(
+        ("rel", "old", "new"),
+        [
+            ("usr/local/libexec/sushida-wifi-setup",
+             "COMMAND_TIMEOUT_SECONDS = 40", "COMMAND_TIMEOUT_SECONDS = 41"),
+            ("usr/local/libexec/sushida-wifi-setup",
+             '"--wait", "30"', '"--wait", "25"'),
+            ("usr/local/libexec/sushida-wifi-setup",
+             "timeout=35", "timeout=36"),
+            ("usr/local/libexec/sushida-wifi-setup",
+             "BACKOFF_MIN = 2.0", "BACKOFF_MIN = 3.0"),
+            ("usr/local/libexec/sushida-wifi-setup",
+             "MAX_RETRIES = 5", "MAX_RETRIES = 6"),
+            ("usr/local/libexec/sushida-wifi-setup",
+             "deadline = time.monotonic() + 120.0",
+             "deadline = time.monotonic() + 130.0"),
+            ("usr/local/bin/sushida-navigation-watch",
+             "DEFAULT_POLL_SECONDS = 2.0", "DEFAULT_POLL_SECONDS = 5.0"),
+            ("usr/local/bin/sushida-navigation-watch",
+             "DEFAULT_COOLDOWN_SECONDS = 30.0", "DEFAULT_COOLDOWN_SECONDS = 31.0"),
+            ("usr/local/libexec/sushida-wifi-setup",
+             "REQUEST_READ_TIMEOUT_SECONDS = 5", "REQUEST_READ_TIMEOUT_SECONDS = 6"),
+            ("usr/local/libexec/sushida-wifi-setup",
+             "MAX_REQUEST_BYTES = 8192", "MAX_REQUEST_BYTES = 4096"),
+            ("usr/local/libexec/sushida-session",
+             "_raw_at=3", "_raw_at=4"),
+        ],
+    )
+    def test_runtime_timeout_drift_exit_1(self, clean_repo: Path,
+                                          rel: str, old: str, new: str) -> None:
+        p = clean_repo / "live-build/config/includes.chroot" / rel
+        p.write_text(p.read_text().replace(old, new))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_TIMEOUT" in r.stdout
+
+    # ── URL / route / path drift ───────────────────────────────────
+
+    def test_setup_url_drift_exit_1(self, clean_repo: Path) -> None:
+        p = clean_repo / "live-build/config/includes.chroot/usr/local/bin/sushida-launch"
+        p.write_text(p.read_text().replace(
+            "http://127.0.0.1:8787/", "http://127.0.0.1:9999/"))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_URL" in r.stdout
+
+    def test_offline_url_drift_exit_1(self, clean_repo: Path) -> None:
+        p = clean_repo / "live-build/config/includes.chroot/usr/local/libexec/sushida-session"
+        p.write_text(p.read_text().replace(
+            "file://localhost/usr/share/sushida-os/offline.html",
+            "file://localhost/usr/share/sushida-os/other.html"))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_URL" in r.stdout
+
+    def test_route_drift_exit_1(self, clean_repo: Path) -> None:
+        p = clean_repo / "live-build/config/includes.chroot/usr/local/bin/sushida-launch"
+        p.write_text(p.read_text().replace('ACTIVE_ROUTE="online"', 'ACTIVE_ROUTE="broken"'))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_ROUTE" in r.stdout
+
+    def test_csrf_path_drift_exit_1(self, clean_repo: Path) -> None:
+        p = clean_repo / "live-build/config/includes.chroot/usr/local/libexec/sushida-wifi-setup"
+        p.write_text(p.read_text().replace(
+            "/run/sushida-wifi-setup/csrf-token", "/run/other/csrf-token"))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_PATH" in r.stdout
+
+    # ── Release mapping / ISO path drift ───────────────────────────
+
+    def test_mapping_image_path_drift_exit_1(self, clean_repo: Path) -> None:
+        rc = clean_repo / "contracts/release-contract.json"
+        data = json.loads(rc.read_text())
+        data["source_image_mappings"][0]["image_path"] = \
+            "/etc/chromium/policies/managed/other.json"
+        rc.write_text(json.dumps(data))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_MAPPING_PATH" in r.stdout
+
+    def test_mapping_mode_drift_exit_1(self, clean_repo: Path) -> None:
+        p = clean_repo / "live-build/config/includes.chroot/usr/local/bin/sushida-launch"
+        p.chmod(0o644)  # contract declares 0755
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_MAPPING_MODE" in r.stdout
+
+    def test_iso_path_mapping_missing_exit_1(self, clean_repo: Path) -> None:
+        rc = clean_repo / "contracts/release-contract.json"
+        data = json.loads(rc.read_text())
+        data["source_image_mappings"] = [
+            m for m in data["source_image_mappings"]
+            if m["image_path"] != "/etc/systemd/system/sushida-kiosk.service"
+        ]
+        rc.write_text(json.dumps(data))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_ISO_PATH" in r.stdout
+
+    def test_path_pattern_drift_exit_1(self, clean_repo: Path) -> None:
+        rc = clean_repo / "contracts/release-contract.json"
+        data = json.loads(rc.read_text())
+        for entry in data["required_iso_paths"]:
+            if entry.get("match_type") == "regex":
+                entry["path_pattern"] = "^/live/nomatch.*$"
+                break
+        rc.write_text(json.dumps(data))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_PATH_PATTERN" in r.stdout
+
+    def test_comparison_consistency_exit_1(self, clean_repo: Path) -> None:
+        rc = clean_repo / "contracts/release-contract.json"
+        data = json.loads(rc.read_text())
+        for m in data["source_image_mappings"]:
+            if m["current_verification"] == "exact":
+                m["comparison"] = "presence"
+                break
+        rc.write_text(json.dumps(data))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_COMPARISON" in r.stdout
+
+    def test_metadata_format_drift_exit_1(self, clean_repo: Path) -> None:
+        rc = clean_repo / "contracts/release-contract.json"
+        data = json.loads(rc.read_text())
+        data["metadata"]["formats"]["iso_sha256"] = "md5"
+        rc.write_text(json.dumps(data))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_METADATA_FORMAT" in r.stdout

@@ -57,10 +57,10 @@ iso:
 test: test-static test-contracts test-shell
 
 test-static:
-	$(PYTHON) -m pytest tests/static/ --strict-markers -ra
+	$(PYTHON) -m pytest tests/static/
 
 test-contracts:
-	$(PYTHON) -m pytest tests/contracts/ --strict-markers -ra
+	$(PYTHON) -m pytest tests/contracts/
 
 check-contracts:
 	$(PYTHON) tools/check-contracts.py

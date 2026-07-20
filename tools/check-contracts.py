@@ -17,9 +17,11 @@ import argparse
 import json
 import os
 import re
+import stat
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 CONTRACTS_SUBDIR = "contracts"
 RUNTIME_CONTRACT = "runtime-contract.json"
@@ -327,9 +329,298 @@ def _schema_cond_matches(data: dict, cond: dict) -> bool:
 
 # ── Drift inspection: runtime ──────────────────────────────────────────
 
+# Production sources the runtime adapters compare contract values against.
+RUNTIME_SOURCE_FILES = {
+    "launch": f"{PRODUCTION_ROOT}/usr/local/bin/sushida-launch",
+    "netwatch": f"{PRODUCTION_ROOT}/usr/local/bin/sushida-network-watch",
+    "navwatch": f"{PRODUCTION_ROOT}/usr/local/bin/sushida-navigation-watch",
+    "session": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-session",
+    "wifi": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-wifi-setup",
+    "configprep": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-config-prepare",
+}
+
+# Timeout adapters: (contract field, source key, regex template, min matches).
+# ``{value}`` is replaced by _num_pattern() so JSON integers match both the
+# ``40`` and ``40.0`` literal forms used in the Python/shell sources.
+_TIMEOUT_ADAPTERS = (
+    ("wifi_command_default_timeout_seconds", "wifi",
+     r"COMMAND_TIMEOUT_SECONDS\s*=\s*{value}\b", 1),
+    # Both nmcli activation call sites must keep the contract values.
+    ("wifi_activation_wait_seconds", "wifi",
+     r'"--wait",\s*"{value}"', 2),
+    ("wifi_activation_process_timeout_seconds", "wifi",
+     r'"up"[\s\S]{0,160}?timeout={value}\b', 2),
+    ("restore_backoff_min_seconds", "wifi",
+     r"BACKOFF_MIN\s*=\s*{value}\b", 1),
+    ("restore_backoff_max_seconds", "wifi",
+     r"BACKOFF_MAX\s*=\s*{value}\b", 1),
+    ("restore_max_retries", "wifi",
+     r"MAX_RETRIES\s*=\s*{value}\b", 1),
+    ("restore_deadline_seconds", "wifi",
+     r"deadline\s*=\s*time\.monotonic\(\)\s*\+\s*{value}\b", 1),
+    ("nav_poll_interval_seconds", "navwatch",
+     r"DEFAULT_POLL_SECONDS\s*=\s*{value}\b", 1),
+    ("nav_cooldown_seconds", "navwatch",
+     r"DEFAULT_COOLDOWN_SECONDS\s*=\s*{value}\b", 1),
+    ("http_read_timeout_seconds", "wifi",
+     r"REQUEST_READ_TIMEOUT_SECONDS\s*=\s*{value}\b", 1),
+    ("http_max_request_bytes", "wifi",
+     r"MAX_REQUEST_BYTES\s*=\s*{value}\b", 1),
+    ("session_audio_timeout_seconds", "session",
+     r"_raw_at={value}\b", 1),
+)
+
+
+def _num_pattern(value: Any) -> str:
+    """Regex fragment matching the production literal of a contract number.
+
+    JSON integers may be written as either ``40`` or ``40.0`` in Python
+    sources; non-integer floats keep their exact literal form.
+    """
+    if isinstance(value, bool):
+        return re.escape(str(value))
+    if isinstance(value, int):
+        return rf"(?:{value}|{value}\.0)"
+    if isinstance(value, float):
+        if value.is_integer():
+            return rf"(?:{int(value)}|{int(value)}\.0)"
+        return re.escape(str(value))
+    return re.escape(str(value))
+
+
+def _load_sources(root: Path, mapping: dict[str, str], result: Result,
+                  contract_name: str, must_exist: bool = True) -> tuple[dict[str, str], dict[str, str]]:
+    """Read production sources once; return (texts, labels) keyed identically."""
+    texts: dict[str, str] = {}
+    labels: dict[str, str] = {}
+    for key, rel in mapping.items():
+        if must_exist:
+            path = _must_exist(root, rel, key, result, contract_name)
+            if path is None:
+                continue
+        else:
+            path = root / rel
+            if not path.is_file():
+                continue
+        texts[key] = path.read_text(encoding="utf-8", errors="replace")
+        labels[key] = rel
+    return texts, labels
+
+
+def _expect_pattern(texts: dict[str, str], labels: dict[str, str], key: str,
+                    pattern: str, result: Result, code: str, field: str,
+                    message: str, min_count: int = 1) -> None:
+    """Record an error unless a production source matches pattern often enough."""
+    text = texts.get(key)
+    if text is None:
+        return  # a missing source is reported separately
+    found = len(re.findall(pattern, text, re.MULTILINE))
+    if found < min_count:
+        result.error(code, "runtime", field, labels.get(key, key),
+                     f"{message} ({found} match(es), need {min_count})")
+
+
+def _drift_urls(urls: dict, texts: dict[str, str], labels: dict[str, str],
+                result: Result) -> None:
+    setup = urls.get("setup_url", "")
+    offline = urls.get("offline_url", "")
+    for key in ("launch", "session"):
+        if setup:
+            _expect_pattern(texts, labels, key, re.escape(setup), result,
+                            "DRIFT_URL", "urls.setup_url",
+                            f"setup URL {setup!r} not found")
+        if offline:
+            _expect_pattern(texts, labels, key, re.escape(offline), result,
+                            "DRIFT_URL", "urls.offline_url",
+                            f"offline URL {offline!r} not found")
+    # The Wi-Fi backend listen port must match the setup URL port.
+    if setup:
+        port = urlsplit(setup).port
+        if port is not None:
+            _expect_pattern(texts, labels, "wifi", rf"^PORT\s*=\s*{port}\b",
+                            result, "DRIFT_URL", "urls.setup_url",
+                            f"wifi backend PORT does not match setup URL port {port}")
+
+
+def _drift_runtime_paths(rpaths: dict, services: dict, texts: dict[str, str],
+                         labels: dict[str, str], unit_texts: dict[str, str],
+                         unit_labels: dict[str, str], result: Result) -> None:
+    runtime_dir = rpaths.get("runtime_dir", "")
+    if runtime_dir:
+        for key in ("launch", "netwatch"):
+            _expect_pattern(texts, labels, key,
+                            rf'PROD_RUNTIME="{re.escape(runtime_dir)}"', result,
+                            "DRIFT_PATH", "runtime_paths.runtime_dir",
+                            f"runtime dir {runtime_dir!r} not declared")
+        _expect_pattern(texts, labels, "navwatch",
+                        rf'PROD_RUNTIME\s*=\s*Path\("{re.escape(runtime_dir)}"\)',
+                        result, "DRIFT_PATH", "runtime_paths.runtime_dir",
+                        f"runtime dir {runtime_dir!r} not declared")
+        kiosk_unit = services.get("kiosk_service", "")
+        if kiosk_unit:
+            _expect_pattern(unit_texts, unit_labels, kiosk_unit,
+                            rf"^RuntimeDirectory={re.escape(os.path.basename(runtime_dir))}$",
+                            result, "DRIFT_PATH", "runtime_paths.runtime_dir",
+                            f"kiosk unit RuntimeDirectory != {runtime_dir!r}")
+
+    def _check_child_file(field: str, parent: str, readers: tuple[str, ...]) -> None:
+        value = rpaths.get(field, "")
+        if not value:
+            return
+        if parent and os.path.dirname(value) != parent:
+            result.error("DRIFT_PATH", "runtime", f"runtime_paths.{field}", "contract",
+                         f"{field} {value!r} is not inside {parent!r}")
+        base = os.path.basename(value)
+        for key in readers:
+            _expect_pattern(texts, labels, key, re.escape(base), result,
+                            "DRIFT_PATH", f"runtime_paths.{field}",
+                            f"{field} basename {base!r} not referenced")
+
+    _check_child_file("active_route_file", runtime_dir, ("launch", "netwatch"))
+    _check_child_file("time_sync_marker", runtime_dir, ("launch", "netwatch"))
+
+    wifi_setup_dir = rpaths.get("wifi_setup_runtime_dir", "")
+    csrf_file = rpaths.get("csrf_token_file", "")
+    if wifi_setup_dir and csrf_file and os.path.dirname(csrf_file) != wifi_setup_dir:
+        result.error("DRIFT_PATH", "runtime", "runtime_paths.csrf_token_file", "contract",
+                     f"csrf_token_file {csrf_file!r} is not inside {wifi_setup_dir!r}")
+    if csrf_file:
+        _expect_pattern(texts, labels, "wifi",
+                        rf'CSRF_TOKEN_FILE\s*=\s*Path\("{re.escape(csrf_file)}"\)',
+                        result, "DRIFT_PATH", "runtime_paths.csrf_token_file",
+                        f"CSRF token file {csrf_file!r} not declared")
+    if wifi_setup_dir:
+        wifi_unit = services.get("wifi_setup_service", "")
+        if wifi_unit:
+            _expect_pattern(unit_texts, unit_labels, wifi_unit,
+                            rf"^RuntimeDirectory={re.escape(os.path.basename(wifi_setup_dir))}$",
+                            result, "DRIFT_PATH", "runtime_paths.wifi_setup_runtime_dir",
+                            f"wifi-setup unit RuntimeDirectory != {wifi_setup_dir!r}")
+
+    config_mount = rpaths.get("config_mount_path", "")
+    if config_mount:
+        _expect_pattern(texts, labels, "wifi",
+                        rf'CONFIG_MOUNT\s*=\s*Path\("{re.escape(config_mount)}"\)',
+                        result, "DRIFT_PATH", "runtime_paths.config_mount_path",
+                        f"config mount {config_mount!r} not declared")
+        _expect_pattern(texts, labels, "configprep",
+                        rf'CONFIG_MOUNT="{re.escape(config_mount)}"',
+                        result, "DRIFT_PATH", "runtime_paths.config_mount_path",
+                        f"config mount {config_mount!r} not declared")
+        mount_unit = services.get("config_mount_unit", "")
+        if mount_unit:
+            _expect_pattern(unit_texts, unit_labels, mount_unit,
+                            rf"^Where={re.escape(config_mount)}$",
+                            result, "DRIFT_PATH", "runtime_paths.config_mount_path",
+                            f"mount unit Where= != {config_mount!r}")
+
+    storage_status = rpaths.get("config_storage_status", "")
+    if storage_status:
+        _expect_pattern(texts, labels, "wifi",
+                        rf'STORAGE_STATUS\s*=\s*Path\("{re.escape(storage_status)}"\)',
+                        result, "DRIFT_PATH", "runtime_paths.config_storage_status",
+                        f"storage status path {storage_status!r} not declared")
+        _expect_pattern(texts, labels, "configprep",
+                        rf'STATUS_DIR="{re.escape(os.path.dirname(storage_status))}"',
+                        result, "DRIFT_PATH", "runtime_paths.config_storage_status",
+                        "config-prepare STATUS_DIR mismatch")
+        _expect_pattern(texts, labels, "configprep",
+                        re.escape(os.path.basename(storage_status)),
+                        result, "DRIFT_PATH", "runtime_paths.config_storage_status",
+                        "config-prepare status file basename mismatch")
+
+    credential = rpaths.get("credential_file", "")
+    if credential and config_mount:
+        rel = os.path.relpath(credential, config_mount)
+        parts = rel.split("/")
+        if rel.startswith("..") or len(parts) != 2:
+            result.error("DRIFT_PATH", "runtime", "runtime_paths.credential_file",
+                         "contract",
+                         f"credential_file {credential!r} is not <config_mount>/<dir>/<file>")
+        else:
+            _expect_pattern(texts, labels, "wifi",
+                            rf'CONFIG_DIR\s*=\s*CONFIG_MOUNT\s*/\s*"{re.escape(parts[0])}"',
+                            result, "DRIFT_PATH", "runtime_paths.credential_file",
+                            f"credential dir component {parts[0]!r} not declared")
+            _expect_pattern(texts, labels, "wifi",
+                            rf'CONFIG_FILE\s*=\s*CONFIG_DIR\s*/\s*"{re.escape(parts[1])}"',
+                            result, "DRIFT_PATH", "runtime_paths.credential_file",
+                            f"credential file component {parts[1]!r} not declared")
+
+    profile_dir = rpaths.get("chromium_profile_dir", "")
+    if profile_dir:
+        if runtime_dir and os.path.dirname(profile_dir) != runtime_dir:
+            result.error("DRIFT_PATH", "runtime", "runtime_paths.chromium_profile_dir",
+                         "contract",
+                         f"chromium_profile_dir {profile_dir!r} is not inside {runtime_dir!r}")
+        profile_base = os.path.basename(profile_dir)
+        _expect_pattern(texts, labels, "launch", re.escape(profile_base), result,
+                        "DRIFT_PATH", "runtime_paths.chromium_profile_dir",
+                        f"profile dir {profile_base!r} not created by launcher")
+        _expect_pattern(texts, labels, "session",
+                        rf"--user-data-dir=\S*{re.escape(profile_base)}\b", result,
+                        "DRIFT_PATH", "runtime_paths.chromium_profile_dir",
+                        f"--user-data-dir does not end in {profile_base!r}")
+
+    sessions_dir = rpaths.get("chromium_sessions_dir", "")
+    if sessions_dir and profile_dir:
+        rel = os.path.relpath(sessions_dir, profile_dir)
+        if rel.startswith(".."):
+            result.error("DRIFT_PATH", "runtime", "runtime_paths.chromium_sessions_dir",
+                         "contract",
+                         f"chromium_sessions_dir {sessions_dir!r} is not inside {profile_dir!r}")
+        else:
+            segments = [os.path.basename(profile_dir), *rel.split("/")]
+            pattern = rf'SESSIONS_SUBDIR\s*=\s*Path\("{re.escape(segments[0])}"\)'
+            for segment in segments[1:]:
+                pattern += rf'\s*/\s*"{re.escape(segment)}"'
+            _expect_pattern(texts, labels, "navwatch", pattern, result,
+                            "DRIFT_PATH", "runtime_paths.chromium_sessions_dir",
+                            f"sessions dir chain {'/'.join(segments)!r} not declared")
+
+
+def _drift_timeouts(timeouts: dict, texts: dict[str, str], labels: dict[str, str],
+                    result: Result) -> None:
+    for field, key, template, min_count in _TIMEOUT_ADAPTERS:
+        value = timeouts.get(field)
+        if value is None:
+            continue
+        pattern = template.replace("{value}", _num_pattern(value))
+        _expect_pattern(texts, labels, key, pattern, result,
+                        "DRIFT_TIMEOUT", f"timeouts.{field}",
+                        f"production literal for {field} != contract {value!r}",
+                        min_count=min_count)
+
+
+def _drift_routes(routes: list, texts: dict[str, str], labels: dict[str, str],
+                  result: Result) -> None:
+    expected = set(routes)
+    if not expected:
+        return
+    launch = texts.get("launch")
+    if launch is not None:
+        found = set(re.findall(r'ACTIVE_ROUTE="([a-z][a-z-]*)"', launch))
+        if found != expected:
+            result.error("DRIFT_ROUTE", "runtime", "routes", labels["launch"],
+                         f"launcher routes {sorted(found)} != contract {sorted(expected)}")
+    netwatch = texts.get("netwatch")
+    if netwatch is not None:
+        found = set(re.findall(r"printf '%s\\n' ([a-z][a-z-]*)\b", netwatch))
+        case_match = re.search(r'case\s+"\$route"\s+in\s+([a-z|]+)\)', netwatch)
+        if case_match:
+            found |= set(case_match.group(1).split("|"))
+        if found != expected:
+            result.error("DRIFT_ROUTE", "runtime", "routes", labels["netwatch"],
+                         f"network watcher routes {sorted(found)} != contract {sorted(expected)}")
+
 
 def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     c = contract
+    urls = c.get("urls", {})
+    rpaths = c.get("runtime_paths", {})
+    services = c.get("services", {})
+    timeouts = c.get("timeouts", {})
+
     # Production URL from config.env
     config_env = _must_exist(root, f"{PRODUCTION_ROOT}/etc/sushida-os/config.env",
                              "config.env", result, "runtime")
@@ -338,23 +629,38 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
             line = line.strip()
             if line.startswith("SUSHIDA_URL="):
                 val = line.split("=", 1)[1].strip("\"'")
-                expected = c.get("urls", {}).get("sushida_url", "")
+                expected = urls.get("sushida_url", "")
                 if val != expected:
                     result.error("RUNTIME_URL_MISMATCH", "runtime",
                                  "urls.sushida_url", str(config_env),
                                  f"config.env has {val!r}, contract expects {expected!r}")
             elif line.startswith("NETWORK_CHECK_INTERVAL_SECONDS="):
                 val = line.split("=", 1)[1].strip("\"'")
-                expected = str(c.get("timeouts", {}).get("network_check_interval_seconds", ""))
+                expected = str(timeouts.get("network_check_interval_seconds", ""))
                 if val != expected:
                     result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_check_interval_seconds",
                                  str(config_env), f"config.env has {val}, contract expects {expected}")
             elif line.startswith("NETWORK_SETUP_GRACE_SECONDS="):
                 val = line.split("=", 1)[1].strip("\"'")
-                expected = str(c.get("timeouts", {}).get("network_setup_grace_seconds", ""))
+                expected = str(timeouts.get("network_setup_grace_seconds", ""))
                 if val != expected:
                     result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_setup_grace_seconds",
                                  str(config_env), f"config.env has {val}, contract expects {expected}")
+
+    # Production runtime sources shared by the adapters below.  Unit files are
+    # loaded silently: their existence is enforced by the services loop.
+    texts, labels = _load_sources(root, RUNTIME_SOURCE_FILES, result, "runtime")
+    unit_map = {
+        name: f"{PRODUCTION_ROOT}/etc/systemd/system/{name}"
+        for name in services.values()
+    }
+    unit_texts, unit_labels = _load_sources(root, unit_map, result, "runtime",
+                                            must_exist=False)
+
+    _drift_urls(urls, texts, labels, result)
+    _drift_runtime_paths(rpaths, services, texts, labels, unit_texts, unit_labels, result)
+    _drift_timeouts(timeouts, texts, labels, result)
+    _drift_routes(c.get("routes", []), texts, labels, result)
 
     # Chromium managed policy URL allowlist and blocklist
     policy_file = _must_exist(root, f"{PRODUCTION_ROOT}/etc/chromium/policies/managed/sushida-os.json",
@@ -393,22 +699,8 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
         result.error("RUNTIME_ALLOWLIST_CONTENT", "runtime", "navigation.allowlist",
                      "contract", "allowlist must contain sushida.net")
 
-    # Route file path referenced in launcher
-    runtime_paths = c.get("runtime_paths", {})
-    launcher = _must_exist(root, f"{PRODUCTION_ROOT}/usr/local/bin/sushida-launch",
-                           "launcher script", result, "runtime")
-    if launcher:
-        text = launcher.read_text()
-        route_file = runtime_paths.get("active_route_file", "")
-        if route_file:
-            route_name = os.path.basename(route_file)
-            if route_name not in text:
-                result.warn("RUNTIME_PATH", "runtime", "runtime_paths.active_route_file",
-                            str(launcher), f"{route_name!r} not found in launcher")
-
     # Service names — check custom unit files exist
     system_services = {"systemd-timesyncd.service", "NetworkManager.service"}
-    services = c.get("services", {})
     for key, service_name in services.items():
         if service_name in system_services:
             continue  # installed by Debian package, not in includes.chroot
@@ -420,6 +712,96 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
 
 
 # ── Drift inspection: release ──────────────────────────────────────────
+
+KNOWN_METADATA_FORMATS = {"git-sha", "date-time", "sha256"}
+
+
+def _drift_release_mappings(rc: dict, root: Path, result: Result) -> None:
+    """Static consistency of source_image_mappings (check-only, no ISO access)."""
+    for mapping in rc.get("source_image_mappings", []):
+        src_rel = mapping["source"]
+        image_path = mapping["image_path"]
+        region = mapping["region"]
+        label = f"source_image_mappings.{src_rel}"
+        if region == "squashfs":
+            # source must be exactly includes.chroot + image_path
+            expected_src = f"{PRODUCTION_ROOT}{image_path}"
+            if src_rel != expected_src:
+                result.error("DRIFT_MAPPING_PATH", "release", label, src_rel,
+                             f"source {src_rel!r} does not correspond to image path "
+                             f"{image_path!r} (expected {expected_src!r})")
+            # includes.chroot files are installed as root:root by live-build
+            if mapping.get("owner") != "root" or mapping.get("group") != "root":
+                result.error("DRIFT_MAPPING_OWNER", "release", label, src_rel,
+                             "squashfs mappings must declare owner/group root:root")
+        if mapping.get("current_verification") == "exact" and \
+                mapping.get("comparison") not in ("cmp", "sha256"):
+            result.error("DRIFT_COMPARISON", "release", label, src_rel,
+                         "current_verification 'exact' requires content comparison "
+                         f"(cmp/sha256), got {mapping.get('comparison')!r}")
+        src = root / src_rel
+        if not src.is_file() or src.is_symlink():
+            continue  # existence is reported by the source-existence check
+        actual_mode = f"{stat.S_IMODE(src.stat().st_mode):04o}"
+        if actual_mode != mapping.get("mode"):
+            result.error("DRIFT_MAPPING_MODE", "release", label, src_rel,
+                         f"source mode {actual_mode} != contract {mapping.get('mode')!r}")
+
+
+def _drift_release_iso_paths(rc: dict, verify_text: str, result: Result) -> None:
+    """required_iso_paths ↔ mappings consistency and iso-root coverage."""
+    mappings_by_image: dict[str, dict] = {}
+    for mapping in rc.get("source_image_mappings", []):
+        mappings_by_image.setdefault(mapping["image_path"], mapping)
+    for entry in rc.get("required_iso_paths", []):
+        path = entry["path"]
+        label = f"required_iso_paths.{path}"
+        if entry.get("match_type") == "regex":
+            pattern = entry.get("path_pattern", "")
+            try:
+                rx = re.compile(pattern)
+            except re.error as exc:
+                result.error("DRIFT_PATH_PATTERN", "release", label, "contract",
+                             f"invalid path_pattern: {exc}")
+            else:
+                if not rx.search(path):
+                    result.error("DRIFT_PATH_PATTERN", "release", label, "contract",
+                                 f"path_pattern {pattern!r} does not match path {path!r}")
+        if entry["region"] == "squashfs":
+            mapping = mappings_by_image.get(path)
+            if mapping is None:
+                result.error("DRIFT_ISO_PATH", "release", label, "contract",
+                             f"required squashfs path {path!r} has no source image mapping")
+                continue
+            for attr in ("region", "file_type", "required", "security_critical"):
+                if mapping.get(attr) != entry.get(attr):
+                    result.error("DRIFT_ISO_PATH_ATTR", "release", label, "contract",
+                                 f"mapping {attr}={mapping.get(attr)!r} != "
+                                 f"iso path {attr}={entry.get(attr)!r}")
+        elif entry["region"] == "iso-root":
+            # verify-iso.sh writes initrd/squashfs in regex-escaped form
+            if path not in verify_text and re.escape(path) not in verify_text:
+                result.error("DRIFT_ISO_PATH", "release", label, "scripts/verify-iso.sh",
+                             f"required ISO path {path!r} not referenced by verify-iso.sh")
+
+
+def _drift_release_metadata(meta: dict, result: Result) -> None:
+    """static_values/formats key consistency (value drift is checked separately)."""
+    req_fields = meta.get("required_fields", [])
+    for field in meta.get("static_values", {}):
+        if field not in req_fields:
+            result.error("DRIFT_METADATA_STATIC", "release",
+                         f"metadata.static_values.{field}", "contract",
+                         f"static value declared for non-required field {field!r}")
+    for field, fmt in meta.get("formats", {}).items():
+        if field not in req_fields:
+            result.error("DRIFT_METADATA_FORMAT", "release",
+                         f"metadata.formats.{field}", "contract",
+                         f"format declared for non-required field {field!r}")
+        if fmt not in KNOWN_METADATA_FORMATS:
+            result.error("DRIFT_METADATA_FORMAT", "release",
+                         f"metadata.formats.{field}", "contract",
+                         f"unknown format {fmt!r} (known: {sorted(KNOWN_METADATA_FORMATS)})")
 
 
 def _drift_release(contract: dict, root: Path, result: Result) -> None:
@@ -489,10 +871,12 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
         ("clean.sh", "scripts/clean.sh", "clean"),
         ("run-qemu.sh", "scripts/run-qemu.sh", None),
     ]
+    _script_texts: dict[str, str] = {}
     for script_name, script_rel, boolean_key in _scripts_checks:
         sp = _must_exist(root, script_rel, script_name, result, "release")
         if sp:
             _text = sp.read_text()
+            _script_texts[script_name] = _text
             for artifact in rc.get("artifacts", []):
                 name = artifact["name"]
                 # run-qemu.sh should reference the ISO
@@ -537,10 +921,18 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
         for field in req_fields:
             if field in static_vals:
                 expected_val = str(static_vals[field])
-                if expected_val not in btext and field not in btext:
+                # Match the field/value pair in either production form:
+                #   architecture=amd64
+                #   --arg architecture "amd64"   (jq argument style in build.sh)
+                patterns = (
+                    rf"\b{re.escape(field)}\s*=\s*['\"]?{re.escape(expected_val)}['\"]?(?=\s|$)",
+                    rf"--arg\s+{re.escape(field)}\s+['\"]{re.escape(expected_val)}['\"]",
+                )
+                if not any(re.search(pattern, btext, re.MULTILINE) for pattern in patterns):
                     result.error("DRIFT_METADATA_STATIC", "release",
                                  f"metadata.static_values.{field}", str(build_sh),
-                                 f"static value {expected_val!r} or field {field!r} not found in build.sh")
+                                 f"static value {expected_val!r} for field {field!r} "
+                                 "not found as a field/value pair in build.sh")
                 continue
             tokens = metadata_tokens.get(field)
             if tokens is None:
@@ -562,6 +954,10 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
             result.error("RELEASE_MAPPING_SOURCE", "release",
                          f"source_image_mappings.{mapping['source']}", str(src),
                          f"mapping source not found: {mapping['source']}")
+
+    _drift_release_mappings(rc, root, result)
+    _drift_release_iso_paths(rc, _script_texts.get("verify-iso.sh", ""), result)
+    _drift_release_metadata(meta, result)
 
 
 # ── Secret check ───────────────────────────────────────────────────────
