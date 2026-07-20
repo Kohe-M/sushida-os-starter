@@ -73,6 +73,13 @@
               "required": ["match_type"]
             },
             "then": { "required": ["path_pattern"] }
+          },
+          {
+            "if": { "required": ["path_pattern"] },
+            "then": {
+              "properties": { "match_type": { "const": "regex" } },
+              "required": ["match_type"]
+            }
           }
         ]
       },
@@ -97,8 +104,7 @@
               {"not": {"pattern": "^/"}},
               {"not": {"pattern": "(^|/)\\.\\.(/|$)"}},
               {"not": {"pattern": "[\\r\\n\\t ]"}},
-              {"not": {"pattern": "^[.]$"}},
-              {"not": {"pattern": "\\\\"}}
+              {"not": {"pattern": "^[.]$"}}
             ]
           },
           "image_path": {

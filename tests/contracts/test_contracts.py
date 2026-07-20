@@ -233,10 +233,34 @@ def test_security_critical_mapped_or_generated() -> None:
                 f"security-critical path {iso_p['path']!r} has no mapping"
 
 
+def test_mapping_source_files_exist() -> None:
+    for mapping in _load(RELEASE_CONTRACT)["source_image_mappings"]:
+        source = Path(mapping["source"])
+        assert source.is_file(), f"mapping source file missing: {source}"
+
+
 def test_mapping_all_have_verification_level() -> None:
     for m in _load(RELEASE_CONTRACT)["source_image_mappings"]:
         assert "current_verification" in m, f"mapping {m['source']!r} missing current_verification"
         assert m["current_verification"] in ("none", "presence", "exact")
+
+
+def test_exact_verification_set_matches_verify_iso() -> None:
+    """Only files that verify-iso.sh actually cmps should be marked exact."""
+    rc = _load(RELEASE_CONTRACT)
+    exact_paths = {
+        m["image_path"]
+        for m in rc["source_image_mappings"]
+        if m["current_verification"] == "exact"
+    }
+    expected = {
+        "/etc/systemd/system/sushida-config-prepare.service",
+        "/etc/systemd/system/sushida-wifi-setup.service",
+        "/etc/systemd/system/var-lib-sushida\\x2dconfig.mount",
+        "/usr/local/libexec/sushida-config-prepare",
+        "/usr/local/libexec/sushida-wifi-setup",
+    }
+    assert exact_paths == expected, f"exact set mismatch: {exact_paths} != {expected}"
 
 
 # ── Packages ────────────────────────────────────────────────────────────
