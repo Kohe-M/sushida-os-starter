@@ -86,40 +86,39 @@ def test_schema_version_matches() -> None:
 
 
 @pytest.mark.parametrize("value", SCHEMA_PREDICATE["source-path"]["set"])
-def test_schema_rejects_invalid_source_path(value: str) -> None:
-    """Source paths must be relative and must not contain .. or whitespace."""
+def test_source_path_rejects_absolute_and_dotdot_schema_structure(value: str) -> None:
+    """Source paths must be relative, no .., no ., no backslash, no whitespace."""
     for rule in SCHEMA_PREDICATE["source-path"]["rules"]:
         if re.search(rule, value):
-            return  # matched a rejection rule
+            return
     pytest.fail(f"source={value!r} was not rejected by any rule")
 
 
 @pytest.mark.parametrize("value", SCHEMA_PREDICATE["source-path"]["accept"])
-def test_schema_accepts_valid_source_path(value: str) -> None:
+def test_source_path_accepts_valid_relative_paths(value: str) -> None:
     for rule in SCHEMA_PREDICATE["source-path"]["rules"]:
-        assert not re.search(rule, value), f"source={value!r} incorrectly rejected by {rule!r}"
+        assert not re.search(rule, value), f"source={value!r} rejected by {rule!r}"
 
 
 @pytest.mark.parametrize("value", SCHEMA_PREDICATE["image-path"]["set"])
-def test_schema_rejects_invalid_image_path(value: str) -> None:
+def test_image_path_rejects_relative_and_dotdot(value: str) -> None:
     for rule in SCHEMA_PREDICATE["image-path"]["rules"]:
         if re.search(rule, value):
             return
-    # Also reject if it does not start with /
     if not value.startswith("/"):
         return
     pytest.fail(f"image_path={value!r} was not rejected")
 
 
 @pytest.mark.parametrize("value", SCHEMA_PREDICATE["image-path"]["accept"])
-def test_schema_accepts_valid_image_path(value: str) -> None:
+def test_image_path_accepts_absolute_paths(value: str) -> None:
     assert value.startswith("/"), f"valid image_path must be absolute: {value!r}"
     assert ".." not in value, f"valid image_path must not contain ..: {value!r}"
     assert " " not in value, f"valid image_path must not contain space: {value!r}"
 
 
 @pytest.mark.parametrize("value", SCHEMA_PREDICATE["artifact-name"]["set"])
-def test_schema_rejects_invalid_artifact_name(value: str) -> None:
+def test_artifact_name_rejects_path_separators_and_dot(value: str) -> None:
     rules = [r"[/\\]", r"^\.$", r"^\.\."]
     for rule in rules:
         if re.search(rule, value):

@@ -65,7 +65,16 @@
           "file_type": { "type": "string" },
           "required": { "type": "boolean" },
           "security_critical": { "type": "boolean" }
-        }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "match_type": { "const": "regex" } },
+              "required": ["match_type"]
+            },
+            "then": { "required": ["path_pattern"] }
+          }
+        ]
       },
       "uniqueItems": true
     },
@@ -87,7 +96,9 @@
             "allOf": [
               {"not": {"pattern": "^/"}},
               {"not": {"pattern": "(^|/)\\.\\.(/|$)"}},
-              {"not": {"pattern": "[\\r\\n\\t ]"}}
+              {"not": {"pattern": "[\\r\\n\\t ]"}},
+              {"not": {"pattern": "^[.]$"}},
+              {"not": {"pattern": "\\\\"}}
             ]
           },
           "image_path": {
@@ -137,7 +148,7 @@
     "metadata": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["required_fields", "formats"],
+      "required": ["required_fields", "static_values", "formats"],
       "properties": {
         "required_fields": {
           "type": "array",
