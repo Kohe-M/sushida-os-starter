@@ -254,6 +254,9 @@ def _build_minimal_repo(root: Path) -> None:
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/runtime/runtime_state.py").write_text(
         'STATE_BASENAME = "runtime-state.json"\n'
     )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/runtime/kiosk_signal.py").write_text(
+        'KIOSK_SERVICE = "sushida-kiosk.service"\n'
+    )
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/__init__.py").write_text(
         '"""stub"""\n'
     )

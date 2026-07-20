@@ -98,7 +98,8 @@ for module in \
     "$backend_package/wifi/web.py" \
     "$backend_package/runtime/__init__.py" \
     "$backend_package/runtime/routes.py" \
-    "$backend_package/runtime/runtime_state.py"; do
+    "$backend_package/runtime/runtime_state.py" \
+    "$backend_package/runtime/kiosk_signal.py"; do
     require_file "$module"
     [ "$(stat -c '%U:%G:%a' "$module")" = "root:root:644" ] || \
         fail "unsafe owner or mode for $module: $(stat -c '%U:%G:%a' "$module")"
@@ -109,6 +110,7 @@ import sushida_os.wifi.restore
 import sushida_os.wifi.web
 import sushida_os.runtime.routes
 import sushida_os.runtime.runtime_state
+import sushida_os.runtime.kiosk_signal
 PYEOF
 if find "$backend_package" -name '__pycache__' -o -name '*.pyc' | grep -q .; then
     fail "Wi-Fi backend package must ship without bytecode caches"

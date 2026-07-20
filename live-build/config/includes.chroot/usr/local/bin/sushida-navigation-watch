@@ -17,19 +17,25 @@ Sushi-da gameplay can never trigger a restart.
 from __future__ import annotations
 
 import os
-import re
-import signal
 import struct
-import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urlsplit
 
+# The shared runtime package sits beside this script both in the image
+# (/usr/lib/python3/dist-packages) and in the repository checkout; make the
+# checkout layout importable without installation.
+_DIST_PACKAGES = Path(__file__).resolve().parents[2] / "lib/python3/dist-packages"
+if _DIST_PACKAGES.is_dir() and str(_DIST_PACKAGES) not in sys.path:
+    sys.path.insert(0, str(_DIST_PACKAGES))
+
+from sushida_os.runtime import kiosk_signal  # noqa: E402
+
 PROD_RUNTIME = Path("/run/sushida-os")
 PROD_SYSTEMCTL = "/usr/bin/systemctl"
-KIOSK_SERVICE = "sushida-kiosk.service"
+KIOSK_SERVICE = kiosk_signal.KIOSK_SERVICE
 SESSIONS_SUBDIR = Path("chromium") / "Default" / "Sessions"
 
 MAGIC = b"SNSS"
@@ -45,8 +51,6 @@ DEFAULT_COOLDOWN_SECONDS = 30.0
 MIN_POLL_SECONDS = 0.05
 MAX_POLL_SECONDS = 60.0
 MAX_COOLDOWN_SECONDS = 600.0
-
-_STATE_TIMEOUT = 10
 
 
 def _test_mode() -> bool:
@@ -284,57 +288,16 @@ def classify_url(url: str) -> str:
 # ── Validated kiosk restart ───────────────────────────────────────────────
 
 
-def _run_systemctl(config: Config, *args: str) -> subprocess.CompletedProcess[str] | None:
-    try:
-        return subprocess.run(
-            [config.systemctl, *args],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=_STATE_TIMEOUT,
-            env={"LANG": "C", "LC_ALL": "C", "PATH": "/usr/sbin:/usr/bin:/sbin:/bin"},
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-
-
 def restart_kiosk(config: Config) -> bool:
-    """Send TERM to the kiosk MainPID only after the same validations as the
-    network route watcher: active service, numeric MainPID > 1, same owner,
-    and the exact service name inside the process cgroup."""
-    active = _run_systemctl(config, "-q", "is-active", KIOSK_SERVICE)
-    if active is None or active.returncode != 0:
-        return False
-    shown = _run_systemctl(
-        config, "show", "--property", "MainPID", "--value", KIOSK_SERVICE
+    """Delegate to the shared validated signal path with a fixed target.
+
+    The MainPID/UID/cgroup validation chain lives in
+    sushida_os.runtime.kiosk_signal; this watcher only decides *when* to
+    signal (a blocked navigation), never *what* to signal."""
+    return kiosk_signal.restart_kiosk(
+        systemctl=config.systemctl,
+        cgroup_override=config.cgroup_override,
     )
-    if shown is None or shown.returncode != 0:
-        return False
-    pid_text = shown.stdout.strip()
-    if not pid_text.isdigit():
-        return False
-    pid = int(pid_text)
-    if pid <= 1:
-        return False
-    try:
-        if os.stat(f"/proc/{pid}").st_uid != os.geteuid():
-            return False
-    except OSError:
-        return False
-    cgroup_path = config.cgroup_override or Path(f"/proc/{pid}/cgroup")
-    try:
-        cgroup = cgroup_path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-    if not re.search(r"(^|/)sushida-kiosk\.service($|/)", cgroup, re.MULTILINE):
-        return False
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except OSError:
-        return False
-    return True
 
 
 # ── Main loop ─────────────────────────────────────────────────────────────
