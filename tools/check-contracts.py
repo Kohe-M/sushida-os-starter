@@ -28,8 +28,6 @@ RUNTIME_SCHEMA = "schema/runtime-contract.schema.json"
 RELEASE_SCHEMA = "schema/release-contract.schema.json"
 
 PRODUCTION_ROOT = "live-build/config/includes.chroot"
-SCRIPTS_DIR = "scripts"
-TEST_STATIC_DIR = "tests/static"
 
 # Secret-like JSON keys that must never appear.
 FORBIDDEN_FIELD_NAMES = {"password", "passwd", "secret", "credential", "private_key"}
@@ -98,11 +96,28 @@ def _load_json(path: Path) -> Any:
         raise RuntimeError(f"invalid JSON: {path}: {exc}") from exc
 
 
+def _must_exist(root: Path, rel: str, desc: str, result: Result, contract_name: str) -> Path | None:
+    """Return the resolved path, or record MISSING_SOURCE and return None."""
+    path = root / rel
+    if not path.is_file():
+        result.error("MISSING_SOURCE", contract_name, rel, str(path),
+                     f"required {desc} not found: {rel}")
+        return None
+    return path
+
+
 # ── Schema validation ───────────────────────────────────────────────────
+
+# Keywords this checker can process or at least recognise.
+SUPPORTED_SCHEMA_KEYWORDS = {
+    "type", "properties", "required", "additionalProperties", "items",
+    "const", "minimum", "maximum", "pattern", "enum", "minItems",
+    "uniqueItems", "minLength", "format", "allOf", "if", "then", "else",
+    "not", "description", "title", "$schema", "$id", "default",
+}
 
 
 def _validate_type(value: Any, expected: str, path: str) -> list[str]:
-    """Return a list of error messages for a type mismatch."""
     if expected == "array":
         if not isinstance(value, list):
             return [f"{path}: expected array, got {type(value).__name__}"]
@@ -125,46 +140,100 @@ def _validate_type(value: Any, expected: str, path: str) -> list[str]:
 
 
 def _check_schema(contract: dict, schema: dict, ctx: str, result: Result) -> None:
-    """Validate contract data against sketch schema restrictions."""
+    """Validate contract data against schema restrictions."""
     props = schema.get("properties", {})
     req = schema.get("required", [])
-    addl_props = schema.get("additionalProperties", True)
+    addl = schema.get("additionalProperties", True)
     contract_name = os.path.basename(ctx).replace(".schema.json", "")
 
-    # Check required fields exist
+    # Unsupported keyword detection
+    for key in schema:
+        if key not in SUPPORTED_SCHEMA_KEYWORDS:
+            result.error("UNSUPPORTED_KEYWORD", contract_name, key, ctx,
+                         f"keyword {key!r} is not implemented")
+
+    # required
     for field in req:
         if field not in contract:
             result.error("SCHEMA_REQUIRED", contract_name, field, ctx,
                          f"missing required field: {field}")
 
-    # Check unknown fields
-    if addl_props is False:
+    # additionalProperties
+    if addl is False:
         for key in contract:
             if key not in props:
-                result.error("SCHEMA_UNKNOWN_FIELD", contract_name, key, ctx,
+                result.error("SCHEMA_UNKNOWN", contract_name, key, ctx,
                              f"unknown field: {key}")
 
-    # Validate type + constraints
+    # allOf
+    for cond in schema.get("allOf", []):
+        _check_schema(contract, cond, ctx, result)
+
+    # not
+    not_cond = schema.get("not")
+    if not_cond:
+        if _schema_cond_matches(contract, not_cond):
+            result.error("SCHEMA_NOT", contract_name, "", ctx,
+                         "contract matches a 'not' constraint")
+
+    # if/then/else
+    if_cond = schema.get("if")
+    if if_cond:
+        matched = _schema_cond_matches(contract, if_cond)
+        if matched and "then" in schema:
+            _check_schema(contract, schema["then"], ctx, result)
+        elif not matched and "else" in schema:
+            _check_schema(contract, schema["else"], ctx, result)
+
+    # Validate each field
     for key, val in contract.items():
         if key not in props:
             continue
-        prop_def = props[key]
+        pd = props[key]
 
-        # Handle const (no type)
-        if "const" in prop_def:
-            if val != prop_def["const"]:
+        # const
+        c = pd.get("const")
+        if c is not None:
+            if val != c:
                 result.error("SCHEMA_CONST", contract_name, key, ctx,
-                             f"expected const {prop_def['const']!r}, got {val!r}")
+                             f"expected const {c!r}, got {val!r}")
             continue
 
-        errs = _validate_type(val, prop_def.get("type", "object"), f"{ctx}.{key}")
+        # type
+        errs = _validate_type(val, pd.get("type", "object"), f"{ctx}.{key}")
         for e in errs:
             result.error("SCHEMA_TYPE", contract_name, key, ctx, e)
 
-        # integer/number constraints
+        # minLength
+        minl = pd.get("minLength")
+        if minl is not None and isinstance(val, str) and len(val) < minl:
+            result.error("SCHEMA_MINLENGTH", contract_name, key, ctx,
+                         f"len {len(val)} < min {minl}")
+
+        # pattern
+        if isinstance(val, str):
+            pat = pd.get("pattern")
+            if pat and not re.search(pat, val):
+                result.error("SCHEMA_PATTERN", contract_name, key, ctx,
+                             f"value {val!r} does not match pattern {pat!r}")
+
+        # format (best-effort)
+        if isinstance(val, str):
+            fmt = pd.get("format")
+            if fmt == "uri" and not (val.startswith("http") or val.startswith("file") or val.startswith("/")):
+                result.warn("SCHEMA_FORMAT", contract_name, key, ctx,
+                            f"value {val!r} may not be a valid URI")
+
+        # enum
+        enum = pd.get("enum")
+        if enum and val not in enum:
+            result.error("SCHEMA_ENUM", contract_name, key, ctx,
+                         f"value {val!r} not in {enum}")
+
+        # integer/number bounds
         if isinstance(val, (int, float)):
-            pmin = prop_def.get("minimum")
-            pmax = prop_def.get("maximum")
+            pmin = pd.get("minimum")
+            pmax = pd.get("maximum")
             if pmin is not None and val < pmin:
                 result.error("SCHEMA_BOUND", contract_name, key, ctx,
                              f"value {val} < minimum {pmin}")
@@ -172,26 +241,13 @@ def _check_schema(contract: dict, schema: dict, ctx: str, result: Result) -> Non
                 result.error("SCHEMA_BOUND", contract_name, key, ctx,
                              f"value {val} > maximum {pmax}")
 
-        # string pattern
-        if isinstance(val, str):
-            pattern = prop_def.get("pattern")
-            if pattern and not re.search(pattern, val):
-                result.error("SCHEMA_PATTERN", contract_name, key, ctx,
-                             f"value {val!r} does not match pattern {pattern!r}")
-
-        # enum
-        enum = prop_def.get("enum")
-        if enum and val not in enum:
-            result.error("SCHEMA_ENUM", contract_name, key, ctx,
-                         f"value {val!r} not in enum {enum}")
-
         # minItems / uniqueItems
         if isinstance(val, list):
-            min_items = prop_def.get("minItems")
+            min_items = pd.get("minItems")
             if min_items is not None and len(val) < min_items:
                 result.error("SCHEMA_MINITEMS", contract_name, key, ctx,
                              f"expected >= {min_items} items, got {len(val)}")
-            unique = prop_def.get("uniqueItems", False)
+            unique = pd.get("uniqueItems", False)
             if unique:
                 seen = set()
                 for item in val:
@@ -202,12 +258,12 @@ def _check_schema(contract: dict, schema: dict, ctx: str, result: Result) -> Non
                         seen.add(item)
 
         # Recurse sub-objects
-        sub_props = prop_def.get("properties", {})
+        sub_props = pd.get("properties", {})
         if isinstance(val, dict) and sub_props:
-            _check_schema(val, prop_def, f"{ctx}.{key}", result)
+            _check_schema(val, pd, f"{ctx}.{key}", result)
 
-        # Recurse array items
-        items_def = prop_def.get("items", {})
+        # Recurse array items with type/enum
+        items_def = pd.get("items", {})
         if isinstance(val, list) and items_def:
             for i, item in enumerate(val):
                 if isinstance(item, dict):
@@ -217,6 +273,33 @@ def _check_schema(contract: dict, schema: dict, ctx: str, result: Result) -> Non
                     if item_pat and not re.search(item_pat, item):
                         result.error("SCHEMA_PATTERN", contract_name, f"{key}[{i}]", ctx,
                                      f"value {item!r} does not match pattern {item_pat!r}")
+                    item_enum = items_def.get("enum")
+                    if item_enum and item not in item_enum:
+                        result.error("SCHEMA_ENUM", contract_name, f"{key}[{i}]", ctx,
+                                     f"value {item!r} not in {item_enum}")
+
+
+def _schema_cond_matches(data: dict, cond: dict) -> bool:
+    """Check whether data matches a conditional schema node (if/not)."""
+    required = cond.get("required", [])
+    for field in required:
+        if field not in data:
+            return False
+    cprops = cond.get("properties", {})
+    for key, pd in cprops.items():
+        if key not in data:
+            return False
+        val = data[key]
+        c = pd.get("const")
+        if c is not None and val != c:
+            return False
+        enum = pd.get("enum")
+        if enum and val not in enum:
+            return False
+        pat = pd.get("pattern")
+        if pat and isinstance(val, str) and not re.search(pat, val):
+            return False
+    return True
 
 
 # ── Drift inspection: runtime ──────────────────────────────────────────
@@ -225,8 +308,9 @@ def _check_schema(contract: dict, schema: dict, ctx: str, result: Result) -> Non
 def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     c = contract
     # Production URL from config.env
-    config_env = root / PRODUCTION_ROOT / "etc/sushida-os/config.env"
-    if config_env.is_file():
+    config_env = _must_exist(root, f"{PRODUCTION_ROOT}/etc/sushida-os/config.env",
+                             "config.env", result, "runtime")
+    if config_env:
         for line in config_env.read_text().splitlines():
             line = line.strip()
             if line.startswith("SUSHIDA_URL="):
@@ -237,9 +321,10 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
                                  "urls.sushida_url", str(config_env),
                                  f"config.env has {val!r}, contract expects {expected!r}")
 
-    # Chromium managed policy URL allowlist
-    policy_file = root / PRODUCTION_ROOT / "etc/chromium/policies/managed/sushida-os.json"
-    if policy_file.is_file():
+    # Chromium managed policy URL allowlist and blocklist
+    policy_file = _must_exist(root, f"{PRODUCTION_ROOT}/etc/chromium/policies/managed/sushida-os.json",
+                              "Chromium policy", result, "runtime")
+    if policy_file:
         policy = _load_json(policy_file)
         nav = c.get("navigation", {})
         contract_allow = set(nav.get("allowlist", []))
@@ -247,16 +332,40 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
         if contract_allow != policy_allow:
             result.error("RUNTIME_ALLOWLIST_MISMATCH", "runtime",
                          "navigation.allowlist", str(policy_file),
-                         f"contract has {contract_allow}, policy has {policy_allow}")
+                         f"contract allowlist {contract_allow} != policy {policy_allow}")
 
-    # Route file paths
+        contract_block = set(nav.get("blocklist", []))
+        policy_block = set(policy.get("URLBlocklist", []))
+        if contract_block != policy_block:
+            result.error("RUNTIME_BLOCKLIST_MISMATCH", "runtime",
+                         "navigation.blocklist", str(policy_file),
+                         f"contract blocklist {contract_block} != policy {policy_block}")
+
+    # Routes — check that valid route values are known
+    valid_routes = {"online", "setup", "offline"}
+    for route in c.get("routes", []):
+        if route not in valid_routes:
+            result.error("RUNTIME_UNKNOWN_ROUTE", "runtime", f"routes.{route}",
+                         "contract", f"unknown route {route!r}")
+
+    # Navigation content sanity
+    allow = c.get("navigation", {}).get("allowlist", [])
+    block = c.get("navigation", {}).get("blocklist", [])
+    if "*" not in block:
+        result.error("RUNTIME_BLOCKLIST_CONTENT", "runtime", "navigation.blocklist",
+                     "contract", "blocklist must contain '*'")
+    if not any("sushida.net" in e for e in allow):
+        result.error("RUNTIME_ALLOWLIST_CONTENT", "runtime", "navigation.allowlist",
+                     "contract", "allowlist must contain sushida.net")
+
+    # Route file path referenced in launcher
     runtime_paths = c.get("runtime_paths", {})
-    launcher = root / PRODUCTION_ROOT / "usr/local/bin/sushida-launch"
-    if launcher.is_file():
+    launcher = _must_exist(root, f"{PRODUCTION_ROOT}/usr/local/bin/sushida-launch",
+                           "launcher script", result, "runtime")
+    if launcher:
         text = launcher.read_text()
         route_file = runtime_paths.get("active_route_file", "")
         if route_file:
-            # Check for the filename part, since the full path is constructed
             route_name = os.path.basename(route_file)
             if route_name not in text:
                 result.warn("RUNTIME_PATH", "runtime", "runtime_paths.active_route_file",
@@ -282,8 +391,8 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
     rc = contract
 
     # Build script artifact names
-    build_sh = root / SCRIPTS_DIR / "build.sh"
-    if build_sh.is_file():
+    build_sh = _must_exist(root, "scripts/build.sh", "build.sh", result, "release")
+    if build_sh:
         text = build_sh.read_text()
         for artifact in rc.get("artifacts", []):
             name = artifact["name"]
@@ -292,8 +401,8 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
                             str(build_sh), f"artifact {name!r} not found in build.sh")
 
     # Flash script ISO name
-    flash_sh = root / SCRIPTS_DIR / "flash.sh"
-    if flash_sh.is_file():
+    flash_sh = _must_exist(root, "scripts/flash.sh", "flash.sh", result, "release")
+    if flash_sh:
         flash_text = flash_sh.read_text()
         iso_name = "sushida-os-amd64.iso"
         if iso_name not in flash_text:
@@ -301,8 +410,9 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
                         str(flash_sh), f"ISO name {iso_name!r} not in flash.sh")
 
     # Package list
-    pkg_list = root / "live-build/config/package-lists/kiosk.list.chroot"
-    if pkg_list.is_file():
+    pkg_list = _must_exist(root, "live-build/config/package-lists/kiosk.list.chroot",
+                           "package list", result, "release")
+    if pkg_list:
         pkgs = set()
         for line in pkg_list.read_text().splitlines():
             s = line.strip()
@@ -315,20 +425,28 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
                          "required_packages", str(pkg_list),
                          f"packages not in package list: {sorted(missing)}")
 
-    # Required service enable/mask from validate hook
-    validate_hook = root / "live-build/config/hooks/live/090-validate-image.hook.chroot"
-    if validate_hook.is_file():
-        hook_text = validate_hook.read_text()
+    # Required service enable and mask from hooks
+    enable_hook = _must_exist(root, "live-build/config/hooks/live/020-enable-services.hook.chroot",
+                              "enable hook", result, "release")
+    if enable_hook:
+        etext = enable_hook.read_text()
         for svc in rc.get("required_services", []):
             name = svc["name"]
             state = svc["state"]
-            # Simple check: enabled services appear in enable hook or validate
-            enable_hook = root / "live-build/config/hooks/live/020-enable-services.hook.chroot"
-            if enable_hook.is_file():
-                enable_text = enable_hook.read_text()
-                if state == "enabled" and name not in enable_text:
-                    result.warn("RELEASE_SERVICE", "release", f"required_services.{name}",
-                                str(enable_hook), f"service {name} not enabled in hook")
+            if state == "enabled" and name not in etext:
+                result.error("DRIFT_SERVICE_ENABLE", "release", f"required_services.{name}",
+                             str(enable_hook), f"service {name} not enabled in hook")
+
+    validate_hook = _must_exist(root, "live-build/config/hooks/live/090-validate-image.hook.chroot",
+                                "validate hook", result, "release")
+    if validate_hook:
+        vtext = validate_hook.read_text()
+        for svc in rc.get("required_services", []):
+            name = svc["name"]
+            state = svc["state"]
+            if state == "masked" and name not in vtext:
+                result.error("DRIFT_SERVICE_MASK", "release", f"required_services.{name}",
+                             str(validate_hook), f"service {name} not found in validate hook")
 
     # Source-image mappings: check source files exist
     for mapping in rc.get("source_image_mappings", []):
@@ -368,7 +486,6 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(args.root).resolve()
     contracts_dir = root / CONTRACTS_SUBDIR
 
-    # Resolve contract paths
     rt_path = Path(args.runtime_contract) if args.runtime_contract else \
         contracts_dir / RUNTIME_CONTRACT
     rc_path = Path(args.release_contract) if args.release_contract else \
@@ -376,61 +493,66 @@ def main(argv: list[str] | None = None) -> int:
     rt_schema_path = contracts_dir / RUNTIME_SCHEMA
     rc_schema_path = contracts_dir / RELEASE_SCHEMA
 
-    # Validate files are readable
     for p in (rt_path, rc_path, rt_schema_path, rc_schema_path):
         if not p.is_file():
-            print(f"ERROR: file not found: {p}", file=sys.stderr)
+            msg = f"file not found: {p}"
+            if args.json:
+                report = {"ok": False, "errors": [{"code": "FILE_NOT_FOUND", "contract": "", "field": "", "file": str(p), "message": msg}], "warnings": []}
+                print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+            else:
+                print(f"ERROR: {msg}", file=sys.stderr)
             return 2
 
     result = Result()
 
+    # Wrap everything in a try/except so --json always produces valid JSON
     try:
         runtime = _load_json(rt_path)
         release = _load_json(rc_path)
         rt_schema = _load_json(rt_schema_path)
         rc_schema = _load_json(rc_schema_path)
     except RuntimeError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        if args.json:
+            report = result.json_report()
+            report["ok"] = False
+            report["errors"].append({"code": "PARSE_ERROR", "contract": "", "field": "", "file": "", "message": str(exc)})
+            print(json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True))
+        else:
+            print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
-    # Schema validation
-    _check_schema(runtime, rt_schema, "runtime-contract", result)
-    _check_schema(release, rc_schema, "release-contract", result)
+    try:
+        _check_schema(runtime, rt_schema, "runtime-contract", result)
+        _check_schema(release, rc_schema, "release-contract", result)
 
-    # Schema version consistency
-    for name, contract, schema in [
-        ("runtime", runtime, rt_schema),
-        ("release", release, rc_schema),
-    ]:
-        c_ver = contract.get("schema_version")
-        s_ver = schema.get("properties", {}).get("schema_version", {}).get("const")
-        if c_ver != s_ver:
-            result.error("SCHEMA_VERSION", name, "schema_version", f"{name}-contract.json",
-                         f"contract version {c_ver} != schema const {s_ver}")
+        for name, contract, schema in [
+            ("runtime", runtime, rt_schema),
+            ("release", release, rc_schema),
+        ]:
+            c_ver = contract.get("schema_version")
+            s_ver = schema.get("properties", {}).get("schema_version", {}).get("const")
+            if c_ver != s_ver:
+                result.error("SCHEMA_VERSION", name, "schema_version", f"{name}-contract.json",
+                             f"contract version {c_ver} != schema const {s_ver}")
 
-    # Secret check
-    for name, data in [("runtime", runtime), ("release", release),
-                        ("runtime-schema", rt_schema), ("release-schema", rc_schema)]:
-        _check_secrets(data, f"{name}.json", name, result)
+        for name, data in [("runtime", runtime), ("release", release),
+                            ("runtime-schema", rt_schema), ("release-schema", rc_schema)]:
+            _check_secrets(data, f"{name}.json", name, result)
 
-    # Runtime drift
-    _drift_runtime(runtime, root, result)
+        _drift_runtime(runtime, root, result)
+        _drift_release(release, root, result)
 
-    # Release drift
-    _drift_release(release, root, result)
+        handled_runtime_fields = {
+            "schema_version", "urls", "runtime_paths", "routes",
+            "services", "timeouts", "navigation",
+        }
+        for key in runtime:
+            if key not in handled_runtime_fields:
+                result.warn("UNHANDLED_RUNTIME_FIELD", "runtime", key, "runtime-contract.json",
+                            f"checker does not inspect field {key!r}")
+    except Exception as exc:
+        result.error("INTERNAL_ERROR", "", "", "", f"unexpected error: {exc}")
 
-    # Unused field tracking (checker must reference contract fields)
-    # Fields below are explicitly handled; anything else should be warned.
-    handled_runtime_fields = {
-        "schema_version", "urls", "runtime_paths", "routes",
-        "services", "timeouts", "navigation",
-    }
-    for key in runtime:
-        if key not in handled_runtime_fields:
-            result.warn("UNHANDLED_RUNTIME_FIELD", "runtime", key, "runtime-contract.json",
-                        f"checker does not inspect field {key!r}")
-
-    # Output
     if args.json:
         report_data = result.json_report()
         report_data["schema_version"] = 1
