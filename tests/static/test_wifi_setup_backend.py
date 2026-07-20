@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 from http.client import HTTPConnection
 from pathlib import Path
 from urllib.parse import urlencode
@@ -38,6 +39,24 @@ TEST_SSID = "Fixture:Guest"
 TEST_PASSWORD = "symbol : pass!"
 
 
+class _BackendModule(types.ModuleType):
+    """Entrypoint module that mirrors attribute writes into the package.
+
+    The production backend is split into sushida_os.wifi submodules while the
+    entrypoint re-exports every public name.  ``monkeypatch.setattr(backend,
+    name, ...)`` must keep affecting the code that actually calls the name,
+    so writes are mirrored into every backend submodule whose namespace
+    already defines it.  Reads keep working unchanged because the mirrored
+    write also updates this module's own namespace first.
+    """
+
+    def __setattr__(self, name: str, value: object) -> None:
+        super().__setattr__(name, value)
+        for module in self.__dict__.get("_forward_modules", ()):
+            if name in module.__dict__:
+                module.__dict__[name] = value
+
+
 def _load_backend():
     # Purge previously loaded backend modules so each test gets a completely
     # fresh module state, matching the pre-split per-test module reload.
@@ -52,6 +71,12 @@ def _load_backend():
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
+    module.__class__ = _BackendModule
+    module._forward_modules = tuple(
+        loaded
+        for loaded_name, loaded in sys.modules.items()
+        if loaded_name.startswith("sushida_os.wifi.") and loaded is not None
+    )
     return module
 
 

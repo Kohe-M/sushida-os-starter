@@ -213,12 +213,14 @@ def _build_minimal_repo(root: Path) -> None:
         'from pathlib import Path\n'
         'PORT = 8787\n'
         'MAX_REQUEST_BYTES = 8192\n'
-        'COMMAND_TIMEOUT_SECONDS = 40\n'
         'REQUEST_READ_TIMEOUT_SECONDS = 5\n'
         '    BACKOFF_MIN = 2.0\n'
         '    BACKOFF_MAX = 16.0\n'
         '    MAX_RETRIES = 5\n'
         '    deadline = time.monotonic() + 120.0\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/nmcli.py").write_text(
+        'COMMAND_TIMEOUT_SECONDS = 40\n'
         '                    "activation", "--wait", "30", "connection", "up",\n'
         '                    "id", CONNECTION_NAME, "passwd-file", passwd_path,\n'
         '                    timeout=35, pass_fds=(passwd_fd,),\n'
@@ -500,11 +502,11 @@ class TestCheckContracts:
     @pytest.mark.parametrize(
         ("rel", "old", "new"),
         [
-            ("usr/local/libexec/sushida-wifi-setup",
+            ("usr/lib/python3/dist-packages/sushida_os/wifi/nmcli.py",
              "COMMAND_TIMEOUT_SECONDS = 40", "COMMAND_TIMEOUT_SECONDS = 41"),
-            ("usr/local/libexec/sushida-wifi-setup",
+            ("usr/lib/python3/dist-packages/sushida_os/wifi/nmcli.py",
              '"--wait", "30"', '"--wait", "25"'),
-            ("usr/local/libexec/sushida-wifi-setup",
+            ("usr/lib/python3/dist-packages/sushida_os/wifi/nmcli.py",
              "timeout=35", "timeout=36"),
             ("usr/local/libexec/sushida-wifi-setup",
              "BACKOFF_MIN = 2.0", "BACKOFF_MIN = 3.0"),

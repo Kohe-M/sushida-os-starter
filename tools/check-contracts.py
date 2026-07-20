@@ -336,6 +336,8 @@ RUNTIME_SOURCE_FILES = {
     "navwatch": f"{PRODUCTION_ROOT}/usr/local/bin/sushida-navigation-watch",
     "session": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-session",
     "wifi": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-wifi-setup",
+    "wifi_nmcli": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
+                  "sushida_os/wifi/nmcli.py",
     "wifi_storage": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
                     "sushida_os/wifi/storage.py",
     "configprep": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-config-prepare",
@@ -345,12 +347,12 @@ RUNTIME_SOURCE_FILES = {
 # ``{value}`` is replaced by _num_pattern() so JSON integers match both the
 # ``40`` and ``40.0`` literal forms used in the Python/shell sources.
 _TIMEOUT_ADAPTERS = (
-    ("wifi_command_default_timeout_seconds", "wifi",
+    ("wifi_command_default_timeout_seconds", "wifi_nmcli",
      r"COMMAND_TIMEOUT_SECONDS\s*=\s*{value}\b", 1),
     # Both nmcli activation call sites must keep the contract values.
-    ("wifi_activation_wait_seconds", "wifi",
+    ("wifi_activation_wait_seconds", "wifi_nmcli",
      r'"--wait",\s*"{value}"', 2),
-    ("wifi_activation_process_timeout_seconds", "wifi",
+    ("wifi_activation_process_timeout_seconds", "wifi_nmcli",
      r'"up"[\s\S]{0,160}?timeout={value}\b', 2),
     ("restore_backoff_min_seconds", "wifi",
      r"BACKOFF_MIN\s*=\s*{value}\b", 1),
