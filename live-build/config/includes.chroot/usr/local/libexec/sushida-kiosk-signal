@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Centralized, validated kiosk restart signal.
+#
+# The only supported operation is sending SIGTERM to the MainPID of the
+# fixed sushida-kiosk.service after the exact validation chain the route
+# and navigation watchers have always used: active service, numeric
+# MainPID > 1, live /proc entry, same owner UID, and the exact service
+# name inside the process cgroup.  Callers cannot pass a PID, a signal,
+# or a service name — only a fixed reason token from a closed set, which
+# is the only dynamic value that may appear in the log line.
+set -euo pipefail
+
+readonly KIOSK_SERVICE="sushida-kiosk.service"
+
+TEST_CGROUP_FILE="${SUSHIDA_OS_TEST_CGROUP_FILE:-}"
+if [ -n "$TEST_CGROUP_FILE" ] && [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
+    echo "ERROR: SUSHIDA_OS_TEST_CGROUP_FILE requires SUSHIDA_OS_TEST_MODE=1" >&2
+    exit 2
+fi
+
+REASON=""
+DRY_RUN=false
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --reason)
+            [ $# -ge 2 ] || { echo "ERROR: --reason requires a value" >&2; exit 2; }
+            case "$2" in
+                route-mismatch|blocked-navigation)
+                    REASON="$2" ;;
+                *)
+                    echo "ERROR: unsupported reason" >&2; exit 2 ;;
+            esac
+            shift 2 ;;
+        --dry-run)
+            DRY_RUN=true
+            shift ;;
+        *)
+            echo "ERROR: unsupported argument" >&2; exit 2 ;;
+    esac
+done
+if [ -z "$REASON" ]; then
+    echo "ERROR: --reason is required" >&2; exit 2
+fi
+
+for cmd in systemctl id stat grep kill; do
+    if ! command -v "$cmd" > /dev/null 2>&1; then
+        echo "ERROR: Required command not found: $cmd" >&2; exit 2
+    fi
+done
+
+log_action() {
+    printf 'kiosk-signal: reason=%s action=%s\n' "$REASON" "$1"
+}
+
+refuse() {
+    log_action refused
+    exit 1
+}
+
+systemctl -q is-active "$KIOSK_SERVICE" 2>/dev/null || refuse
+pid=$(systemctl show --property MainPID --value "$KIOSK_SERVICE" 2>/dev/null) || refuse
+case "$pid" in ''|*[!0-9]*) refuse ;; esac
+[ "$pid" -gt 1 ] || refuse
+[ -d "/proc/$pid" ] || refuse
+my_uid=$(id -u) || refuse
+pid_uid=$(stat -c '%u' "/proc/$pid" 2>/dev/null) || refuse
+[ "$pid_uid" = "$my_uid" ] || refuse
+cgroup_file="/proc/$pid/cgroup"
+if [ -n "$TEST_CGROUP_FILE" ]; then cgroup_file="$TEST_CGROUP_FILE"; fi
+[ -f "$cgroup_file" ] || refuse
+grep -Eq '(^|/)sushida-kiosk\.service($|/)' "$cgroup_file" || refuse
+
+if [ "$DRY_RUN" = true ]; then
+    log_action dry-run
+    exit 0
+fi
+kill -TERM -- "$pid"
+log_action term

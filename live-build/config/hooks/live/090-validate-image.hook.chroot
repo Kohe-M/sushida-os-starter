@@ -135,7 +135,8 @@ for file in \
     /usr/local/bin/sushida-diagnostics \
     /usr/local/libexec/sushida-session \
     /usr/local/libexec/sushida-config-prepare \
-    /usr/local/libexec/sushida-wifi-setup; do
+    /usr/local/libexec/sushida-wifi-setup \
+    /usr/local/libexec/sushida-kiosk-signal; do
     require_executable "$file"
 done
 

@@ -203,6 +203,13 @@ def _build_minimal_repo(root: Path) -> None:
         '    _raw_at=3\n'
         '--user-data-dir="${XDG_RUNTIME_DIR%/xdg-runtime}/chromium"\n'
     )
+    (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-kiosk-signal").write_text(
+        '#!/usr/bin/env bash\n'
+        'pid=$(systemctl show --property MainPID --value sushida-kiosk.service)\n'
+        "pid_uid=$(stat -c '%u' \"/proc/$pid\")\n"
+        "grep -Eq '(^|/)sushida-kiosk\\.service($|/)' \"$cgroup_file\"\n"
+        'kill -TERM -- "$pid"\n'
+    )
     (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-config-prepare").write_text(
         '#!/usr/bin/env bash\n'
         'CONFIG_MOUNT="/var/lib/sushida-config"\n'
