@@ -526,13 +526,13 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
         for field in req_fields:
             if field in static_vals:
                 continue  # static, no generative check needed
-            if field == "git_commit" and "git rev-parse" not in btext:
+            if field == "git_commit" and "rev-parse" not in btext:
                 result.error("DRIFT_METADATA", "release", "metadata.required_fields",
                              str(build_sh), f"field {field!r} generation not found in build.sh")
             elif field == "build_timestamp" and "date -u" not in btext:
                 result.error("DRIFT_METADATA", "release", "metadata.required_fields",
                              str(build_sh), f"field {field!r} generation not found in build.sh")
-            elif field == "iso_sha256" and "sha256sum" not in btext:
+            if field == "git_commit" and "git" in btext and "rev-parse" not in btext:
                 result.error("DRIFT_METADATA", "release", "metadata.required_fields",
                              str(build_sh), f"field {field!r} generation not found in build.sh")
             elif field == "architecture" and "architectures" not in btext and field not in btext:

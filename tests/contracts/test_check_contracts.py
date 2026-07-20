@@ -110,23 +110,28 @@ def _build_minimal_repo(root: Path) -> None:
     # Minimal scripts
     (root / "scripts/build.sh").write_text(
         'ISO_NAME="sushida-os-amd64.iso"\n'
-        'iso_sha256="$(sha256sum ...)"\nIS O_ARTIFACT="sushida-os-amd64.iso"\n'
-        'SHA256SUMS="SHA256SUMS"\npackage-manifest.txt\nbuild-info.json\n'
+        'SHA256SUMS="SHA256SUMS"\n'
+        'package-manifest.txt\n'
+        'build-info.json\n'
+        'mkdir -p artifacts/\n'
+        'git rev-parse HEAD\n'
+        'git_dirty=\n'
+        'date -u +%Y\n'
+        'package_version chromium\n'
+        'package_version cage\n'
+        'lb --version\n'
+        'sha256sum ...\n'
     )
-    (root / "scripts/flash.sh").write_text(
-        'ISO="sushida-os-amd64.iso"\n'
-    )
+    (root / "scripts/flash.sh").write_text('ISO="sushida-os-amd64.iso"\n')
     (root / "scripts/clean.sh").write_text(
-        'echo cleaning\n'
+        'sushida-os-amd64.iso\nSHA256SUMS\npackage-manifest.txt\nbuild-info.json\n'
     )
     (root / "scripts/verify-iso.sh").write_text(
-        'echo verifying\n'
+        'sushida-os-amd64.iso\nSHA256SUMS\npackage-manifest.txt\nbuild-info.json\n'
     )
-    (root / "scripts/run-qemu.sh").write_text(
-        'ISO="sushida-os-amd64.iso"\n'
-    )
+    (root / "scripts/run-qemu.sh").write_text('ISO="sushida-os-amd64.iso"\n')
 
-    # Package list
+# Package list
     pkgs = [
         "linux-image-amd64", "live-boot", "live-config", "systemd-sysv",
         "cage", "chromium", "network-manager", "wpasupplicant",
