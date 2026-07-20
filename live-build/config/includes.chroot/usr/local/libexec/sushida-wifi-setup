@@ -23,6 +23,20 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from sushida_os.wifi.coordinator import (
+    _connect_worker,
+    _publish_result,
+    _reset_failure,
+    _take_pending,
+    connect_status,
+    consume_failure,
+    enqueue_interactive,
+    interactive_pending,
+    queue_connection,
+    reset_succeeded,
+    restore_cancelled,
+    start_queued_connection,
+)
 from sushida_os.wifi.nmcli import (
     COMMAND_TIMEOUT_SECONDS,
     CONNECT_LOCK,
@@ -89,172 +103,6 @@ REQUEST_READ_TIMEOUT_SECONDS = 5
 # which never contains the SSID or password.
 # CONNECT_* state strings live in sushida_os.wifi.types.
 
-_state_lock = threading.Lock()
-_connect_state = CONNECT_IDLE
-_state_message = ""
-_pending_request: tuple[str, str] | None = None
-_pending_interactive: tuple[str, str] | None = None
-_request_event = threading.Event()
-_restore_cancelled = threading.Event()
-
-
-def connect_status() -> tuple[str, str]:
-    """Return a snapshot of the public, secret-free connection state."""
-    with _state_lock:
-        return _connect_state, _state_message
-
-
-def queue_connection(ssid: str, password: str) -> bool:
-    """Accept at most one connection request at a time.
-
-    Returns False when an attempt is already pending or running; the caller
-    must drop its copy of the credential immediately in that case.
-    """
-    global _connect_state, _state_message, _pending_request
-    with _state_lock:
-        if _connect_state != CONNECT_IDLE:
-            return False
-        _connect_state = CONNECT_WORKING
-        _state_message = ""
-        _pending_request = (ssid, password)
-    return True
-
-
-def enqueue_interactive(ssid: str, password: str) -> bool:
-    """Submit (or queue for later execution) an interactive connection request.
-
-    Never sets _request_event, because the worker must not be woken before
-    the HTTP response is written.  The response-order guarantee is always
-    enforced by the caller: write the body, flush, *then* call
-    start_queued_connection() which sets the event.
-
-    Returns True when the request could be started immediately (state was
-    IDLE).  Returns False when the request was deferred as
-    pending-interactive; the worker will pick it up after the current
-    attempt finishes.
-    """
-    global _restore_cancelled, _pending_interactive
-    global _pending_request, _connect_state, _state_message
-
-    _restore_cancelled.set()
-    with _state_lock:
-        if _connect_state == CONNECT_IDLE:
-            _connect_state = CONNECT_WORKING
-            _state_message = ""
-            _pending_request = (ssid, password)
-            _pending_interactive = None
-            return True
-        _pending_interactive = (ssid, password)
-        return False
-
-
-def start_queued_connection() -> None:
-    """Wake the worker.  Called only after the HTTP response is written."""
-    _request_event.set()
-
-
-def _take_pending() -> tuple[str, str] | None:
-    global _pending_request
-    with _state_lock:
-        pending = _pending_request
-        _pending_request = None
-    return pending
-
-
-def _publish_result(success: bool, message: str) -> None:
-    global _connect_state, _state_message
-    with _state_lock:
-        _connect_state = CONNECT_SUCCEEDED if success else CONNECT_FAILED
-        _state_message = message
-
-
-def consume_failure() -> str | None:
-    """Reset a published failure when the setup form is rendered again."""
-    global _connect_state, _state_message
-    with _state_lock:
-        if _connect_state != CONNECT_FAILED:
-            return None
-        message = _state_message
-        _connect_state = CONNECT_IDLE
-        _state_message = ""
-        return message
-
-
-def reset_succeeded() -> None:
-    """Forget a stale success once the network is gone again."""
-    global _connect_state, _state_message
-    with _state_lock:
-        if _connect_state == CONNECT_SUCCEEDED:
-            _connect_state = CONNECT_IDLE
-            _state_message = ""
-
-
-def _reset_failure() -> None:
-    """Clear a failed attempt so the restore loop may retry."""
-    global _connect_state
-    with _state_lock:
-        if _connect_state == CONNECT_FAILED:
-            _connect_state = CONNECT_IDLE
-
-
-def _connect_worker() -> None:
-    """Single serialized worker; the only caller of the nmcli stage chain.
-
-    After each completed attempt the worker checks whether an interactive
-    request arrived while a previous restore-attempt was running and, if
-    so, processes it immediately instead of waiting for the next event.
-    """
-    global _pending_interactive, _pending_request, _connect_state, _state_message
-
-    while True:
-        # Check for a pending interactive request that arrived during the
-        # previous attempt.  The outer lock ensures the state transition
-        # and credential handover are atomic.
-        with _state_lock:
-            if _pending_interactive is not None:
-                if _connect_state in (CONNECT_FAILED, CONNECT_SUCCEEDED):
-                    # Consume the stale terminal state left by the previous
-                    # attempt so queue_connection will accept the interactive
-                    # request below.
-                    _connect_state = CONNECT_IDLE
-                    _state_message = ""
-                if _connect_state == CONNECT_IDLE:
-                    ssid, password = _pending_interactive
-                    _pending_interactive = None
-                    _connect_state = CONNECT_WORKING
-                    _pending_request = (ssid, password)
-
-        pending = _take_pending()
-        if pending is None:
-            _request_event.wait()
-            _request_event.clear()
-            continue
-        ssid, password = pending
-        try:
-            success, message = connect_wifi(ssid, password)
-        except Exception:  # noqa: BLE001 - never leak internals to the page
-            _log_stage("internal", 8, None)
-            success = False
-            message = "Wi-Fi接続処理で内部エラーが発生しました。もう一度接続してください。"
-        finally:
-            password = ""
-            pending = None
-        # Publish the result atomically: if a pending-interactive request
-        # arrived during this attempt, hand off directly without exposing
-        # the stale terminal state to status pollers.
-        with _state_lock:
-            if _pending_interactive is not None:
-                ssid2, password2 = _pending_interactive
-                _pending_interactive = None
-                _connect_state = CONNECT_WORKING
-                _state_message = ""
-                _pending_request = (ssid2, password2)
-                _request_event.set()
-            else:
-                _connect_state = CONNECT_SUCCEEDED if success else CONNECT_FAILED
-                _state_message = message
-
-
 def restore_saved_connection() -> None:
     """Retry saved credential restoration with bounded backoff.
 
@@ -272,15 +120,14 @@ def restore_saved_connection() -> None:
     deadline = time.monotonic() + 120.0
 
     while time.monotonic() < deadline and retries < MAX_RETRIES:
-        if _restore_cancelled.is_set():
+        if restore_cancelled():
             return
         if managed_wifi_active():
             return
         # If an interactive request was submitted while we were in backoff
         # or about to retry, stop immediately — the worker will handle it.
-        with _state_lock:
-            if _pending_interactive is not None:
-                return
+        if interactive_pending():
+            return
         saved = load_credentials()
         if saved is None:
             return
@@ -301,13 +148,12 @@ def restore_saved_connection() -> None:
         # Wait for the worker to complete this attempt.
         while time.monotonic() < deadline:
             time.sleep(1.0)
-            if _restore_cancelled.is_set():
+            if restore_cancelled():
                 return
             if managed_wifi_active():
                 return
-            with _state_lock:
-                if _pending_interactive is not None:
-                    return
+            if interactive_pending():
+                return
             state, _msg = connect_status()
             if state == CONNECT_WORKING:
                 continue
