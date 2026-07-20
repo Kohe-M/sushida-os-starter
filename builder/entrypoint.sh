@@ -27,14 +27,9 @@ if [ -e /sushida-os ]; then
         # Symlinked mount points cannot be a safe git repository; skip.
         :
     elif [ -d /sushida-os/.git ] || [ -f /sushida-os/.git ]; then
-        git_repo="$(
-            git -c safe.directory=/sushida-os \
-                -C /sushida-os rev-parse --show-toplevel 2>/dev/null ||
-            true
-        )"
-        if [ "$git_repo" = "/sushida-os" ]; then
-            git config --global --add safe.directory /sushida-os
-        fi
+        # Always set safe.directory.  A subshell-based rev-parse check can
+        # fail silently under podman with a mapped UID, so set it directly.
+        git config --global --add safe.directory /sushida-os 2>/dev/null || true
     fi
 fi
 
