@@ -806,6 +806,11 @@ git diff --check
 **変更可能ファイル**: `tests/shell/dev-tools.bats`、`docs/build.md`（必要時のみ）。
 **変更禁止**: production runtime、`scripts/doctor.sh` の挙動変更。
 
+| Step | 内容 | 状態 |
+|---|---|---|
+| B-01 | doctor 行動テストのギャップ確認と追加 | ✅ a8850b4（5件追加、168/168 pass） |
+| B-02 | Phase 1 ゲート（P1-04 再確認） | ✅ 全検証 PASS、production 差分なし、CI `make ci` 確認 |
+
 ## B-01: doctor 行動テストのギャップ確認と追加
 
 **先に読むファイル**: `scripts/doctor.sh`、`tests/shell/dev-tools.bats`。
