@@ -624,46 +624,57 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     # Production URL from config.env
     # The production launcher and network-watch parse config.env verbatim:
     # only CR is stripped; quotes and leading whitespace are NOT removed.
-    # A missing required key or a quoted value causes a startup failure.
+    # Unknown keys, lines without '=', and duplicate keys all cause a startup
+    # failure, so the checker must reject them too.
     config_env = _must_exist(root, f"{PRODUCTION_ROOT}/etc/sushida-os/config.env",
                              "config.env", result, "runtime")
     if config_env:
-        seen_url = False
-        seen_interval = False
-        seen_grace = False
+        allowed = {"SUSHIDA_URL", "NETWORK_CHECK_INTERVAL_SECONDS", "NETWORK_SETUP_GRACE_SECONDS"}
+        seen: set[str] = set()
         for raw_line in config_env.read_text().splitlines():
             line = raw_line.rstrip("\r")
             if not line or line.startswith("#"):
                 continue
-            if line.startswith("SUSHIDA_URL="):
-                val = line.split("=", 1)[1]
-                seen_url = True
+            if "=" not in line:
+                result.error("DRIFT_CONFIG_FORMAT", "runtime", "config.env",
+                             str(config_env),
+                             f"invalid config line without '=': {line!r}")
+                continue
+            key, value = line.split("=", 1)
+            if key not in allowed:
+                result.error("DRIFT_CONFIG_KEY", "runtime", key,
+                             str(config_env),
+                             f"unknown config key: {key!r}")
+                continue
+            if key in seen:
+                result.error("DRIFT_CONFIG_DUPLICATE", "runtime", key,
+                             str(config_env),
+                             f"duplicate config key: {key!r}")
+                continue
+            seen.add(key)
+            if key == "SUSHIDA_URL":
                 expected = urls.get("sushida_url", "")
-                if val != expected:
+                if value != expected:
                     result.error("RUNTIME_URL_MISMATCH", "runtime",
                                  "urls.sushida_url", str(config_env),
-                                 f"config.env has {val!r}, contract expects {expected!r}")
-            elif line.startswith("NETWORK_CHECK_INTERVAL_SECONDS="):
-                val = line.split("=", 1)[1]
-                seen_interval = True
+                                 f"config.env has {value!r}, contract expects {expected!r}")
+            elif key == "NETWORK_CHECK_INTERVAL_SECONDS":
                 expected = str(timeouts.get("network_check_interval_seconds", ""))
-                if val != expected:
+                if value != expected:
                     result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_check_interval_seconds",
-                                 str(config_env), f"config.env has {val}, contract expects {expected}")
-            elif line.startswith("NETWORK_SETUP_GRACE_SECONDS="):
-                val = line.split("=", 1)[1]
-                seen_grace = True
+                                 str(config_env), f"config.env has {value}, contract expects {expected}")
+            elif key == "NETWORK_SETUP_GRACE_SECONDS":
                 expected = str(timeouts.get("network_setup_grace_seconds", ""))
-                if val != expected:
+                if value != expected:
                     result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_setup_grace_seconds",
-                                 str(config_env), f"config.env has {val}, contract expects {expected}")
-        if not seen_url:
+                                 str(config_env), f"config.env has {value}, contract expects {expected}")
+        if "SUSHIDA_URL" not in seen:
             result.error("DRIFT_URL", "runtime", "urls.sushida_url", str(config_env),
                          "config.env missing SUSHIDA_URL")
-        if not seen_interval:
+        if "NETWORK_CHECK_INTERVAL_SECONDS" not in seen:
             result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_check_interval_seconds",
                          str(config_env), "config.env missing NETWORK_CHECK_INTERVAL_SECONDS")
-        if not seen_grace:
+        if "NETWORK_SETUP_GRACE_SECONDS" not in seen:
             result.error("DRIFT_TIMEOUT", "runtime", "timeouts.network_setup_grace_seconds",
                          str(config_env), "config.env missing NETWORK_SETUP_GRACE_SECONDS")
 

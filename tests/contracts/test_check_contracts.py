@@ -706,3 +706,77 @@ class TestCheckContracts:
         r = _run_checker(clean_repo)
         assert r.returncode == 1
         assert "RELEASE_ARTIFACT_REF_UNEXPECTED" in r.stdout
+
+    # ── config.env syntax: unknown key / missing = / duplicate / indented comment
+
+    def test_config_env_unknown_key_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'SUSHIDA_URL=https://sushida.net/play.html\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+            'UNKNOWN_KEY=value\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_CONFIG_KEY" in r.stdout
+
+    def test_config_env_missing_equals_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'SUSHIDA_URL=https://sushida.net/play.html\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+            'broken-line\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_CONFIG_FORMAT" in r.stdout
+
+    def test_config_env_duplicate_sushida_url_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'SUSHIDA_URL=https://sushida.net/play.html\n'
+            'SUSHIDA_URL=https://sushida.net/play.html\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_CONFIG_DUPLICATE" in r.stdout
+
+    def test_config_env_duplicate_network_interval_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'SUSHIDA_URL=https://sushida.net/play.html\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_CONFIG_DUPLICATE" in r.stdout
+
+    def test_config_env_duplicate_network_grace_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'SUSHIDA_URL=https://sushida.net/play.html\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_CONFIG_DUPLICATE" in r.stdout
+
+    def test_config_env_indented_comment_exit_1(self, clean_repo: Path) -> None:
+        cfg = clean_repo / "live-build/config/includes.chroot/etc/sushida-os/config.env"
+        cfg.write_text(
+            'SUSHIDA_URL=https://sushida.net/play.html\n'
+            'NETWORK_CHECK_INTERVAL_SECONDS=30\n'
+            'NETWORK_SETUP_GRACE_SECONDS=15\n'
+            ' # not a comment because of leading whitespace\n'
+        )
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "DRIFT_CONFIG_FORMAT" in r.stdout
