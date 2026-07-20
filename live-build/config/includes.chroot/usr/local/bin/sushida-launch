@@ -55,9 +55,14 @@ export XDG_RUNTIME_DIR="$BASE_RUNTIME/xdg-runtime"
 export XDG_CACHE_HOME="$BASE_RUNTIME/cache"
 export TMPDIR="$BASE_RUNTIME/tmp"
 
+# ── Shared runtime package (image and repository-checkout layouts) ────────
+SELF_DIR="$(dirname "$(readlink -f "$0")")"
+readonly SELF_DIR
+readonly RUNTIME_LIB="$SELF_DIR/../../lib/python3/dist-packages"
+
 # ── Executable pre-check ─────────────────────────────────────────────────
 for cmd in cage chromium pipewire pipewire-pulse wireplumber dbus-run-session \
-    nmcli mktemp mv sleep systemctl; do
+    nmcli mktemp mv sleep systemctl python3 readlink; do
     if ! command -v "$cmd" > /dev/null 2>&1; then
         echo "ERROR: Required command not found: $cmd" >&2
         exit 1
@@ -206,6 +211,20 @@ readonly START_URL ACTIVE_ROUTE
 route_tmp=$(mktemp "$BASE_RUNTIME/.active-route.XXXXXXXX")
 printf '%s\n' "$ACTIVE_ROUTE" > "$route_tmp"
 mv -f -- "$route_tmp" "$BASE_RUNTIME/active-route"
+
+# Publish the machine-readable route state protocol alongside the legacy
+# active-route/time-sync marker files (transitional dual-write; the legacy
+# files remain authoritative for the watchers).  A publish failure must
+# never block the kiosk from starting.
+_time_sync_flag=0
+if [ -f "$BASE_RUNTIME/time-sync-required" ]; then _time_sync_flag=1; fi
+PYTHONPATH="$RUNTIME_LIB" PYTHONDONTWRITEBYTECODE=1 \
+    python3 -m sushida_os.runtime.runtime_state \
+    --directory "$BASE_RUNTIME" \
+    --route "$ACTIVE_ROUTE" \
+    --time-sync-required "$_time_sync_flag" \
+    --reason boot-route-selected \
+    || echo "WARN: runtime-state publish failed" >&2
 
 exec dbus-run-session -- \
     "$SESSION_HELPER" "$START_URL"
