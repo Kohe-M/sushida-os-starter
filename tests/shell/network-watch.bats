@@ -255,6 +255,20 @@ run_watcher() { run "$WATCHER"; }
     assert_fixture_alive
 }
 
+@test "route change signals exactly once and repeat iterations refuse" {
+    # Two iterations with a persistent route mismatch: the first TERM lands,
+    # the second attempt finds the MainPID gone and refuses instead of
+    # signalling anything else.
+    export NM_STATE=disconnected
+    export SUSHIDA_OS_MAX_ITERATIONS=2
+    start_kiosk_fixture
+    run_watcher
+    [ "$status" -eq 0 ]
+    assert_fixture_terminated
+    term_count=$(grep -c 'action=term' <<< "$output")
+    [ "$term_count" -eq 1 ]
+}
+
 @test "watcher sleeps at configured minimum after iteration" {
     run_watcher
     [ "$status" -eq 0 ]
