@@ -336,6 +336,8 @@ RUNTIME_SOURCE_FILES = {
     "navwatch": f"{PRODUCTION_ROOT}/usr/local/bin/sushida-navigation-watch",
     "session": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-session",
     "wifi": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-wifi-setup",
+    "wifi_storage": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
+                    "sushida_os/wifi/storage.py",
     "configprep": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-config-prepare",
 }
 
@@ -485,7 +487,7 @@ def _drift_runtime_paths(rpaths: dict, services: dict, texts: dict[str, str],
         result.error("DRIFT_PATH", "runtime", "runtime_paths.csrf_token_file", "contract",
                      f"csrf_token_file {csrf_file!r} is not inside {wifi_setup_dir!r}")
     if csrf_file:
-        _expect_pattern(texts, labels, "wifi",
+        _expect_pattern(texts, labels, "wifi_storage",
                         rf'CSRF_TOKEN_FILE\s*=\s*Path\("{re.escape(csrf_file)}"\)',
                         result, "DRIFT_PATH", "runtime_paths.csrf_token_file",
                         f"CSRF token file {csrf_file!r} not declared")
@@ -499,7 +501,7 @@ def _drift_runtime_paths(rpaths: dict, services: dict, texts: dict[str, str],
 
     config_mount = rpaths.get("config_mount_path", "")
     if config_mount:
-        _expect_pattern(texts, labels, "wifi",
+        _expect_pattern(texts, labels, "wifi_storage",
                         rf'CONFIG_MOUNT\s*=\s*Path\("{re.escape(config_mount)}"\)',
                         result, "DRIFT_PATH", "runtime_paths.config_mount_path",
                         f"config mount {config_mount!r} not declared")
@@ -516,7 +518,7 @@ def _drift_runtime_paths(rpaths: dict, services: dict, texts: dict[str, str],
 
     storage_status = rpaths.get("config_storage_status", "")
     if storage_status:
-        _expect_pattern(texts, labels, "wifi",
+        _expect_pattern(texts, labels, "wifi_storage",
                         rf'STORAGE_STATUS\s*=\s*Path\("{re.escape(storage_status)}"\)',
                         result, "DRIFT_PATH", "runtime_paths.config_storage_status",
                         f"storage status path {storage_status!r} not declared")
@@ -538,11 +540,11 @@ def _drift_runtime_paths(rpaths: dict, services: dict, texts: dict[str, str],
                          "contract",
                          f"credential_file {credential!r} is not <config_mount>/<dir>/<file>")
         else:
-            _expect_pattern(texts, labels, "wifi",
+            _expect_pattern(texts, labels, "wifi_storage",
                             rf'CONFIG_DIR\s*=\s*CONFIG_MOUNT\s*/\s*"{re.escape(parts[0])}"',
                             result, "DRIFT_PATH", "runtime_paths.credential_file",
                             f"credential dir component {parts[0]!r} not declared")
-            _expect_pattern(texts, labels, "wifi",
+            _expect_pattern(texts, labels, "wifi_storage",
                             rf'CONFIG_FILE\s*=\s*CONFIG_DIR\s*/\s*"{re.escape(parts[1])}"',
                             result, "DRIFT_PATH", "runtime_paths.credential_file",
                             f"credential file component {parts[1]!r} not declared")

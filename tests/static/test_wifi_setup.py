@@ -8,6 +8,7 @@ LAUNCHER = ROOT / "usr/local/bin/sushida-launch"
 SESSION = ROOT / "usr/local/libexec/sushida-session"
 WATCHER = ROOT / "usr/local/bin/sushida-network-watch"
 BACKEND = ROOT / "usr/local/libexec/sushida-wifi-setup"
+BACKEND_PACKAGE = ROOT / "usr/lib/python3/dist-packages/sushida_os/wifi"
 MOUNT_UNIT = ROOT / r"etc/systemd/system/var-lib-sushida\x2dconfig.mount"
 PREPARE_UNIT = ROOT / "etc/systemd/system/sushida-config-prepare.service"
 SETUP_UNIT = ROOT / "etc/systemd/system/sushida-wifi-setup.service"
@@ -22,6 +23,15 @@ ENABLE_HOOK = Path(
 PACKAGES = Path("live-build/config/package-lists/kiosk.list.chroot")
 BUILD = Path("scripts/build.sh")
 VERIFY = Path("scripts/verify-iso.sh")
+
+
+def _backend_text() -> str:
+    """All Wi-Fi backend implementation sources (entrypoint + package)."""
+    parts = [BACKEND.read_text()]
+    if BACKEND_PACKAGE.is_dir():
+        for path in sorted(BACKEND_PACKAGE.glob("*.py")):
+            parts.append(path.read_text())
+    return "\n".join(parts)
 
 
 def test_setup_uses_dedicated_unprivileged_account() -> None:
@@ -71,7 +81,7 @@ def test_prepare_service_does_not_make_mount_mandatory_for_boot() -> None:
 
 
 def test_storage_status_is_independent_of_kiosk_runtime_lifecycle() -> None:
-    backend = BACKEND.read_text()
+    backend = _backend_text()
     prepare = (
         ROOT / "usr/local/libexec/sushida-config-prepare"
     ).read_text()
@@ -96,7 +106,7 @@ def test_setup_backend_is_loopback_only_and_hardened() -> None:
 
 
 def test_backend_constrains_http_and_persists_atomically() -> None:
-    text = BACKEND.read_text()
+    text = _backend_text()
     assert 'HOST = "127.0.0.1"' in text
     assert "MAX_REQUEST_BYTES" in text
     assert "csrf" in text.lower()
@@ -143,7 +153,7 @@ def test_backend_constrains_http_and_persists_atomically() -> None:
 
 
 def test_setup_ui_avoids_wayland_popup_and_rescans_via_home_route() -> None:
-    text = BACKEND.read_text()
+    text = _backend_text()
     assert '<input type="radio" name="ssid"' in text
     assert "<select" not in text
     assert 'action="/"' in text
@@ -160,7 +170,7 @@ def test_connection_request_is_asynchronous_and_response_ordered() -> None:
     queues the credential, completes the response, and only then wakes a
     single serialized worker.
     """
-    text = BACKEND.read_text()
+    text = _backend_text()
     assert 'enqueue_interactive(ssid[0], password[0])' in text
     assert "success, message = connect_wifi(ssid[0], password[0])" not in text
     assert "_request_event.set()" in text
@@ -190,7 +200,7 @@ def test_connection_request_is_asynchronous_and_response_ordered() -> None:
 
 
 def test_storage_failure_does_not_disable_wifi_connection() -> None:
-    text = BACKEND.read_text()
+    text = _backend_text()
     assert 'connected or not storage_ready or not networks' not in text
     assert '<fieldset class="networks" disabled' not in text
     assert 'name="password" type="password" disabled' not in text
@@ -198,7 +208,7 @@ def test_storage_failure_does_not_disable_wifi_connection() -> None:
 
 
 def test_connected_state_does_not_disable_or_skip_wifi_setup() -> None:
-    text = BACKEND.read_text()
+    text = _backend_text()
     assert "networks = [] if success else scan_networks()" in text
     assert "networks = [] if connected" not in text
     assert "すでにネットワークへ接続されています。" not in text

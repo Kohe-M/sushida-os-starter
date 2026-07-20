@@ -48,6 +48,7 @@ def _build_minimal_repo(root: Path) -> None:
         "live-build/config/includes.chroot/etc/systemd/system",
         "live-build/config/includes.chroot/usr/local/bin",
         "live-build/config/includes.chroot/usr/local/libexec",
+        "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi",
         "live-build/config/includes.chroot/usr/share/sushida-os",
         "live-build/config/includes.chroot/etc/polkit-1/rules.d",
         "live-build/config/includes.chroot/etc/NetworkManager/conf.d",
@@ -211,11 +212,6 @@ def _build_minimal_repo(root: Path) -> None:
         '#!/usr/bin/env python3\n'
         'from pathlib import Path\n'
         'PORT = 8787\n'
-        'CONFIG_MOUNT = Path("/var/lib/sushida-config")\n'
-        'CONFIG_DIR = CONFIG_MOUNT / "network"\n'
-        'CONFIG_FILE = CONFIG_DIR / "setup.json"\n'
-        'STORAGE_STATUS = Path("/run/sushida-config/config-storage")\n'
-        'CSRF_TOKEN_FILE = Path("/run/sushida-wifi-setup/csrf-token")\n'
         'MAX_REQUEST_BYTES = 8192\n'
         'COMMAND_TIMEOUT_SECONDS = 40\n'
         'REQUEST_READ_TIMEOUT_SECONDS = 5\n'
@@ -228,6 +224,14 @@ def _build_minimal_repo(root: Path) -> None:
         '                    timeout=35, pass_fds=(passwd_fd,),\n'
         '                "activation", "--wait", "30", "connection", "up",\n'
         '                "id", CONNECTION_NAME, timeout=35,\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/storage.py").write_text(
+        'from pathlib import Path\n'
+        'CONFIG_MOUNT = Path("/var/lib/sushida-config")\n'
+        'CONFIG_DIR = CONFIG_MOUNT / "network"\n'
+        'CONFIG_FILE = CONFIG_DIR / "setup.json"\n'
+        'STORAGE_STATUS = Path("/run/sushida-config/config-storage")\n'
+        'CSRF_TOKEN_FILE = Path("/run/sushida-wifi-setup/csrf-token")\n'
     )
 
     # Polkit, NM config, offline page referenced by mappings
@@ -556,7 +560,10 @@ class TestCheckContracts:
         assert "DRIFT_ROUTE" in r.stdout
 
     def test_csrf_path_drift_exit_1(self, clean_repo: Path) -> None:
-        p = clean_repo / "live-build/config/includes.chroot/usr/local/libexec/sushida-wifi-setup"
+        p = clean_repo / (
+            "live-build/config/includes.chroot/usr/lib/python3/dist-packages/"
+            "sushida_os/wifi/storage.py"
+        )
         p.write_text(p.read_text().replace(
             "/run/sushida-wifi-setup/csrf-token", "/run/other/csrf-token"))
         r = _run_checker(clean_repo)
