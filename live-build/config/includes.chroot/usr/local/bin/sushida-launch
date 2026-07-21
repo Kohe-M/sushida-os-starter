@@ -62,7 +62,7 @@ readonly RUNTIME_LIB="$SELF_DIR/../../lib/python3/dist-packages"
 
 # ── Executable pre-check ─────────────────────────────────────────────────
 for cmd in cage chromium pipewire pipewire-pulse wireplumber dbus-run-session \
-    nmcli mktemp mv sleep systemctl python3 readlink; do
+    nmcli sleep stat systemctl python3 readlink; do
     if ! command -v "$cmd" > /dev/null 2>&1; then
         echo "ERROR: Required command not found: $cmd" >&2
         exit 1
@@ -173,8 +173,17 @@ else
         _time_max=30
         _clock_plausible=false
         _now_epoch="$(date -u +%s)"
-        if [ "$_now_epoch" -ge "$(date -u -d '2025-01-01T00:00:00Z' +%s)" ] && \
-           [ "$_now_epoch" -le "$(date -u -d '2030-01-01T00:00:00Z' +%s)" ]; then
+        # The image is built with SOURCE_DATE_EPOCH = commit date, so the
+        # read-only config file's mtime is the image build epoch: a wall
+        # clock older than the image itself is never plausible.  The fixed
+        # floor remains as a fallback if stat fails.
+        _min_epoch="$(stat -c %Y "$CONFIG_FILE" 2>/dev/null)" || _min_epoch=""
+        case "$_min_epoch" in
+            ''|*[!0-9]*) _min_epoch="$(date -u -d '2025-01-01T00:00:00Z' +%s)" ;;
+        esac
+        _max_epoch=$(( _min_epoch + 157680000 ))  # build epoch + 5 years
+        if [ "$_now_epoch" -ge "$_min_epoch" ] && \
+           [ "$_now_epoch" -le "$_max_epoch" ]; then
             _clock_plausible=true
         fi
         while [ "$_time_wait" -lt "$_time_max" ]; do

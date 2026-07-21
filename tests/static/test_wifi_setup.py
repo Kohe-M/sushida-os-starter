@@ -60,7 +60,13 @@ def test_setup_has_only_explicit_networkmanager_polkit_actions() -> None:
 
 def test_config_partition_mount_is_narrow_and_non_executable() -> None:
     text = MOUNT_UNIT.read_text()
-    assert "What=/dev/disk/by-label/SUSHIDA-CFG" in text
+    # Mounting by the fixed filesystem UUID is robust against another
+    # medium accidentally carrying the SUSHIDA-CFG label (BL-04).  With a
+    # public repository neither identifier is a secret; this is collision
+    # robustness, not tamper-proofing.
+    assert "What=/dev/disk/by-uuid/3b8c6880-2a56-4cb2-9a30-b7ac47fc29f1" in text
+    build = Path("scripts/build.sh").read_text()
+    assert "-U 3b8c6880-2a56-4cb2-9a30-b7ac47fc29f1" in build
     assert "Where=/var/lib/sushida-config" in text
     for option in ("rw", "nodev", "nosuid", "noexec", "noatime"):
         assert option in text

@@ -78,10 +78,18 @@ if [ -e "$WIFI_SOURCE" ]; then
 fi
 
 cd "$BUILD_DIR"
+# Default kernel command line for the generated boot entries (BIOS and
+# UEFI).  The VGA console stays quiet; systemd status lines go to the
+# serial console (last console= owns /dev/console), which QEMU boot
+# evidence and headless diagnosis rely on.  Real hardware without a
+# serial port is unaffected.
+BOOTAPPEND_LIVE="boot=live components quiet splash console=tty0 console=ttyS0,115200n8 systemd.show_status=true"
+
 lb config noauto \
     --distribution trixie \
     --architectures amd64 \
     --binary-images iso-hybrid \
+    --bootappend-live "$BOOTAPPEND_LIVE" \
     --source false \
     --apt-recommends false \
     --firmware-binary false \

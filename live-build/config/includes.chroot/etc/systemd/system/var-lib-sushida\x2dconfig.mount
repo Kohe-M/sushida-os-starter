@@ -4,7 +4,7 @@ Before=sushida-config-prepare.service
 JobTimeoutSec=20s
 
 [Mount]
-What=/dev/disk/by-label/SUSHIDA-CFG
+What=/dev/disk/by-uuid/3b8c6880-2a56-4cb2-9a30-b7ac47fc29f1
 Where=/var/lib/sushida-config
 Type=ext4
 Options=rw,nodev,nosuid,noexec,noatime
