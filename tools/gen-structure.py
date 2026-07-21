@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Generate STRUCTURE.txt deterministically from the Git index.
+"""Generate STRUCTURE.txt deterministically from the Git worktree.
 
-The file is a tree-style listing of every tracked path, so it can never
-include build artifacts, ignored files, or secrets that Git does not
-track.  Directories are derived from the tracked file paths; the listing
-is sorted bytewise for a stable output.
+The file is a tree-style listing of every tracked and untracked
+(non-ignored) path — the shape the repository will have once pending
+files are committed — so a freshly created file makes `--check` report
+staleness immediately instead of one commit late.  Ignored paths (build
+artifacts, local secrets, virtualenvs) can never appear.  Directories
+are derived from the listed paths; the output is sorted bytewise.
 
 Usage:
     tools/gen-structure.py            # write STRUCTURE.txt
@@ -29,15 +31,22 @@ EXCLUDED_BASENAMES = {".gitkeep"}
 
 
 def tracked_files() -> list[str]:
+    # --cached lists the index, --others --exclude-standard adds untracked
+    # files that are not ignored: together, the post-commit shape.
     result = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files", "-z"],
+        ["git", "-C", str(REPO_ROOT), "ls-files", "-z",
+         "--cached", "--others", "--exclude-standard"],
         capture_output=True, check=True,
     )
-    names = [
+    names = {
         name.decode("utf-8")
         for name in result.stdout.split(b"\0")
         if name
-    ]
+    }
+    # The output file always lists itself: on first generation it does not
+    # exist yet, and without this the freshly written index is immediately
+    # stale against a listing that now contains it.
+    names.add(OUTPUT.name)
     return sorted(
         name for name in names
         if Path(name).name not in EXCLUDED_BASENAMES

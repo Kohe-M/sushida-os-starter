@@ -195,6 +195,7 @@ tests/
     test_diagnostics.py
     test_documentation.py
     test_flash_safety.py
+    test_gen_structure.py
     test_image_validation.py
     test_keyboard.py
     test_kiosk_signal_equivalence.py
