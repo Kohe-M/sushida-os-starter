@@ -628,18 +628,13 @@ Stage 完了時に §4 と同形式の記録を本書に追記する。
 
 ---
 
-# 7. 繰延 backlog（Stage E/F の後、または独立に実施）
+# 7. 繰延 backlog
 
-Stage F-03 で TASKS.md の task record に変換する。それまでの正本はこの表。
-
-| ID | 内容 | 出自 | 依存 |
-|---|---|---|---|
-| BL-01 | **runtime-state.json への正本切替**: watcher/launcher の読み手を state protocol へ移し、`active-route`・`time-sync-required` ファイルを廃止。bats・checker の `DRIFT_PATH`（active_route_file / time_sync_marker）・runtime contract の追随を含む。dual-write はそれまで維持 | Stage D 逸脱 4（P4） | Stage E/F と独立。ただし挙動テストの書き換えを伴うため単独 Stage 扱いで慎重に |
-| BL-02 | `connection_in_progress` の実出力: Wi-Fi backend の接続中状態を runtime-state.json に反映（現在は常に false のプレースホルダ） | D-02 schema 予約 + 初版スコープ外「connection-in-progress 統合」 | BL-01 |
-| BL-03 | route enum への `time-sync` 追加検討: 現在は offline + reason で表現。専用 route 化するか判断 | D-01 予約 | BL-01 |
-| BL-04 | SUSHIDA-CFG ラベル衝突対策 / RTC 判定 / console=ttyS0 方針（初版で独立タスクとされた残り） | 初版 §1.2 | 独立 |
-| BL-05 | ISO ビルド・QEMU・実機回帰の実施と §8 判定表の消化（C-09/D-08/E-09 の未実行項目） | 各 Stage ゲート | ビルド環境 |
-| BL-06 | kiosk-signal helper の検証ロジックと Python 双子（`kiosk_signal.py`）の同一性を自動照合するテスト（現在は bats/pytest が別々に検証。実装は2箇所） | Stage D 設計判断 | 独立 |
+**正本は `TASKS.md` §2（Stage F-03 で task record 化済み）。**
+2026-07-21 時点: BL-01（state 正本切替）/ BL-02（connection_in_progress）/
+BL-03（time-sync route 判断: 専用 route 化しないと決定）/ BL-04（UUID mount・
+RTC floor・serial console 方針）/ BL-06（signal 双子の同一性照合）は **DONE**。
+残: **BL-05**（QEMU 系の残り + 実機回帰）のみ。
 
 ---
 

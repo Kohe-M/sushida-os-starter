@@ -63,6 +63,9 @@ route の記録は `runtime-state.json` が唯一の正本（BL-01 完了、2026
 launcher が boot 時に atomic に発行し、network watcher は同じ protocol module
 経由で route を読み、time-sync hold の解除も read-modify-write で行う。
 旧 `active-route`・`time-sync-required` ファイルは廃止済み。
+`connection_in_progress` は Wi-Fi backend が専用 0755 dir に発行する内容なし
+marker（存在フラグ）を watcher が毎周期鏡映した値で、権限境界（wifi-setup は
+kiosk の runtime dir に書けない）を越えない片方向の伝搬になっている。
 破損・未知 schema・欠損は常に「状態なし」として読まれ、restart を発火しない
 （fail closed）。protocol の詳細は `sushida_os/runtime/runtime_state.py` と
 `tests/static/test_runtime_state.py` が正本。
