@@ -24,6 +24,7 @@ htmlcov/
 test-results/
 
 # Editors and OS
+.claude/
 .vscode/
 .idea/
 .DS_Store
