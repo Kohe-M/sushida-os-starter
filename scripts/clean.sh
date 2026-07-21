@@ -31,10 +31,30 @@ find "$BUILD_ROOT" -mindepth 1 -maxdepth 1 -type d \
     \( -name 'verify-artifacts.*' -o -name 'flash-test.*' \) -exec rm -rf -- {} +
 
 if [ "$MODE" = "distclean" ]; then
-    for file in \
-        sushida-os-amd64.iso SHA256SUMS package-manifest.txt build-info.json; do
-        rm -f -- "$ARTIFACT_ROOT/$file"
-    done
+    # The removable artifact set comes from the release contract; artifact
+    # names are not repeated here.  Names are constrained to plain files
+    # directly inside the artifact root.
+    CONTRACT="$PROJECT_ROOT/contracts/release-contract.json"
+    command -v python3 > /dev/null 2>&1 || fail "python3 is required for distclean"
+    if [ ! -f "$CONTRACT" ] || [ -L "$CONTRACT" ]; then
+        fail "release contract not found: $CONTRACT"
+    fi
+    while IFS= read -r artifact_name; do
+        case "$artifact_name" in
+            ''|*/*|.*) fail "unsafe artifact name in release contract" ;;
+        esac
+        rm -f -- "$ARTIFACT_ROOT/$artifact_name"
+    done < <(python3 - "$CONTRACT" <<'PYEOF'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    contract = json.load(stream)
+for artifact in contract["artifacts"]:
+    if artifact.get("clean"):
+        print(artifact["name"])
+PYEOF
+)
     find "$ARTIFACT_ROOT" -mindepth 1 -maxdepth 1 -type d \
         -name '.build-staging.*' -exec rm -rf -- {} +
 fi

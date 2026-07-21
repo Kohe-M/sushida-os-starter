@@ -38,12 +38,16 @@ if [ ! -f "$CONTRACT" ] || [ -L "$CONTRACT" ]; then
 fi
 jq -e '.schema_version == 1' "$CONTRACT" > /dev/null || \
     fail "unsupported release contract schema"
-for file in "$ISO_NAME" SHA256SUMS package-manifest.txt build-info.json; do
-    path="$resolved_dir/$file"
+# The verified artifact set comes from the release contract.
+while IFS= read -r artifact_name; do
+    case "$artifact_name" in
+        ''|*/*|.*) fail "unsafe artifact name in release contract" ;;
+    esac
+    path="$resolved_dir/$artifact_name"
     if [ ! -f "$path" ] || [ -L "$path" ] || [ ! -s "$path" ]; then
-        fail "missing, empty, or unsafe artifact: $file"
+        fail "missing, empty, or unsafe artifact: $artifact_name"
     fi
-done
+done < <(jq -r '.artifacts[] | select(.verify) | .name' "$CONTRACT")
 
 checksum_line_count="$(wc -l < "$resolved_dir/SHA256SUMS")"
 [ "$checksum_line_count" -eq 1 ] || fail "SHA256SUMS must contain exactly one line"

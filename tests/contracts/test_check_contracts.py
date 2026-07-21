@@ -136,7 +136,7 @@ def _build_minimal_repo(root: Path) -> None:
     )
     (root / "scripts/flash.sh").write_text('ISO="sushida-os-amd64.iso"\n')
     (root / "scripts/clean.sh").write_text(
-        'sushida-os-amd64.iso\nSHA256SUMS\npackage-manifest.txt\nbuild-info.json\n'
+        'CONTRACT="$PROJECT_ROOT/contracts/release-contract.json"\n'
     )
     (root / "scripts/verify-iso.sh").write_text(
         'sushida-os-amd64.iso\nSHA256SUMS\npackage-manifest.txt\nbuild-info.json\n'
@@ -782,17 +782,12 @@ class TestCheckContracts:
         assert r.returncode == 1
         assert "RELEASE_ARTIFACT_REF_UNEXPECTED" in r.stdout
 
-    def test_clean_false_but_referenced_exit_1(self, clean_repo: Path) -> None:
-        rc = clean_repo / "contracts/release-contract.json"
-        data = json.loads(rc.read_text())
-        for artifact in data["artifacts"]:
-            if artifact.get("clean"):
-                artifact["clean"] = False
-                break
-        rc.write_text(json.dumps(data))
+    def test_clean_not_contract_driven_exit_1(self, clean_repo: Path) -> None:
+        cs = clean_repo / "scripts/clean.sh"
+        cs.write_text("echo hardcoded artifact names\n")
         r = _run_checker(clean_repo)
         assert r.returncode == 1
-        assert "RELEASE_ARTIFACT_REF_UNEXPECTED" in r.stdout
+        assert "RELEASE_ARTIFACT_REF" in r.stdout
 
     # ── config.env syntax: unknown key / missing = / duplicate / indented comment
 

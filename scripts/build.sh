@@ -137,9 +137,15 @@ jq -n \
 
 "$PROJECT_ROOT/scripts/verify-iso.sh" "$STAGING"
 
-for file in "$ISO_NAME" SHA256SUMS package-manifest.txt build-info.json; do
-    mv -f -- "$STAGING/$file" "$ARTIFACT_DIR/$file"
-done
+# The publish set comes from the release contract; artifact names are not
+# repeated here.
+while IFS= read -r artifact_name; do
+    case "$artifact_name" in
+        ''|*/*|.*) fail "unsafe artifact name in release contract" ;;
+    esac
+    mv -f -- "$STAGING/$artifact_name" "$ARTIFACT_DIR/$artifact_name"
+done < <(jq -r '.artifacts[] | select(.publish) | .name' \
+    "$PROJECT_ROOT/contracts/release-contract.json")
 
 echo "Published verified artifacts in $ARTIFACT_DIR"
 

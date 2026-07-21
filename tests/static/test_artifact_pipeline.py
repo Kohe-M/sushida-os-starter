@@ -177,7 +177,13 @@ def test_clean_and_distclean_are_separate() -> None:
     text = CLEAN.read_text()
     assert "clean|distclean" in text
     assert 'if [ "$MODE" = "distclean" ]' in text
-    assert "sushida-os-amd64.iso" in text
+    # The removable artifact set comes from the release contract; unsafe
+    # names (paths, dotfiles) are rejected before rm.
+    assert "release-contract.json" in text
+    assert "unsafe artifact name in release contract" in text
+    contract = json.loads(Path("contracts/release-contract.json").read_text())
+    assert any(a.get("clean") and a["name"] == "sushida-os-amd64.iso"
+               for a in contract["artifacts"])
 
 
 def test_make_targets_call_real_scripts() -> None:

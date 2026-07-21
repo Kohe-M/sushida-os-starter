@@ -940,6 +940,16 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
         if sp:
             _text = sp.read_text()
             _script_texts[script_name] = _text
+            if boolean_key == "clean":
+                # clean.sh is contract-driven: it reads the removable
+                # artifact set instead of repeating each name.
+                if any(a.get("clean") for a in rc.get("artifacts", [])) and \
+                        "release-contract.json" not in _text:
+                    result.error("RELEASE_ARTIFACT_REF", "release",
+                                 "artifacts", str(sp),
+                                 "clean.sh does not read the artifact list "
+                                 "from the release contract")
+                continue
             for artifact in rc.get("artifacts", []):
                 name = artifact["name"]
                 # run-qemu.sh should reference the ISO
