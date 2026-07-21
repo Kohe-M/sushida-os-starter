@@ -126,8 +126,8 @@ production Git history.
     serial console 欠如（`e09c5ec`、BL-04-3）
 - 済み (2026-07-22 追記):
   - QEMU smoke（UEFI）: PASS — KVM 有効化（ユーザーが kvm グループ追加・再起動）
-    後、builder コンテナ + `/dev/kvm` で AUTOMATED 8 判定すべて成立（registry R5
-    更新。旧 TCG 失敗は R5a として保存）。QEMU 側の残項目はこれで消化
+    後、builder コンテナ + `/dev/kvm` で AUTOMATED 8 判定すべて成立（registry R6。
+    旧 TCG 失敗は R5 のまま保存）。QEMU 側の残項目はこれで消化
   - 実機一次確認（ユーザー報告 2026-07-22、非公式）: ログイン画面なしで起動、
     Wi-Fi 設定→接続成功、全画面 Chromium で寿司打プレイ可、キーボード入力正常。
     同時に発見された不具合: 再起動後の SSID 復元失敗（`62d545a` で修正）、
