@@ -150,10 +150,21 @@ CHROMIUM_ARGS=(
     --disk-cache-dir="${XDG_RUNTIME_DIR%/xdg-runtime}/cache"
     --ozone-platform=wayland
     --hide-crash-restore-bubble
-    # Fixed 2x UI scale so the Sushi-da play area fills the kiosk screen
-    # instead of sitting small in the corner of a full-HD panel.
-    --force-device-scale-factor=2
 )
+
+# Fixed 2x page zoom so the Sushi-da play area fills the kiosk screen
+# instead of sitting small in the corner of a full-HD panel.  Seeded as the
+# profile-wide default zoom (3.8017... = log1.2(2.0)) into the fresh tmpfs
+# profile; a device-scale-factor override is deliberately NOT used because
+# Chromium then disagrees with the Cage output scale and renders into a
+# quarter of the screen (verified in QEMU).  If a Chromium update changes
+# the preference schema the page harmlessly renders at 1x.
+_PROFILE_DEFAULT="${XDG_RUNTIME_DIR%/xdg-runtime}/chromium/Default"
+if [ ! -f "$_PROFILE_DEFAULT/Preferences" ]; then
+    mkdir -p "$_PROFILE_DEFAULT"
+    printf '%s' '{"partition":{"default_zoom_level":{"14695981039346656037":3.8017570004448078}}}' \
+        > "$_PROFILE_DEFAULT/Preferences" || true
+fi
 
 # QEMU smoke adapters have no accelerated render node, so select Chromium's
 # bundled ANGLE SwiftShader backend only when the explicit QEMU boot entry set

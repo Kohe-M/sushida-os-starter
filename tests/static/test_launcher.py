@@ -279,10 +279,19 @@ def test_helper_ozone_platform_wayland() -> None:
     args = _helper_args_array()
     assert any("ozone-platform=wayland" in a for a in args)
 
-def test_helper_display_scale_is_fixed_two() -> None:
-    """The kiosk UI runs at a fixed 2x scale (physical deployment request)."""
-    args = _helper_args_array()
-    assert any(a == "--force-device-scale-factor=2" for a in args)
+def test_helper_seeds_fixed_two_x_page_zoom() -> None:
+    """2x page zoom is seeded as the profile default (deployment request).
+
+    A device-scale-factor override must never come back: Chromium then
+    disagrees with the Cage output scale and renders into a quarter of the
+    screen (verified in QEMU against the real image).
+    """
+    content = SESSION_HELPER.read_text()
+    assert '"default_zoom_level"' in content
+    assert "3.8017570004448078" in content  # log base 1.2 of 2.0
+    assert "force-device-scale-factor" not in content
+    seed = content[content.index("_PROFILE_DEFAULT="):]
+    assert 'if [ ! -f "$_PROFILE_DEFAULT/Preferences" ]' in seed
 
 def test_helper_forbidden_flags_absent() -> None:
     args = _helper_args_array()

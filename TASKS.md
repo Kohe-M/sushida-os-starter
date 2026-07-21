@@ -164,11 +164,16 @@ production Git history.
 ### FB-02 / 画面拡大率 2 倍
 
 - Status: DONE | Severity: Medium
-- 対応: sushida-session の Chromium 引数に `--force-device-scale-factor=2`。
-  サイト DOM・注入は一切なし（AGENTS §1 遵守）。
-- Verification: `test_launcher.py::test_helper_display_scale_is_fixed_two`
+- 対応（改訂）: 当初の `--force-device-scale-factor=2`（`c76fdeb`）は QEMU 検証で
+  フルスクリーン破壊を検出（Chromium が buffer_scale=2 を仮定し Cage の scale-1
+  出力と不一致 → 画面左上 1/4 のみ描画）。プロファイル既定ズーム 200%
+  （Preferences の `partition.default_zoom_level`、log1.2(2)=3.8017…）の
+  シードに変更。Wayland スケール機構に触れないため互換問題なし。スキーマが
+  変わった場合は無害に 1x 表示へフォールバック。サイト DOM・注入は一切なし。
+- Verification: `test_launcher.py::test_helper_seeds_fixed_two_x_page_zoom`
+  （DSF フラグ再導入の禁止も検査）+ QEMU screenshot 比較
 - Manual checks: 実機での見え方は未確認
-- Evidence: `c76fdeb` / 2026-07-22
+- Evidence: `c76fdeb` → 改訂コミット / 2026-07-22
 
 ### FB-03 / ノート PC で音声が出ない
 
