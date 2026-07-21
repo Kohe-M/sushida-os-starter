@@ -208,3 +208,4 @@ tests/
     test_windows_wrappers.py
 tools/
   check-contracts.py
+  gen-structure.py
