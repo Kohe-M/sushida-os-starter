@@ -186,6 +186,10 @@ credentials. The same extraction warning applies to build-time profiles.
 
 ## Verification
 
+The backend module layout and connection state machine are described in
+[docs/wifi-state-machine.md](wifi-state-machine.md); route selection and the
+kiosk restart signal chain in [docs/runtime-routes.md](runtime-routes.md).
+
 Repository tests verify the state machine, serialized NetworkManager changes,
 wired-to-Wi-Fi fallback restoration, private FD/passwd-file delivery outside
 process arguments, temporary-file cleanup, WPA/open command differences,
