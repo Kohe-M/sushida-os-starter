@@ -110,10 +110,12 @@ production Git history.
 
 ### BL-06 / kiosk-signal の shell/Python 双子の同一性照合
 
-- Status: BACKLOG | Severity: Low | Dependency: なし
+- Status: DONE | Severity: Low | Dependency: なし
 - Acceptance criteria: 検証連鎖（active・MainPID・UID・cgroup・TERM）が
-  2 実装で一致することを自動テストが証明する（例: 判定表の共通 fixture 化）
-- Verification: 新規テスト（bats + pytest の共通シナリオ表）
+  2 実装で一致することを自動テストが証明する
+- Verification: `tests/static/test_kiosk_signal_equivalence.py` —
+  11 シナリオ（正常系 + 全 refuse 経路）を両実装に同時適用し判定一致を検査
+- Evidence: 2026-07-21、11/11 pass（commit は本タスクの commit）
 
 ## 3. 運用ルール（旧 Working rules の後継）
 
