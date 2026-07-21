@@ -24,7 +24,7 @@
 | **B** | Phase 1 残余確認（doctor 行動テスト補完） | ✅ 完了 | `a8850b4`〜`9f4210d` |
 | **C** | Wi-Fi backend モジュール分割（挙動不変） | ✅ 完了 | `e825678`〜`2c096ef` |
 | **D** | route 判定・kiosk signal 共通化（挙動不変） | ✅ 完了 | `04f3f64`〜`b2bd238` |
-| **E** | release manifest 正本化・ISO 照合・再現性 | ⬜ 未着手 | — |
+| **E** | release manifest 正本化・ISO 照合・再現性 | ✅ 完了 | `7d02146`〜（§4.5 参照） |
 | **F** | 文書正本化（AGENTS/TASKS/STRUCTURE/docs） | ⬜ 未着手 | — |
 
 **並行禁止**: D↔E は checker の同じ adapter・contract に触るため直列に実施する。
@@ -35,8 +35,8 @@ E↔F も E の成果物（reproducible-builds.md 等）を F が参照するた
 | 検証 | 規模 | 状態 |
 |---|---|---|
 | `tests/static/`（pytest） | 658 件 | 緑 |
-| `tests/contracts/`（pytest） | 110 件 | 緑 |
-| `tests/shell/`（bats、コンテナ内） | 188 件 | 緑 |
+| `tests/contracts/`（pytest） | 112 件 | 緑 |
+| `tests/shell/`（bats、コンテナ内） | 214 件 | 緑 |
 | `python3 tools/check-contracts.py` | runtime/release/drift | exit 0 |
 | `make iso` / `make verify` / QEMU 系 | — | **未実行**（全 Stage 通して） |
 | 実機回帰 | — | **未実行** |
@@ -186,7 +186,7 @@ adapter を追随させる（P1）。
 |---|---|---|
 | C: Wi-Fi 定数が `sushida_os/wifi/*.py` へ移動 | timeout/URL/path adapter の参照先 | ✅ 済み（source key `wifi_nmcli`/`wifi_storage`/`wifi_restore`/`wifi_web` へ分割） |
 | D: route 判定が `sushida_os/runtime/routes.py` へ移動 | `_drift_routes` の照合 | ✅ 済み（launcher リテラル + netwatch case + routes.py `ROUTE_*` 定数の3者照合） |
-| E: verify-iso.sh が manifest 駆動化 | `DRIFT_ISO_PATH` の「verify-iso.sh にパス文字列がある」検査が壊れる | ⬜ E-03 で「verify-iso.sh が release contract を読む」方式へ変更 |
+| E: verify-iso.sh が manifest 駆動化 | `DRIFT_ISO_PATH` の「verify-iso.sh にパス文字列がある」検査が壊れる | ✅ 済み（E-03: 「verify が contract を読む」検査 + pattern↔path 自己整合へ変更。clean.sh の artifact 参照検査も contract 駆動化（E-05）） |
 
 ---
 
@@ -287,6 +287,46 @@ checker exit 0、`git diff --check` クリーン。`make iso` / `make verify` **
 `make iso` / `make verify` / `make test-qemu-runtime` **未実行**。
 実機確認7項目（offline 起動、setup 起動、Wi-Fi 接続、接続中 setup 維持、time sync 待機、
 prohibited navigation 復帰、unnecessary restart なし）**未実行**。
+
+## 4.5 Stage E: release manifest・ISO 完全照合・再現可能ビルド — ✅
+
+**目的**: release ISO が source tree と一致することを manifest から一貫して証明する。
+
+| Step | 内容 | 状態 |
+|---|---|---|
+| E-00 | 基準線確認（mappings 31 / iso_paths 34 / 手書き一覧の所在記録） | ✅ 記録済み（`d68da94` 時点） |
+| E-01 | bootloader mapping + iso-root 登録 + symlink source 拒否 | ✅ `7d02146` |
+| E-02 | ISO 抽出 helper 集約（`scripts/lib/iso-extract.sh` + bats 12件） | ✅ `8f8f0c1` |
+| E-03 | verify-iso.sh manifest 駆動化 + checker 追随 | ✅ `1a9ddf6` |
+| E-04 | artifact metadata schema（schema_version 1 + contract/manifest hash 相互照合） | ✅ `313f6a4` |
+| E-05 | build/publish/clean の artifact 一覧を contract 駆動化 | ✅ `a61526b` |
+| E-06 | stale fixture test（fixture ISO による end-to-end 拒否証明 + 全 squashfs mapping exact 昇格） | ✅ `03ac75f` |
+| E-07 | 再現可能ビルド調査（docs/reproducible-builds.md） | ✅ `346aa4a` |
+| E-08 | 再現性の安全な範囲を実装（SOURCE_DATE_EPOCH/locale/TZ/umask、pin 禁止） | ✅ `263d636` |
+| E-09 | Phase 5 ゲート | ✅ 下記参照 |
+
+**逸脱・設計判断（記録）**:
+1. squashfs mapping **31 件全てを `exact` に昇格**（E-06）。image は clean worktree の
+   tracked ファイルを verbatim に取り込むため成立する想定だが、**実 ISO での positive 検証は
+   未実施**。実ビルドで乖離が出た場合は該当 mapping を証拠つきで降格する（BL-05）。
+2. `verify_partitions` の positive 経路（MBR+GPT hybrid 同時成立）は fixture ISO で
+   再現不能（GPT は実 bootloader hybrid 由来）。拒否経路のみ bats で検証し、
+   positive は実 ISO 検証（BL-05）に委ねる。
+3. verify-iso.sh は stage 関数構成に再編（source 時は関数定義のみ、実行時は全 stage 必ず
+   実行、環境変数による skip 経路なし）。fixture テストはこの seam を使う。
+4. jq の `@tsv` はパターン内バックスラッシュを再エスケープするため、contract からの
+   レコード受け渡しは全て NUL 区切り（`\u0000` 区切り文字）に統一（initrd regex が壊れる実バグを検出・修正）。
+5. clean.sh の contract 読み出しは host に jq が無いため python3 実装。
+   契約由来の name は `''`/`*/*`/`.*` を拒否してから rm/mv/検証に使う（3 script 共通）。
+6. パターン検査の追随（P2）: test_artifact_pipeline の verify/clean 系 5 件、
+   artifacts.bats の fixture コピー（lib + contract）、test_contracts.py の
+   exact 集合テスト（歴史的 5 件を下限 floor 化 + squashfs 全件 exact の検査へ）。
+
+**E-09 結果（2026-07-21）**: コンテナ `make test`（static 658 + contracts 112 +
+bats **214**〔iso-extract 12 / verify-stale 13 を含む〕）全 pass、checker exit 0、
+`git diff --check` クリーン。`make configure && make iso && make verify` および
+QEMU 系は**未実行**（fixture で検証できない範囲: verify_partitions positive、
+実 live-build 生成物との exact 照合、bootloader 実配置）。
 
 ---
 

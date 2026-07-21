@@ -172,6 +172,8 @@ Every column and its meaning:
 | SIM-34 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/runtime/kiosk_signal.py` | squashfs | file (Python module) | `cmp` | YES |
 | SIM-35 | mapping | (via auto/config) | `/usr/local/libexec/sushida-kiosk-signal` | squashfs | file (script) | `cmp` | YES |
 
+**Stage E (2026-07-21) 以降**: squashfs 領域の全 mapping は `current_verification: "exact"`（verify-iso.sh が byte 比較 + mode/owner/group を image 内で照合）。bootloader 入力（SIM-20〜22 相当）は iso-root presence として mapping / required_iso_paths / verify に登録済み。build-info.json は schema_version 1 で `source_date_epoch` / `release_contract_sha256` / `package_manifest_sha256` を持ち、verify が相互照合する。
+
 ### Metadata
 
 | ID | Domain | Contract item | Source | Notes |
@@ -223,7 +225,7 @@ behaviour change is performed.
 | `source_image_mappings` mode | Filesystem mode matches contract declaration |
 | `source_image_mappings` consistency | `current_verification: exact` ⇒ `comparison` must be `cmp` or `sha256` |
 | `required_iso_paths` ↔ mappings | Every squashfs path has a mapping with matching `region/file_type/required/security_critical` |
-| `required_iso_paths` iso-root | Path (or regex-escaped form) referenced in `verify-iso.sh` |
+| `required_iso_paths` iso-root | `verify-iso.sh` が release contract を読む manifest 駆動実装であること（個別 path 文字列の重複は廃止。Stage E-03） + contract 内の pattern↔path 自己整合 |
 | `path_pattern` / `match_type` | When `match_type=regex`, the `path_pattern` must compile and match its own `path` |
 | `metadata.required_fields` | Token presence in `build.sh` (git rev-parse, date, package_version, etc.) |
 | `metadata.static_values` | Field/value pair match in `build.sh` (`--arg` jq form or `=` assignment) |
