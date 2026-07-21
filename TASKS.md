@@ -191,7 +191,7 @@ production Git history.
 - Verification: `tests/static/test_input_watch.py`（新規）、checker 0、
   bats 220
 - Manual checks: 実機ホットキー動作は再ビルド ISO で要確認
-- Evidence: （本コミット） / 2026-07-22
+- Evidence: `424a8bd` / 2026-07-22
 
 ### FB-05 / CI（docker root 実行）での verify-stale 5 件失敗
 
