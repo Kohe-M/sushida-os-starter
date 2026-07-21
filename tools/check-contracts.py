@@ -969,6 +969,9 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
     static_vals = meta.get("static_values", {})
     req_fields = meta.get("required_fields", [])
     metadata_tokens: dict[str, tuple[str, ...]] = {
+        "schema_version": ("schema_version",),
+        "release_contract_sha256": ("release_contract_sha256",),
+        "package_manifest_sha256": ("package_manifest_sha256",),
         "git_commit": ("rev-parse",),
         "git_dirty": ("git_dirty",),
         "build_timestamp": ("date -u",),

@@ -103,8 +103,14 @@ git_commit="$(git -C "$PROJECT_ROOT" rev-parse --verify HEAD)"
 git_dirty=false
 build_timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 live_build_version="$(lb --version | head -n 1)"
+# Tie the artifact set to the manifest it was built and verified against.
+release_contract_sha256="$(sha256sum "$PROJECT_ROOT/contracts/release-contract.json" | awk '{print $1}')"
+package_manifest_sha256="$(sha256sum "$STAGING/package-manifest.txt" | awk '{print $1}')"
 
 jq -n \
+    --argjson schema_version 1 \
+    --arg release_contract_sha256 "$release_contract_sha256" \
+    --arg package_manifest_sha256 "$package_manifest_sha256" \
     --arg git_commit "$git_commit" \
     --argjson git_dirty "$git_dirty" \
     --arg debian_release "trixie" \
@@ -115,6 +121,9 @@ jq -n \
     --arg live_build_version "$live_build_version" \
     --arg iso_sha256 "$iso_sha256" \
     '{
+        schema_version: $schema_version,
+        release_contract_sha256: $release_contract_sha256,
+        package_manifest_sha256: $package_manifest_sha256,
         git_commit: $git_commit,
         git_dirty: $git_dirty,
         debian_release: $debian_release,

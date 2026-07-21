@@ -55,6 +55,9 @@ def test_build_produces_exact_required_artifacts() -> None:
 def test_build_info_contains_required_fields() -> None:
     text = BUILD.read_text()
     for field in (
+        "schema_version",
+        "release_contract_sha256",
+        "package_manifest_sha256",
         "git_commit",
         "debian_release",
         "build_timestamp",
@@ -88,6 +91,11 @@ def test_verify_checks_checksum_metadata_and_manifest() -> None:
     assert "dirty Git worktree" in text
     assert 'status --porcelain --untracked-files=all' in text
     assert "current Git worktree is dirty" in text
+    # Schema-versioned metadata cross-checks: the artifact set must be tied
+    # to the exact release contract and the published package manifest.
+    assert "(.schema_version == 1)" in text
+    assert "artifact was built against a different release contract" in text
+    assert "package manifest does not match build metadata" in text
 
 
 def test_verify_checks_iso_and_squashfs_contents() -> None:

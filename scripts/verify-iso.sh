@@ -55,6 +55,9 @@ expected_name="$(awk '{print $2}' "$resolved_dir/SHA256SUMS")"
 )
 
 jq -e '
+    (.schema_version == 1) and
+    (.release_contract_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
+    (.package_manifest_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
     (.git_commit | type == "string" and test("^[0-9a-f]{40,64}$")) and
     (.git_dirty | type == "boolean") and
     (.debian_release == "trixie") and
@@ -88,6 +91,17 @@ for package in chromium cage; do
     metadata_version="$(jq -r ".${package}_version" "$resolved_dir/build-info.json")"
     [ "$version" = "$metadata_version" ] || fail "$package version mismatch"
 done
+
+# The artifact set must have been built against this exact manifest, and the
+# published package manifest must be the one recorded at build time.
+contract_sha="$(sha256sum "$CONTRACT" | awk '{print $1}')"
+metadata_contract_sha="$(jq -r '.release_contract_sha256' "$resolved_dir/build-info.json")"
+[ "$metadata_contract_sha" = "$contract_sha" ] || \
+    fail "artifact was built against a different release contract"
+manifest_sha="$(sha256sum "$resolved_dir/package-manifest.txt" | awk '{print $1}')"
+metadata_manifest_sha="$(jq -r '.package_manifest_sha256' "$resolved_dir/build-info.json")"
+[ "$metadata_manifest_sha" = "$manifest_sha" ] || \
+    fail "package manifest does not match build metadata"
 
 iso_scratch_init "$PROJECT_ROOT/build" "verify-artifacts" || \
     fail "verification scratch path already exists or cannot be created"
