@@ -6,7 +6,7 @@ BUILDER_TAG ?= trixie
 CONTAINER_ENGINE_NAME := $(notdir $(CONTAINER_ENGINE))
 CONTAINER_ENGINE_ARGS := $(if $(filter podman,$(CONTAINER_ENGINE_NAME)),--cgroup-manager=cgroupfs,)
 
-.PHONY: builder configure iso test test-static test-shell test-contracts check-contracts test-qemu test-qemu-boot test-qemu-runtime test-qemu-powerdown qemu verify clean distclean help doctor doctor-build doctor-qemu ci container-test container-shell container-configure container-iso container-verify
+.PHONY: builder configure iso test test-static test-shell test-contracts check-contracts check-structure test-qemu test-qemu-boot test-qemu-runtime test-qemu-powerdown qemu verify clean distclean help doctor doctor-build doctor-qemu ci container-test container-shell container-configure container-iso container-verify
 
 help:
 	@echo 'Sushi-da OS development targets'
@@ -17,6 +17,7 @@ help:
 	@echo '    make test-shell    ShellCheck + BATS'
 	@echo '    make test-contracts Contract schema + fixture tests'
 	@echo '    make check-contracts  Check contracts against current source'
+	@echo '    make check-structure  Check STRUCTURE.txt is up to date'
 	@echo '    make doctor        Check host prerequisites (profile: test)'
 	@echo '    make doctor-build  Check prerequisites for ISO build'
 	@echo '    make doctor-qemu   Check prerequisites for QEMU tests'
@@ -101,7 +102,10 @@ doctor-build:
 doctor-qemu:
 	./scripts/doctor.sh qemu
 
-ci: test check-contracts
+check-structure:
+	python3 tools/gen-structure.py --check
+
+ci: test check-contracts check-structure
 	git diff --check
 
 container-test:
