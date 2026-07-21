@@ -76,24 +76,39 @@ production Git history.
 
 ### BL-02 / connection_in_progress の実出力
 
-- Status: BACKLOG | Severity: Low | Dependency: BL-01
-- Scope: Wi-Fi coordinator → runtime_state 連携
-- Acceptance criteria: 接続試行中に state file の `connection_in_progress` が true
-- Verification: characterization test 拡張
-- Out of scope: watcher 側での利用（別タスク）
+- Status: DONE | Severity: Low | Dependency: BL-01
+- Evidence: 2026-07-21。coordinator が専用 0755 dir の内容なし marker を発行
+  （best-effort・テストは opt-in）、netwatch が毎周期 state file に鏡映
+  （`--set-connection-in-progress` RMW）。characterization 66件無変更、
+  marker lifecycle 5件 + CLI + bats 2件追加。
+- 設計判断: wifi-setup は kiosk の runtime dir に書けない（権限境界維持）ため、
+  `/run/sushida-wifi-status` を新設して片方向・内容なしの existence flag のみ共有。
+- 残: watcher が in-progress 中に restart を抑制する利用は別タスク（必要になれば登録）
 
 ### BL-03 / `time-sync` 専用 route 化の判断
 
-- Status: BACKLOG | Severity: Low | Dependency: BL-01
-- Acceptance criteria: 専用 route 化する/しないの決定が work order に記録され、
-  する場合は routes model・contract `routes`・checker・bats が一括更新される
-- Out of scope: 決定前の実装
+- Status: DONE | Severity: Low | Dependency: BL-01
+- 決定 (2026-07-21): **専用 route 化しない**。
+  根拠: (a) state protocol の `time_sync_required` が route と直交する独立
+  フィールドとして既に存在し、消費者は判別可能 (b) 専用 route は contract
+  `routes` の3者照合・launcher のページ選択・専用ページ新設まで波及するが、
+  低頻度シナリオ（RTC 異常）に対する UI 差別化の便益が現状ない
+  (c) route 集合の安定はチェック機構を単純に保つ。
+  routes.py の予約コメント（将来 `time-sync`）は維持し、専用ページの需要が
+  生じた時点で backlog を再登録する。
 
 ### BL-04 / 初版スコープ外の独立ハードニング
 
-- Status: BACKLOG | Severity: Medium | Dependency: 独立
-- 内容: SUSHIDA-CFG ラベル衝突対策 / RTC 判定改善 / console=ttyS0 方針
-- Acceptance criteria: 各項目ごとに設計判断 + 実装 + テスト（3 子タスクに分割して着手）
+- Status: DONE | Severity: Medium | Dependency: 独立
+- Evidence: 2026-07-21、3項目とも実装（commit `e09c5ec`）:
+  1. ラベル衝突: config partition を固定 UUID で mount（公開リポジトリのため
+     秘匿性はなく「偶発衝突への頑健化」。改竄耐性ではないと明記）
+  2. RTC 判定: 下限を image build epoch（SOURCE_DATE_EPOCH 由来の config
+     mtime）+5年の窓に変更。stat 失敗時は旧固定値に fallback
+  3. console=ttyS0 方針: `--bootappend-live` で既定 BIOS/UEFI entry に
+     serial console + systemd status（実 ISO 診断で既定 entry が serial
+     なしだった事実に基づく）。VGA は quiet のまま
+- 実 ISO/QEMU での確認は BL-05 の再ビルド検証に含む
 
 ### BL-05 / 実 ISO・QEMU・実機検証の消化
 
