@@ -146,7 +146,66 @@ production Git history.
   11 シナリオ（正常系 + 全 refuse 経路）を両実装に同時適用し判定一致を検査
 - Evidence: 2026-07-21、11/11 pass（commit は本タスクの commit）
 
-## 3. 運用ルール（旧 Working rules の後継）
+## 3. 実機フィードバック対応（2026-07-22、ユーザー承認済みタスク）
+
+### FB-01 / 再起動後の SSID 復元失敗の修正
+
+- Status: DONE | Severity: High
+- 症状: 再起動後、設定ページに「SSIDが見つかりません」。原因は Wi-Fi アダプタの
+  firmware ロード / NM takeover 完了前に復元リトライ（旧 5 回）が尽きること。
+- 対応: `nmcli.wifi_device_waiting()`（unmanaged/unavailable のときのみ true、
+  照会失敗は false で fail-open）を復元ループでポーリングし、リトライを消費せず
+  待機（120s deadline は不変）。リトライ上限 5→8（runtime contract 同時更新）。
+- Verification: `tests/static/test_wifi_restore_readiness.py`（新規）、
+  characterization 75 件不変、checker 0
+- Manual checks: 実機での再起動→自動再接続は未確認（次回実機試験で確認）
+- Evidence: `62d545a` / 2026-07-22
+
+### FB-02 / 画面拡大率 2 倍
+
+- Status: DONE | Severity: Medium
+- 対応: sushida-session の Chromium 引数に `--force-device-scale-factor=2`。
+  サイト DOM・注入は一切なし（AGENTS §1 遵守）。
+- Verification: `test_launcher.py::test_helper_display_scale_is_fixed_two`
+- Manual checks: 実機での見え方は未確認
+- Evidence: `c76fdeb` / 2026-07-22
+
+### FB-03 / ノート PC で音声が出ない
+
+- Status: DONE（イメージ側） | Severity: High
+- 対応: `firmware-sof-signed` + `alsa-ucm-conf` を package list / release
+  contract / 090 hook に追加（post-2019 Intel ノートは SOF なしでカード自体が
+  出ない）。加えて FB-04 の起動時 unmute / 既定音量適用。
+- Manual checks: 実機での発音確認は再ビルド ISO で要確認
+- Evidence: `8910c99` / 2026-07-22
+
+### FB-04 / 音量・輝度のホットキー + 起動時初期値
+
+- Status: DONE（イメージ側） | Severity: Medium
+- 対応: 新規 root サービス `sushida-input-watch`（python3-evdev）。固定
+  キー→アクション表（VOLUMEUP/DOWN/MUTE/BRIGHTNESSUP/DOWN）、amixer 固定
+  argv・sysfs backlight 書き込みのみ、レート制限 0.15s、輝度下限 5%（黒画面
+  防止）。config.env に `AUDIO_VOLUME_PERCENT=70`（session が wpctl で
+  best-effort 適用）と `SCREEN_BRIGHTNESS_PERCENT=80`（daemon が適用）。
+  3 点登録（release contract mapping / 090 hook / fixture）+ service enable。
+- Verification: `tests/static/test_input_watch.py`（新規）、checker 0、
+  bats 220
+- Manual checks: 実機ホットキー動作は再ビルド ISO で要確認
+- Evidence: （本コミット） / 2026-07-22
+
+### FB-05 / CI（docker root 実行）での verify-stale 5 件失敗
+
+- Status: DONE | Severity: High
+- 原因: git-archive の tar.umask 既定 002 によるモード正規化（dir 0775 /
+  file 0664）を root 実行の GNU tar が保存し、fixture が契約宣言モードと
+  乖離。ローカル非 root 実行では umask 022 で偶然正規化され検出不能だった。
+  新 builder イメージでは tar の fchmodat 系 syscall を seccomp が拒否する
+  別問題も併発。
+- 対応: fixture 展開を Python tarfile + 明示モード正規化（0755/0644）へ。
+  root（CI 形）14/14・非 root gate 220/220 で検証。
+- Evidence: `650e642` / 2026-07-22
+
+## 4. 運用ルール（旧 Working rules の後継）
 
 - 1 タスク = 1 commit（`docs/refactoring-work-order.md` §1.2 の git 運用に従う）
 - 実装とテストは同じタスクで完結させる（原則 P1〜P5 は work order §2.2）

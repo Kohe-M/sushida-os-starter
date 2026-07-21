@@ -86,6 +86,7 @@ def _build_minimal_repo(root: Path) -> None:
         "sushida-wifi-setup.service":
             "[Service]\nRuntimeDirectory=sushida-wifi-setup\nRuntimeDirectoryMode=0700\n"
             "ReadWritePaths=/run/sushida-wifi-status\n",
+        "sushida-input-watch.service": "[Service]\n",
         "var-lib-sushida\\x2dconfig.mount":
             "[Mount]\nWhere=/var/lib/sushida-config\n",
     }
@@ -100,6 +101,7 @@ def _build_minimal_repo(root: Path) -> None:
         'systemctl enable var-lib-sushida\\x2dconfig.mount\n'
         'systemctl enable sushida-config-prepare.service\n'
         'systemctl enable sushida-wifi-setup.service\n'
+        'systemctl enable sushida-input-watch.service\n'
         'systemctl enable systemd-timesyncd.service\n'
     )
     (root / "live-build/config/hooks/live/090-validate-image.hook.chroot").write_text(
@@ -163,7 +165,7 @@ def _build_minimal_repo(root: Path) -> None:
         "cage", "chromium", "network-manager", "wpasupplicant",
         "wireless-regdb", "polkitd", "pipewire", "pipewire-pulse",
         "wireplumber", "libspa-0.2-modules", "dbus-user-session",
-        "alsa-ucm-conf",
+        "alsa-ucm-conf", "alsa-utils",
         "libgl1-mesa-dri", "mesa-va-drivers", "libegl1", "libgles2",
         "libgbm1", "libdrm2", "libwayland-client0", "libwayland-server0",
         "keyboard-configuration", "console-setup", "xkb-data",
@@ -173,7 +175,7 @@ def _build_minimal_repo(root: Path) -> None:
         "firmware-sof-signed",
         "intel-microcode", "amd64-microcode",
         "ca-certificates", "systemd-timesyncd",
-        "python3-minimal", "python3", "pciutils",
+        "python3-minimal", "python3", "python3-evdev", "pciutils",
     ]
     (root / "live-build/config/package-lists/kiosk.list.chroot").write_text(
         "\n".join(pkgs) + "\n"
@@ -226,6 +228,9 @@ def _build_minimal_repo(root: Path) -> None:
         "pid_uid=$(stat -c '%u' \"/proc/$pid\")\n"
         "grep -Eq '(^|/)sushida-kiosk\\.service($|/)' \"$cgroup_file\"\n"
         'kill -TERM -- "$pid"\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-input-watch").write_text(
+        '#!/usr/bin/env python3\n'
     )
     (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-config-prepare").write_text(
         '#!/usr/bin/env bash\n'

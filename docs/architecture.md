@@ -150,10 +150,18 @@ The blocklist entries are `*` (default deny) and `view-source:*`
 
 ## Configurable URL
 
-The environment file `/etc/sushida-os/config.env` contains `SUSHIDA_URL` and
-`NETWORK_SETUP_GRACE_SECONDS`. Changing the URL only changes the initial URL
-Chromium opens; it cannot bypass the launcher validation or the managed
-policy boundary.
+The environment file `/etc/sushida-os/config.env` contains `SUSHIDA_URL`,
+`NETWORK_SETUP_GRACE_SECONDS`, `NETWORK_CHECK_INTERVAL_SECONDS`, and the
+boot defaults `AUDIO_VOLUME_PERCENT` (0–100, applied to the PipeWire
+default sink by the session helper) and `SCREEN_BRIGHTNESS_PERCENT`
+(5–100, applied to the backlight by `sushida-input-watch`).  Changing the
+URL only changes the initial URL Chromium opens; it cannot bypass the
+launcher validation or the managed policy boundary.
+
+During operation the keyboard volume keys and brightness keys adjust the
+mixer and backlight in fixed steps via the root `sushida-input-watch`
+listener (fixed key→action table, rate-limited, 5% brightness floor so
+the panel can never be driven to black).
 
 Only URLs within the official `https://sushida.net/` origin are permitted.
 Any attempt to set `SUSHIDA_URL=http://...` or to another host is rejected

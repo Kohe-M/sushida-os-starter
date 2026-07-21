@@ -80,8 +80,10 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 SUSHIDA_URL=""
 NETWORK_SETUP_GRACE_SECONDS=15
+AUDIO_VOLUME_PERCENT=""
 seen_url=false
 seen_setup_grace=false
+seen_volume=false
 while IFS= read -r line || [ -n "$line" ]; do
     line="${line%$'\r'}"
     if [ -z "$line" ] || [[ "$line" == "#"* ]]; then continue; fi
@@ -98,7 +100,13 @@ while IFS= read -r line || [ -n "$line" ]; do
                 echo "ERROR: Duplicate NETWORK_SETUP_GRACE_SECONDS" >&2; exit 1
             fi
             seen_setup_grace=true; NETWORK_SETUP_GRACE_SECONDS="$value" ;;
+        AUDIO_VOLUME_PERCENT)
+            if $seen_volume; then
+                echo "ERROR: Duplicate AUDIO_VOLUME_PERCENT" >&2; exit 1
+            fi
+            seen_volume=true; AUDIO_VOLUME_PERCENT="$value" ;;
         NETWORK_CHECK_INTERVAL_SECONDS) ;;
+        SCREEN_BRIGHTNESS_PERCENT) ;;
         *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;
     esac
 done < "$CONFIG_FILE"
@@ -111,6 +119,19 @@ esac
 if [ "$NETWORK_SETUP_GRACE_SECONDS" -gt 60 ]; then
     echo "ERROR: NETWORK_SETUP_GRACE_SECONDS exceeds maximum 60" >&2
     exit 1
+fi
+if [ -n "$AUDIO_VOLUME_PERCENT" ]; then
+    case "$AUDIO_VOLUME_PERCENT" in
+        *[!0-9]*)
+            echo "ERROR: AUDIO_VOLUME_PERCENT must be an integer" >&2
+            exit 1 ;;
+    esac
+    if [ "$AUDIO_VOLUME_PERCENT" -gt 100 ]; then
+        echo "ERROR: AUDIO_VOLUME_PERCENT exceeds maximum 100" >&2
+        exit 1
+    fi
+    # Validated boot default for the session helper's best-effort wpctl call.
+    export SUSHIDA_AUDIO_VOLUME_PERCENT="$AUDIO_VOLUME_PERCENT"
 fi
 
 if [ -n "${SUSHIDA_OS_NETWORK_SETUP_GRACE_SECONDS:-}" ]; then

@@ -125,6 +125,22 @@ while [ "$_w" -lt "$((AUDIO_TIMEOUT * 10))" ]; do
     _w=$((_w + 1))
 done
 
+# Boot default volume (validated by the launcher; strictly best-effort —
+# audio settings must never delay or fail the kiosk session).
+if [ -S "$_PW_SOCKET" ]; then
+    case "${SUSHIDA_AUDIO_VOLUME_PERCENT:-}" in
+        ''|*[!0-9]*) ;;
+        *)
+            if [ "$SUSHIDA_AUDIO_VOLUME_PERCENT" -le 100 ] && \
+               command -v wpctl > /dev/null 2>&1; then
+                wpctl set-volume @DEFAULT_AUDIO_SINK@ \
+                    "${SUSHIDA_AUDIO_VOLUME_PERCENT}%" > /dev/null 2>&1 || true
+                wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 > /dev/null 2>&1 || true
+            fi
+            ;;
+    esac
+fi
+
 # ── Chromium arguments ──────────────────────────────────────────────────
 CHROMIUM_ARGS=(
     --kiosk

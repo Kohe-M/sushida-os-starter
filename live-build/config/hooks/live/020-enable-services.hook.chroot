@@ -10,4 +10,5 @@ systemctl enable sushida-navigation-watch.service
 systemctl enable 'var-lib-sushida\x2dconfig.mount'
 systemctl enable sushida-config-prepare.service
 systemctl enable sushida-wifi-setup.service
+systemctl enable sushida-input-watch.service
 systemctl enable systemd-timesyncd.service

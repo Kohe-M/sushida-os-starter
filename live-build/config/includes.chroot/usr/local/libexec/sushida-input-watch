@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""Hotkey volume/brightness control for the kiosk.
+
+Root-only input listener with a fixed key->action table: the volume and
+brightness keys on the kiosk keyboard adjust the ALSA master mixer and the
+backlight in bounded steps.  At startup it applies the boot defaults from
+/etc/sushida-os/config.env (AUDIO unmute, SCREEN_BRIGHTNESS_PERCENT).
+
+Security posture: no configuration surface is reachable from the kiosk
+session — the action table, mixer argv, and sysfs paths are constants;
+input events select an action but never contribute data to it.  Actions
+are rate-limited.  Log lines carry fixed tokens only.
+"""
+
+from __future__ import annotations
+
+import os
+import select
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+try:  # test environments exercise the pure helpers without evdev
+    import evdev
+except ImportError:  # pragma: no cover
+    evdev = None
+
+CONFIG_FILE = Path("/etc/sushida-os/config.env")
+BACKLIGHT_ROOT = Path("/sys/class/backlight")
+AMIXER = "/usr/bin/amixer"
+
+VOLUME_STEP_PERCENT = 5
+BRIGHTNESS_STEP_PERCENT = 10
+# Never drive the panel to zero: a black screen on a lockdown kiosk is
+# indistinguishable from a crash and cannot be recovered by users.
+BRIGHTNESS_FLOOR_PERCENT = 5
+DEFAULT_BRIGHTNESS_PERCENT = 80
+MIN_ACTION_INTERVAL_SECONDS = 0.15
+DEVICE_RESCAN_SECONDS = 60.0
+
+
+def read_config_percent(
+    key: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+    path: Path = CONFIG_FILE,
+) -> int:
+    """Read an integer percent from config.env, failing closed to default.
+
+    Only a plain KEY=digits line within [minimum, maximum] is accepted;
+    anything else (missing file, malformed value, out of range) yields the
+    default so a bad config can never black out the screen or blast audio.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return default
+    value = default
+    for line in lines:
+        if not line.startswith(key + "="):
+            continue
+        raw = line[len(key) + 1:].strip()
+        if raw.isdigit() and minimum <= int(raw) <= maximum:
+            value = int(raw)
+    return value
+
+
+def clamp_brightness_raw(percent: int, max_raw: int) -> int:
+    floor_raw = max(1, max_raw * BRIGHTNESS_FLOOR_PERCENT // 100)
+    raw = max_raw * percent // 100
+    return max(floor_raw, min(max_raw, raw))
+
+
+def backlight_device(root: Path = BACKLIGHT_ROOT) -> Path | None:
+    try:
+        for entry in sorted(root.iterdir()):
+            if (entry / "brightness").is_file() and \
+                    (entry / "max_brightness").is_file():
+                return entry
+    except OSError:
+        pass
+    return None
+
+
+def _read_raw(path: Path) -> int | None:
+    try:
+        return int(path.read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def set_brightness_percent(percent: int) -> None:
+    device = backlight_device()
+    if device is None:
+        return
+    max_raw = _read_raw(device / "max_brightness")
+    if max_raw is None or max_raw <= 0:
+        return
+    try:
+        (device / "brightness").write_text(
+            f"{clamp_brightness_raw(percent, max_raw)}\n"
+        )
+    except OSError:
+        pass
+
+
+def step_brightness(direction: int) -> None:
+    device = backlight_device()
+    if device is None:
+        return
+    max_raw = _read_raw(device / "max_brightness")
+    current = _read_raw(device / "brightness")
+    if max_raw is None or max_raw <= 0 or current is None:
+        return
+    percent = current * 100 // max_raw
+    percent += direction * BRIGHTNESS_STEP_PERCENT
+    percent = max(BRIGHTNESS_FLOOR_PERCENT, min(100, percent))
+    try:
+        (device / "brightness").write_text(
+            f"{clamp_brightness_raw(percent, max_raw)}\n"
+        )
+    except OSError:
+        pass
+
+
+def run_amixer(*args: str) -> None:
+    """Run amixer with a fixed argv; strictly best-effort."""
+    try:
+        subprocess.run(
+            [AMIXER, "-q", *args],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            env={"LANG": "C", "LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
+def volume_up() -> None:
+    run_amixer("set", "Master", f"{VOLUME_STEP_PERCENT}%+", "unmute")
+
+
+def volume_down() -> None:
+    run_amixer("set", "Master", f"{VOLUME_STEP_PERCENT}%-", "unmute")
+
+
+def volume_mute_toggle() -> None:
+    run_amixer("set", "Master", "toggle")
+
+
+def brightness_up() -> None:
+    step_brightness(1)
+
+
+def brightness_down() -> None:
+    step_brightness(-1)
+
+
+def apply_boot_defaults() -> None:
+    # Some codecs power up with a muted Master/Speaker; unmute is idempotent.
+    run_amixer("set", "Master", "unmute")
+    run_amixer("set", "Speaker", "unmute")
+    set_brightness_percent(read_config_percent(
+        "SCREEN_BRIGHTNESS_PERCENT",
+        DEFAULT_BRIGHTNESS_PERCENT,
+        BRIGHTNESS_FLOOR_PERCENT,
+        100,
+    ))
+
+
+def _watched_actions() -> dict[int, tuple[str, "callable"]]:
+    codes = evdev.ecodes
+    return {
+        codes.KEY_VOLUMEUP: ("volume-up", volume_up),
+        codes.KEY_VOLUMEDOWN: ("volume-down", volume_down),
+        codes.KEY_MUTE: ("volume-mute-toggle", volume_mute_toggle),
+        codes.KEY_BRIGHTNESSUP: ("brightness-up", brightness_up),
+        codes.KEY_BRIGHTNESSDOWN: ("brightness-down", brightness_down),
+    }
+
+
+def _open_devices(watched: dict[int, tuple[str, "callable"]]) -> list:
+    devices = []
+    for path in evdev.list_devices():
+        try:
+            device = evdev.InputDevice(path)
+            keys = device.capabilities().get(evdev.ecodes.EV_KEY, [])
+        except OSError:
+            continue
+        if any(code in keys for code in watched):
+            devices.append(device)
+        else:
+            device.close()
+    return devices
+
+
+def main() -> int:
+    if evdev is None:
+        print("ERROR: python3-evdev is not available", file=sys.stderr)
+        return 1
+    if os.geteuid() != 0:
+        print("ERROR: sushida-input-watch must run as root", file=sys.stderr)
+        return 1
+    apply_boot_defaults()
+    watched = _watched_actions()
+    devices = _open_devices(watched)
+    last_action = 0.0
+    last_rescan = time.monotonic()
+    while True:
+        now = time.monotonic()
+        if not devices or now - last_rescan >= DEVICE_RESCAN_SECONDS:
+            for device in devices:
+                try:
+                    device.close()
+                except OSError:
+                    pass
+            devices = _open_devices(watched)
+            last_rescan = now
+            if not devices:
+                time.sleep(5.0)
+                continue
+        try:
+            ready, _, _ = select.select(devices, [], [], DEVICE_RESCAN_SECONDS)
+        except OSError:
+            devices = []
+            continue
+        for device in ready:
+            try:
+                events = list(device.read())
+            except OSError:
+                devices = []
+                break
+            for event in events:
+                if event.type != evdev.ecodes.EV_KEY or event.value not in (1, 2):
+                    continue
+                entry = watched.get(event.code)
+                if entry is None:
+                    continue
+                now = time.monotonic()
+                if now - last_action < MIN_ACTION_INTERVAL_SECONDS:
+                    continue
+                last_action = now
+                name, action = entry
+                action()
+                print(f"action={name}", flush=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

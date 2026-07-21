@@ -696,7 +696,13 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     config_env = _must_exist(root, f"{PRODUCTION_ROOT}/etc/sushida-os/config.env",
                              "config.env", result, "runtime")
     if config_env:
-        allowed = {"SUSHIDA_URL", "NETWORK_CHECK_INTERVAL_SECONDS", "NETWORK_SETUP_GRACE_SECONDS"}
+        allowed = {
+            "SUSHIDA_URL",
+            "NETWORK_CHECK_INTERVAL_SECONDS",
+            "NETWORK_SETUP_GRACE_SECONDS",
+            "AUDIO_VOLUME_PERCENT",
+            "SCREEN_BRIGHTNESS_PERCENT",
+        }
         seen: set[str] = set()
         for line_number, raw_line in enumerate(
                 config_env.read_text().splitlines(), start=1):

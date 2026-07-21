@@ -80,7 +80,8 @@ def test_network() -> None:
 
 def test_audio() -> None:
     s = _package_set()
-    for pkg in ("pipewire", "pipewire-pulse", "wireplumber", "alsa-ucm-conf"):
+    for pkg in ("pipewire", "pipewire-pulse", "wireplumber", "alsa-ucm-conf",
+                "alsa-utils"):
         assert pkg in s, f"Missing audio package: {pkg}"
 
 
@@ -144,6 +145,10 @@ def test_ca_certificates() -> None:
 
 def test_image_validation_runtime() -> None:
     assert {"python3-minimal", "python3"} <= _package_set()
+
+
+def test_hotkey_runtime() -> None:
+    assert "python3-evdev" in _package_set()
 
 
 def test_diagnostics_runtime() -> None:

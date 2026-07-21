@@ -25,6 +25,8 @@ dbus-user-session
 # ALSA UCM profiles: wireplumber cannot route modern Intel laptop codecs
 # (sof-hda-dsp) without them
 alsa-ucm-conf
+# amixer for the fixed volume-hotkey actions (sushida-input-watch)
+alsa-utils
 
 # Graphics acceleration -- Mesa DRI, VA-API, EGL, GLES, GBM, DRM
 libgl1-mesa-dri
@@ -69,4 +71,6 @@ systemd-timesyncd
 python3-minimal
 # Wi-Fi setup backend uses the complete Python standard library
 python3
+# Input-event access for the fixed volume/brightness hotkey listener
+python3-evdev
 pciutils

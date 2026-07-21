@@ -71,6 +71,8 @@ while IFS= read -r line || [ -n "$line" ]; do
             fi
             seen_interval=true; INTERVAL="$value" ;;
         NETWORK_SETUP_GRACE_SECONDS) ;;
+        AUDIO_VOLUME_PERCENT) ;;
+        SCREEN_BRIGHTNESS_PERCENT) ;;
         *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;
     esac
 done < "$CONFIG_FILE"

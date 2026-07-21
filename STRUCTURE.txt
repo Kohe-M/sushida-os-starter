@@ -92,6 +92,7 @@ live-build/
             90-sushida-kiosk.conf
           system/
             sushida-config-prepare.service
+            sushida-input-watch.service
             sushida-kiosk.service
             sushida-navigation-watch.service
             sushida-network-watch.service
@@ -126,6 +127,7 @@ live-build/
             sushida-network-watch
           libexec/
             sushida-config-prepare
+            sushida-input-watch
             sushida-kiosk-signal
             sushida-session
             sushida-wifi-setup
@@ -199,6 +201,7 @@ tests/
     test_flash_safety.py
     test_gen_structure.py
     test_image_validation.py
+    test_input_watch.py
     test_keyboard.py
     test_kiosk_signal_equivalence.py
     test_kiosk_user.py

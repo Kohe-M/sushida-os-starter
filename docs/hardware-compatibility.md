@@ -7,6 +7,8 @@
 - AMD integrated graphics with Mesa and `firmware-amd-graphics`
 - Intel Wi-Fi (`firmware-iwlwifi`) and common Realtek devices (`firmware-realtek`)
 - HDMI/DisplayPort or HDA analog audio through PipeWire/WirePlumber
+- Intel Smart Sound (SOF) laptop codecs via `firmware-sof-signed` +
+  `alsa-ucm-conf` (post-2019 Intel notebooks expose no card without them)
 
 The image includes DRM, GBM, EGL/GLES, Wayland, Mesa DRI/VA, PipeWire,
 PipeWire-Pulse, and standard keyboard data. The image selects the physical JIS
