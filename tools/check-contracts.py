@@ -980,6 +980,7 @@ def _drift_release(contract: dict, root: Path, result: Result) -> None:
     req_fields = meta.get("required_fields", [])
     metadata_tokens: dict[str, tuple[str, ...]] = {
         "schema_version": ("schema_version",),
+        "source_date_epoch": ("SOURCE_DATE_EPOCH",),
         "release_contract_sha256": ("release_contract_sha256",),
         "package_manifest_sha256": ("package_manifest_sha256",),
         "git_commit": ("rev-parse",),

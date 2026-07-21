@@ -72,6 +72,7 @@ verify_checksums() {
 verify_metadata() {
     jq -e '
         (.schema_version == 1) and
+        (.source_date_epoch | type == "number" and . > 0) and
         (.release_contract_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
         (.package_manifest_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
         (.git_commit | type == "string" and test("^[0-9a-f]{40,64}$")) and

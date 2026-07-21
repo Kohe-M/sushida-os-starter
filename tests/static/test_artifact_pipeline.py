@@ -47,6 +47,15 @@ def test_build_produces_exact_required_artifacts() -> None:
     assert "verify-iso.sh" in text
     assert 'BUILD_LOG="$BUILD_ROOT/iso-build.log"' in text
     assert 'BUILD_RESULT=success' in text
+    # Deterministic input controls (docs/reproducible-builds.md §4): commit
+    # date drives embedded timestamps; locale/TZ/umask are pinned; package
+    # versions must never be pinned.
+    assert 'SOURCE_DATE_EPOCH="$(git -C "$PROJECT_ROOT" log -1 --format=%ct)"' in text
+    assert "export SOURCE_DATE_EPOCH" in text
+    assert "export LC_ALL=C.UTF-8 LANG=C.UTF-8 TZ=UTC" in text
+    assert "umask 022" in text
+    assert "apt-get install" not in text
+    assert "Pin-Priority" not in text
     assert text.index('echo "Published verified artifacts in $ARTIFACT_DIR"') < text.index(
         "BUILD_RESULT=success"
     )
@@ -56,6 +65,7 @@ def test_build_info_contains_required_fields() -> None:
     text = BUILD.read_text()
     for field in (
         "schema_version",
+        "source_date_epoch",
         "release_contract_sha256",
         "package_manifest_sha256",
         "git_commit",

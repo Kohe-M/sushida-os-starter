@@ -32,6 +32,19 @@ git_status="$(git -C "$PROJECT_ROOT" status --porcelain --untracked-files=all)"
 [ -z "$git_status" ] || \
     fail "release ISO build requires a clean Git worktree; commit source changes first"
 
+# Deterministic build inputs (docs/reproducible-builds.md §4): timestamps
+# embedded in the image derive from the commit date, not the wall clock;
+# build_timestamp in the metadata stays real and is recorded separately.
+# Package versions are deliberately NOT pinned — they are recorded in the
+# manifest instead, so security updates remain visible.
+SOURCE_DATE_EPOCH="$(git -C "$PROJECT_ROOT" log -1 --format=%ct)"
+case "$SOURCE_DATE_EPOCH" in
+    ''|*[!0-9]*) fail "cannot determine commit timestamp for SOURCE_DATE_EPOCH" ;;
+esac
+export SOURCE_DATE_EPOCH
+export LC_ALL=C.UTF-8 LANG=C.UTF-8 TZ=UTC
+umask 022
+
 STAGING="$(mktemp -d "$ARTIFACT_DIR/.build-staging.XXXXXX")"
 chmod 0700 "$STAGING"
 cleanup() {
@@ -109,6 +122,7 @@ package_manifest_sha256="$(sha256sum "$STAGING/package-manifest.txt" | awk '{pri
 
 jq -n \
     --argjson schema_version 1 \
+    --argjson source_date_epoch "$SOURCE_DATE_EPOCH" \
     --arg release_contract_sha256 "$release_contract_sha256" \
     --arg package_manifest_sha256 "$package_manifest_sha256" \
     --arg git_commit "$git_commit" \
@@ -122,6 +136,7 @@ jq -n \
     --arg iso_sha256 "$iso_sha256" \
     '{
         schema_version: $schema_version,
+        source_date_epoch: $source_date_epoch,
         release_contract_sha256: $release_contract_sha256,
         package_manifest_sha256: $package_manifest_sha256,
         git_commit: $git_commit,

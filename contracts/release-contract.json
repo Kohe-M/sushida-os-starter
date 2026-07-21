@@ -117,7 +117,8 @@
   ],
   "metadata": {
     "required_fields": [
-      "schema_version", "release_contract_sha256", "package_manifest_sha256",
+      "schema_version", "source_date_epoch",
+      "release_contract_sha256", "package_manifest_sha256",
       "git_commit", "git_dirty", "debian_release",
       "build_timestamp", "architecture",
       "chromium_version", "cage_version",

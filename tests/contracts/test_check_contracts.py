@@ -121,6 +121,7 @@ def _build_minimal_repo(root: Path) -> None:
         'package-manifest.txt\n'
         'build-info.json\n'
         'schema_version\n'
+        'SOURCE_DATE_EPOCH\n'
         'release_contract_sha256\n'
         'package_manifest_sha256\n'
         'mkdir -p artifacts/\n'

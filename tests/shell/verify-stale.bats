@@ -45,6 +45,7 @@ write_metadata() {
     commit="$(git -C "$REPO" rev-parse HEAD)"
     jq -n \
         --argjson schema_version 1 \
+        --argjson source_date_epoch 1753056000 \
         --arg release_contract_sha256 "$contract_sha" \
         --arg package_manifest_sha256 "$manifest_sha" \
         --arg git_commit "$commit" \
@@ -57,6 +58,7 @@ write_metadata() {
         --arg live_build_version "fixture 1.0" \
         --arg iso_sha256 "$iso_sha" \
         '{schema_version: $schema_version,
+          source_date_epoch: $source_date_epoch,
           release_contract_sha256: $release_contract_sha256,
           package_manifest_sha256: $package_manifest_sha256,
           git_commit: $git_commit, git_dirty: $git_dirty,
