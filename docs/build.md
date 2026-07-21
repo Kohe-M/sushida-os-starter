@@ -99,6 +99,12 @@ make container-verify      # non-privileged
 Direct `docker run` is not needed for normal development; see
 `scripts/container-run.sh` for the exact invocation used.
 
+Known limitation: with **rootless Podman**, `make container-verify`
+(non-privileged, `-u $(id -u)`) cannot create the verification scratch
+directory under the bind-mounted `build/` because the container UID does not
+map back to the host owner. Run the verify step in the privileged builder
+(as `make container-iso` already does internally) or use Docker.
+
 ## Podman on Linux
 
 Podman uses the same wrapper with `CONTAINER_ENGINE=podman`:

@@ -94,6 +94,12 @@ production Git history.
 ### BL-05 / 実 ISO・QEMU・実機検証の消化
 
 - Status: IN_PROGRESS | Severity: High | Dependency: ビルド環境
+- 進捗 (2026-07-21): `make iso && make verify` は **PASS**（commit `789ac24`、
+  ISO SHA `d541644f…`、acceptance registry R1）。exact 31件の byte/mode/owner
+  照合・partition stage・bootloader 配置とも実 ISO で成立し、contract の降格は
+  不要だった。残: QEMU 系・実機回帰。
+  既知の制約: rootless podman では `make container-verify`（非 privileged）が
+  bind mount 上の scratch 作成で失敗する。privileged 実行か docker を使う。
 - 内容: `make iso && make verify`（exact 昇格の positive 検証・partition stage 含む）、
   `make test-qemu*`、実機回帰（work order §4.3/§4.4 の未実行項目）
 - Acceptance criteria: verify exit 0 の実 ISO が存在し、acceptance registry に

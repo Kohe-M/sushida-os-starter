@@ -118,7 +118,7 @@
 
 | Run | 対象 ID | Class | 対象 commit | ISO SHA-256 | 環境（機種/FW/QEMU 版） | 手順との差分 | 結果 (PASS/FAIL) | 確認日 | 確認者 | 証拠（log/screenshot パス） |
 |---|---|---|---|---|---|---|---|---|---|---|
-|  |  |  |  |  |  |  |  |  |  |  |
+| R1 | D01, D02 | automated | `789ac24` | `d541644fc5fadee372c350cabba539cd65d319e98301da540547b78468d87dac` | rootless podman `--privileged` builder (trixie) on WSL2 | clone 上で実行（本 repo と同一 commit）。単独 `make verify` は privileged で実施 | PASS | 2026-07-21 | agent (Claude) / 依頼: repo owner | `~/code/sushida-os-iso-validation/build/iso-build.log`（会期外は再ビルドで再現） |
 
 Class の定義:
 
