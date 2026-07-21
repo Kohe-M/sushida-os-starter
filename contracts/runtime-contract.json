@@ -7,8 +7,7 @@
   },
   "runtime_paths": {
     "runtime_dir": "/run/sushida-os",
-    "active_route_file": "/run/sushida-os/active-route",
-    "time_sync_marker": "/run/sushida-os/time-sync-required",
+    "runtime_state_file": "/run/sushida-os/runtime-state.json",
     "wifi_setup_runtime_dir": "/run/sushida-wifi-setup",
     "csrf_token_file": "/run/sushida-wifi-setup/csrf-token",
     "config_mount_path": "/var/lib/sushida-config",

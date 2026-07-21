@@ -129,11 +129,25 @@ def test_launcher_offline_url_is_fixed() -> None:
     assert 'readonly OFFLINE_URL="file://localhost/usr/share/sushida-os/offline.html"' in content
     assert 'START_URL="$OFFLINE_URL"' in content
 
-def test_launcher_writes_atomic_active_route_marker() -> None:
+def test_launcher_publishes_authoritative_route_state() -> None:
+    """The route record is the schema-1 state protocol (BL-01).
+
+    Atomic temp+rename writing lives in sushida_os.runtime.runtime_state
+    and is covered by test_runtime_state.py; the launcher must go through
+    that module, pass the selected route, and treat a publish failure as
+    fatal (no `|| true`-style suppression on the publish call).
+    """
     content = LAUNCHER.read_text()
-    assert "mktemp" in content
-    assert 'mv -f -- "$route_tmp" "$BASE_RUNTIME/active-route"' in content
-    assert 'printf \'%s\\n\' "$ACTIVE_ROUTE"' in content
+    assert "python3 -m sushida_os.runtime.runtime_state" in content
+    assert '--route "$ACTIVE_ROUTE"' in content
+    assert "--time-sync-required" in content
+    publish_index = content.index("sushida_os.runtime.runtime_state")
+    publish_block = content[publish_index:content.index("exec dbus-run-session")]
+    assert "|| echo" not in publish_block and "|| true" not in publish_block
+    # The legacy marker files are retired (the --time-sync-required CLI
+    # flag legitimately remains).
+    assert "/active-route" not in content
+    assert '"$BASE_RUNTIME/time-sync-required"' not in content
 
 def test_launcher_is_executable() -> None:
     entries = _git_ls_files_stage(

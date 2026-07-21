@@ -37,9 +37,6 @@ case "${SUSHIDA_QEMU_FORCE_OFFLINE:-0}" in
         FORCE_OFFLINE=true ;;
     *) echo "ERROR: Invalid SUSHIDA_QEMU_FORCE_OFFLINE value" >&2; exit 1 ;;
 esac
-readonly ACTIVE_ROUTE_FILE="$RUNTIME_DIR/active-route"
-readonly TIME_SYNC_REQUIRED_MARKER="$RUNTIME_DIR/time-sync-required"
-
 # Resolve the shared route model and signal helper relative to this script
 # so the same paths work from the repository checkout and from the image
 # (/usr/local/bin -> /usr/lib/python3/dist-packages, /usr/local/libexec).
@@ -108,6 +105,15 @@ route_model() {
         python3 -m sushida_os.runtime.routes "$@" 2>/dev/null
 }
 
+# Read/update the runtime-state.json protocol (the authoritative route
+# record since BL-01).  Reads fail closed: any missing, malformed, or
+# unknown-versioned state reads as failure and the caller does not signal.
+runtime_state() {
+    PYTHONPATH="$RUNTIME_LIB" PYTHONDONTWRITEBYTECODE=1 \
+        python3 -m sushida_os.runtime.runtime_state \
+        --directory "$RUNTIME_DIR" "$@" 2>/dev/null
+}
+
 desired_route() {
     # Gather observations here; the route decision itself lives in the pure
     # sushida_os.runtime.routes model.  A model failure fails closed to the
@@ -117,9 +123,11 @@ desired_route() {
     if [ "$FORCE_OFFLINE" = true ]; then
         model_args+=(--force-offline)
     else
-        if [ -f "$TIME_SYNC_REQUIRED_MARKER" ]; then
+        if [ "$(runtime_state --print time-sync-required)" = "1" ]; then
             if timedatectl show -p NTPSynchronized --value 2>/dev/null | grep -qx yes; then
-                rm -f -- "$TIME_SYNC_REQUIRED_MARKER"
+                # Clearing the hold is a state write; if it fails the hold
+                # stays in place (fail closed) and is retried next cycle.
+                runtime_state --clear-time-sync || model_args+=(--time-sync-pending)
             else
                 model_args+=(--time-sync-pending)
             fi
@@ -143,9 +151,8 @@ desired_route() {
 }
 
 read_active_route() {
-    [ -f "$ACTIVE_ROUTE_FILE" ] || return 1
     local route
-    IFS= read -r route < "$ACTIVE_ROUTE_FILE" || return 1
+    route=$(runtime_state --print active-route) || return 1
     case "$route" in online|setup|offline) printf '%s\n' "$route" ;; *) return 1 ;; esac
 }
 

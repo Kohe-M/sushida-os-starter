@@ -10,7 +10,7 @@
 | release artifact・ISO 内容・mapping・metadata schema | `contracts/release-contract.json` | `scripts/build.sh` / `verify-iso.sh` / `clean.sh` | checker + `tests/contracts/` + `verify-stale.bats` |
 | route 決定ロジック | `sushida_os/runtime/routes.py`（`decide()`） | launcher / network watcher、`docs/runtime-routes.md` | `test_route_decision.py` + `DRIFT_ROUTE` |
 | kiosk 再起動の検証連鎖 | `/usr/local/libexec/sushida-kiosk-signal`（shell）+ `sushida_os/runtime/kiosk_signal.py`（Python 双子） | 両 watcher | `kiosk-signal.bats` + `test_navigation_watch.py` |
-| runtime state protocol (schema 1) | `sushida_os/runtime/runtime_state.py` | launcher（dual-write）、`docs/architecture.md` | `test_runtime_state.py` |
+| runtime state protocol (schema 1) | `sushida_os/runtime/runtime_state.py` | launcher（発行）・network watcher（読取/解除）、`docs/architecture.md` | `test_runtime_state.py` + checker `DRIFT_PATH` |
 | Wi-Fi backend の挙動 | `sushida_os/wifi/*`（実装）+ `tests/static/test_wifi_setup_backend.py`（characterization、66件） | `docs/wifi-state-machine.md`、`docs/networking.md` | characterization test |
 | Chromium navigation 境界 | `etc/chromium/policies/managed/sushida-os.json` + `sushida-navigation-watch` の `classify_url` | `docs/architecture.md` | checker（allow/blocklist）+ `test_navigation_watch.py` |
 | repository 構成一覧 | `git ls-files`（生成: `tools/gen-structure.py`） | `STRUCTURE.txt`（生成物） | `make check-structure`（CI） |

@@ -347,6 +347,8 @@ RUNTIME_SOURCE_FILES = {
     "configprep": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-config-prepare",
     "runtime_routes": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
                       "sushida_os/runtime/routes.py",
+    "runtime_state": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
+                     "sushida_os/runtime/runtime_state.py",
 }
 
 # Timeout adapters: (contract field, source key, regex template, min matches).
@@ -488,8 +490,32 @@ def _drift_runtime_paths(rpaths: dict, services: dict, texts: dict[str, str],
                             "DRIFT_PATH", f"runtime_paths.{field}",
                             f"{field} basename {base!r} not referenced")
 
-    _check_child_file("active_route_file", runtime_dir, ("launch", "netwatch"))
-    _check_child_file("time_sync_marker", runtime_dir, ("launch", "netwatch"))
+    # The runtime-state protocol file is the authoritative route record
+    # (BL-01).  The path itself is owned by the Python protocol module
+    # (PROD_RUNTIME_DIR + STATE_BASENAME); the launcher (writer) and the
+    # network watcher (reader) go through that module rather than naming
+    # the file, so the drift check follows the same chain.
+    state_file = rpaths.get("runtime_state_file", "")
+    if state_file:
+        if runtime_dir and os.path.dirname(state_file) != runtime_dir:
+            result.error("DRIFT_PATH", "runtime",
+                         "runtime_paths.runtime_state_file", "contract",
+                         f"runtime_state_file {state_file!r} is not inside "
+                         f"{runtime_dir!r}")
+        for key in ("launch", "netwatch"):
+            _expect_pattern(texts, labels, key,
+                            r"python3 -m sushida_os\.runtime\.runtime_state",
+                            result, "DRIFT_PATH",
+                            "runtime_paths.runtime_state_file",
+                            "runtime-state protocol module not invoked")
+        _expect_pattern(texts, labels, "runtime_state",
+                        rf'STATE_BASENAME = "{re.escape(os.path.basename(state_file))}"',
+                        result, "DRIFT_PATH", "runtime_paths.runtime_state_file",
+                        f"state module does not declare {os.path.basename(state_file)!r}")
+        _expect_pattern(texts, labels, "runtime_state",
+                        rf'PROD_RUNTIME_DIR = Path\("{re.escape(os.path.dirname(state_file))}"\)',
+                        result, "DRIFT_PATH", "runtime_paths.runtime_state_file",
+                        "state module production directory mismatch")
 
     wifi_setup_dir = rpaths.get("wifi_setup_runtime_dir", "")
     csrf_file = rpaths.get("csrf_token_file", "")

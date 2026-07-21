@@ -146,6 +146,7 @@ network_is_online() {
     [ "$connectivity" = full ]
 }
 
+_time_sync_flag=0
 if [ "$FORCE_OFFLINE" = true ]; then
     START_URL="$OFFLINE_URL"
     ACTIVE_ROUTE="offline"
@@ -164,11 +165,6 @@ else
         waited=$((waited + 1))
     done
     if [ "$ACTIVE_ROUTE" = "online" ]; then
-        # Remove any stale time-sync marker left from a previous boot
-        # where the RTC was wrong.  Also remove it when the clock is
-        # already plausible so the network watcher can route to online.
-        rm -f -- "$BASE_RUNTIME/time-sync-required"
-        
         # Synchronize the system clock before opening the HTTPS target.
         # A severely wrong RTC causes TLS certificate verification to fail
         # even when the network is fully operational.
@@ -192,10 +188,11 @@ else
         done
         if [ "$_time_synced" = false ] && [ "$_clock_plausible" = false ];
         then
-            # Signal the network watcher to keep the kiosk offline until
-            # the clock is corrected; otherwise it would see connected:full
-            # and restart onto the HTTPS target repeatedly.
-            : > "$BASE_RUNTIME/time-sync-required"
+            # Signal the network watcher (via the runtime-state protocol)
+            # to keep the kiosk offline until the clock is corrected;
+            # otherwise it would see connected:full and restart onto the
+            # HTTPS target repeatedly.
+            _time_sync_flag=1
             START_URL="$OFFLINE_URL"
             ACTIVE_ROUTE="offline"
         fi
@@ -208,23 +205,17 @@ else
 fi
 readonly START_URL ACTIVE_ROUTE
 
-route_tmp=$(mktemp "$BASE_RUNTIME/.active-route.XXXXXXXX")
-printf '%s\n' "$ACTIVE_ROUTE" > "$route_tmp"
-mv -f -- "$route_tmp" "$BASE_RUNTIME/active-route"
-
-# Publish the machine-readable route state protocol alongside the legacy
-# active-route/time-sync marker files (transitional dual-write; the legacy
-# files remain authoritative for the watchers).  A publish failure must
-# never block the kiosk from starting.
-_time_sync_flag=0
-if [ -f "$BASE_RUNTIME/time-sync-required" ]; then _time_sync_flag=1; fi
+# Publish the route state protocol (schema 1) — the authoritative record
+# the network watcher reads.  The write is atomic inside the protocol
+# module, and a failure aborts the launch so systemd restarts into a
+# clean retry rather than running a kiosk the watcher cannot reason
+# about.
 PYTHONPATH="$RUNTIME_LIB" PYTHONDONTWRITEBYTECODE=1 \
     python3 -m sushida_os.runtime.runtime_state \
     --directory "$BASE_RUNTIME" \
     --route "$ACTIVE_ROUTE" \
     --time-sync-required "$_time_sync_flag" \
-    --reason boot-route-selected \
-    || echo "WARN: runtime-state publish failed" >&2
+    --reason boot-route-selected
 
 exec dbus-run-session -- \
     "$SESSION_HELPER" "$START_URL"

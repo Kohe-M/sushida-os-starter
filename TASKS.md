@@ -61,7 +61,11 @@ production Git history.
 
 ### BL-01 / runtime-state.json への正本切替
 
-- Status: BACKLOG | Severity: Medium | Dependency: なし（単独 Stage 扱い）
+- Status: DONE | Severity: Medium | Dependency: なし
+- Evidence: 2026-07-21。launcher/netwatch とも protocol module 経由へ切替、
+  旧 active-route / time-sync-required ファイル廃止。bats 218 全緑
+  （state 破損・未知 schema・time-sync hold/解除の新4件含む）、checker exit 0。
+  QEMU での route 遷移確認は BL-05 の残項目に含む。
 - Scope: launcher / network watcher / runtime contract / checker `DRIFT_PATH` /
   `launch.bats`・`network-watch.bats`（挙動テストの書き換えを伴う唯一の backlog）
 - Acceptance criteria: watcher が `runtime-state.json` を読み、

@@ -145,22 +145,36 @@ def _parse_bool_flag(value: str) -> bool | None:
 
 
 def main(argv: list[str]) -> int:
-    """Fixed-flag writer CLI for shell callers.
+    """Fixed-flag CLI for shell callers.
+
+    Modes (mutually exclusive with the write flags):
+      write:              --directory D --route R --reason T [--time-sync-required 0|1]
+                          [--connection-in-progress 0|1]
+      read:               --directory D --print active-route|time-sync-required
+      clear time-sync:    --directory D --clear-time-sync
+                          (read-modify-write; fails closed when no valid state exists)
 
     A non-production directory requires SUSHIDA_OS_TEST_MODE=1, matching
-    every other runtime script's test-override gate.  Nothing is printed
-    on success; failures exit non-zero without echoing dynamic values.
+    every other runtime script's test-override gate.  Reads print only the
+    validated value; failures exit non-zero without echoing dynamic values.
     """
     directory: Path | None = None
     route = ""
     time_sync_required = False
     connection_in_progress = False
     reason = ""
+    print_field: str | None = None
+    clear_time_sync = False
+    write_flags_seen = False
     index = 0
     while index < len(argv):
         flag = argv[index]
+        if flag == "--clear-time-sync":
+            clear_time_sync = True
+            index += 1
+            continue
         if flag not in ("--directory", "--route", "--time-sync-required",
-                        "--connection-in-progress", "--reason"):
+                        "--connection-in-progress", "--reason", "--print"):
             return 2
         index += 1
         if index >= len(argv):
@@ -169,27 +183,60 @@ def main(argv: list[str]) -> int:
         index += 1
         if flag == "--directory":
             directory = Path(value)
+        elif flag == "--print":
+            if value not in ("active-route", "time-sync-required"):
+                return 2
+            print_field = value
         elif flag == "--route":
+            write_flags_seen = True
             route = value
         elif flag == "--reason":
+            write_flags_seen = True
             reason = value
         elif flag == "--time-sync-required":
             parsed = _parse_bool_flag(value)
             if parsed is None:
                 return 2
+            write_flags_seen = True
             time_sync_required = parsed
         else:
             parsed = _parse_bool_flag(value)
             if parsed is None:
                 return 2
+            write_flags_seen = True
             connection_in_progress = parsed
     if directory is None:
+        return 2
+    if (print_field is not None) + clear_time_sync + write_flags_seen > 1:
         return 2
     if directory != PROD_RUNTIME_DIR and \
             os.environ.get("SUSHIDA_OS_TEST_MODE") != "1":
         print("ERROR: runtime-state directory override requires "
               "SUSHIDA_OS_TEST_MODE=1", file=sys.stderr)
         return 2
+    if print_field is not None:
+        state = read_state(directory)
+        if state is None:
+            return 1
+        if print_field == "active-route":
+            print(state.active_route)
+        else:
+            print("1" if state.time_sync_required else "0")
+        return 0
+    if clear_time_sync:
+        state = read_state(directory)
+        if state is None:
+            return 1
+        try:
+            write_state(directory, RuntimeState(
+                active_route=state.active_route,
+                time_sync_required=False,
+                connection_in_progress=state.connection_in_progress,
+                last_reason=state.last_reason,
+            ))
+        except (OSError, ValueError):
+            return 1
+        return 0
     try:
         write_state(directory, RuntimeState(
             active_route=route,

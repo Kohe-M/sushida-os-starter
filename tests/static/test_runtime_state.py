@@ -187,6 +187,53 @@ def test_cli_directory_override_requires_test_mode(tmp_path: Path) -> None:
     assert "SUSHIDA_OS_TEST_MODE" in result.stderr
 
 
+def test_cli_print_reads_validated_values(tmp_path: Path) -> None:
+    runtime_state.write_state(tmp_path, RuntimeState(
+        "offline", True, False, "time-sync-pending"))
+    result = _run_cli("--directory", str(tmp_path), "--print", "active-route")
+    assert result.returncode == 0 and result.stdout == "offline\n"
+    result = _run_cli("--directory", str(tmp_path), "--print", "time-sync-required")
+    assert result.returncode == 0 and result.stdout == "1\n"
+
+
+def test_cli_print_fails_closed_without_valid_state(tmp_path: Path) -> None:
+    result = _run_cli("--directory", str(tmp_path), "--print", "active-route")
+    assert result.returncode == 1 and result.stdout == ""
+    (tmp_path / "runtime-state.json").write_bytes(b"{broken\n")
+    result = _run_cli("--directory", str(tmp_path), "--print", "active-route")
+    assert result.returncode == 1 and result.stdout == ""
+
+
+def test_cli_clear_time_sync_preserves_other_fields(tmp_path: Path) -> None:
+    runtime_state.write_state(tmp_path, RuntimeState(
+        "offline", True, False, "time-sync-pending"))
+    result = _run_cli("--directory", str(tmp_path), "--clear-time-sync")
+    assert result.returncode == 0, result.stderr
+    assert runtime_state.read_state(tmp_path) == RuntimeState(
+        "offline", False, False, "time-sync-pending")
+
+
+def test_cli_clear_time_sync_fails_closed_without_state(tmp_path: Path) -> None:
+    result = _run_cli("--directory", str(tmp_path), "--clear-time-sync")
+    assert result.returncode == 1
+    assert runtime_state.read_state(tmp_path) is None
+
+
+def test_cli_modes_are_mutually_exclusive(tmp_path: Path) -> None:
+    runtime_state.write_state(tmp_path, GOOD)
+    for bad in (
+        ["--directory", str(tmp_path), "--print", "active-route",
+         "--clear-time-sync"],
+        ["--directory", str(tmp_path), "--print", "active-route",
+         "--route", "online"],
+        ["--directory", str(tmp_path), "--clear-time-sync",
+         "--reason", "online-full"],
+        ["--directory", str(tmp_path), "--print", "everything"],
+    ):
+        result = _run_cli(*bad)
+        assert result.returncode == 2, bad
+
+
 def test_cli_rejects_unknown_flags_and_bad_values(tmp_path: Path) -> None:
     for bad in (
         ["--directory", str(tmp_path), "--route", "online",

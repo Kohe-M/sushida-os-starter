@@ -33,8 +33,8 @@ Every column and its meaning:
 | ID | Domain | Contract item | Current value | Production source | Other references | Mismatch | Candidate contract field | Automatable | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 | RTP-01 | path | Runtime directory | `/run/sushida-os` | kiosk.service (RuntimeDirectory) | launcher, watchers, tmpfiles.d | NO | `runtime_dir` | YES | 0750, user kiosk |
-| RTP-02 | path | Active route file | `$RUNTIME_DIR/active-route` | sushida-launch (route_tmp) | network-watch (ACTIVE_ROUTE_FILE) | NO | `active_route_file` | YES | Written by launcher, read by watcher |
-| RTP-03 | path | Time-sync marker | `$RUNTIME_DIR/time-sync-required` | sushida-launch | network-watch (TIME_SYNC_REQUIRED_MARKER) | NO | `time_sync_marker` | YES | Created when clock implausible, cleared on sync |
+| RTP-02 | path | Runtime state file (schema 1) | `$RUNTIME_DIR/runtime-state.json` | sushida-launch（`sushida_os.runtime.runtime_state` 経由で発行） | network-watch（同 module で読取・time-sync 解除） | NO | `runtime_state_file` | YES | BL-01 で active-route / time-sync-required を置換。fail-closed read |
+| RTP-03 | path | （廃止: time-sync marker） | — | — | — | — | — | — | time_sync_required は RTP-02 のフィールドへ統合（BL-01） |
 | RTP-04 | path | Wi-Fi setup runtime state | `/run/sushida-wifi-setup/` | wifi-setup.service (RuntimeDirectory) | sushida_os/wifi/storage.py (CSRF_TOKEN_FILE) | NO | `wifi_setup_runtime_dir` | YES | 0700, user wifi-setup |
 | RTP-05 | path | CSRF token file | `/run/sushida-wifi-setup/csrf-token` | sushida_os/wifi/storage.py (CSRF_TOKEN_FILE) | — | NO | `csrf_token_file` | YES | 0600, preserved across restart |
 | RTP-06 | path | Config mount path | `/var/lib/sushida-config` | mount unit (Where=) | config-prepare (CONFIG_MOUNT), sushida_os/wifi/storage.py | NO | `config_mount_path` | YES | ext4, rw, nodev, nosuid, noexec, noatime |
@@ -202,7 +202,7 @@ behaviour change is performed.
 | `urls.setup_url` | Literal URL in `sushida-launch` / `sushida-session`; port match in `sushida_os/wifi/web.py` (`PORT`) |
 | `urls.offline_url` | Literal URL in `sushida-launch` / `sushida-session` |
 | `runtime_paths.runtime_dir` | `PROD_RUNTIME` in launch/netwatch/navwatch; `RuntimeDirectory=` in kiosk unit |
-| `runtime_paths.active_route_file` / `time_sync_marker` | Relative to runtime_dir (internal consistency); basename references in launch + netwatch |
+| `runtime_paths.runtime_state_file` | runtime_dir 内であること + launch/netwatch が protocol module (`sushida_os.runtime.runtime_state`) を呼ぶこと + module の `STATE_BASENAME`/`PROD_RUNTIME_DIR` 宣言一致（BL-01 で active_route_file / time_sync_marker を置換） |
 | `runtime_paths.wifi_setup_runtime_dir` / `csrf_token_file` | Dirname consistency; `CSRF_TOKEN_FILE` literal in `sushida_os/wifi/storage.py`; `RuntimeDirectory=` in wifi unit |
 | `runtime_paths.config_mount_path` | Literals in `sushida_os/wifi/storage.py`, config-prepare, mount unit `Where=` |
 | `runtime_paths.config_storage_status` / `credential_file` | Literals + derived components in `sushida_os/wifi/storage.py` + config-prepare |

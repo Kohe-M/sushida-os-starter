@@ -20,7 +20,7 @@ setup() {
     FIXTURE_PID=""
 
     printf 'SUSHIDA_URL=https://sushida.net/play.html\nNETWORK_SETUP_GRACE_SECONDS=15\nNETWORK_CHECK_INTERVAL_SECONDS=30\n' > "$SUSHIDA_OS_CONFIG"
-    printf 'online\n' > "$SUSHIDA_OS_RUNTIME/active-route"
+    write_state online
     printf '0::/system.slice/sushida-kiosk.service\n' > "$SUSHIDA_OS_TEST_CGROUP_FILE"
     : > "$TEST_ROOT/sleep.log"
 
@@ -44,6 +44,12 @@ case " $* " in
 esac
 SHIM
     chmod +x "$TEST_ROOT/bin/systemctl"
+
+    cat > "$TEST_ROOT/bin/timedatectl" <<'SHIM'
+#!/bin/bash
+if [ "${NTP_SYNCED:-0}" = 1 ]; then printf 'yes\n'; else printf 'no\n'; fi
+SHIM
+    chmod +x "$TEST_ROOT/bin/timedatectl"
 
     cat > "$TEST_ROOT/bin/sleep" <<'SHIM'
 #!/bin/bash
@@ -87,6 +93,13 @@ assert_fixture_terminated() {
     FIXTURE_PID=""
 }
 
+# Write the schema-1 runtime state the watcher reads (BL-01 protocol).
+write_state() {
+    local route="$1" tsr="${2:-false}"
+    printf '{"active_route":"%s","connection_in_progress":false,"last_reason":"boot-route-selected","schema_version":1,"time_sync_required":%s}\n' \
+        "$route" "$tsr" > "$SUSHIDA_OS_RUNTIME/runtime-state.json"
+}
+
 run_watcher() { run "$WATCHER"; }
 
 @test "same online route does not restart kiosk" {
@@ -97,7 +110,7 @@ run_watcher() { run "$WATCHER"; }
 }
 
 @test "same setup route does not restart kiosk" {
-    printf 'setup\n' > "$SUSHIDA_OS_RUNTIME/active-route"
+    write_state setup
     export NM_STATE=disconnected
     start_kiosk_fixture
     run_watcher
@@ -106,7 +119,7 @@ run_watcher() { run "$WATCHER"; }
 }
 
 @test "QEMU smoke markers keep offline route despite connected test NIC" {
-    printf 'offline\n' > "$SUSHIDA_OS_RUNTIME/active-route"
+    write_state offline
     export SUSHIDA_QEMU_FORCE_OFFLINE=1
     export SUSHIDA_QEMU_CHROMIUM_SWIFTSHADER=1
     export WLR_RENDERER=pixman
@@ -133,7 +146,7 @@ run_watcher() { run "$WATCHER"; }
 }
 
 @test "setup to online transition terminates validated MainPID" {
-    printf 'setup\n' > "$SUSHIDA_OS_RUNTIME/active-route"
+    write_state setup
     start_kiosk_fixture
     run_watcher
     [ "$status" -eq 0 ]
@@ -160,7 +173,7 @@ run_watcher() { run "$WATCHER"; }
 }
 
 @test "setup backend failure preserves matching offline fallback" {
-    printf 'offline\n' > "$SUSHIDA_OS_RUNTIME/active-route"
+    write_state offline
     export NM_STATE=disconnected SETUP_SERVICE_ACTIVE=0
     start_kiosk_fixture
     run_watcher
@@ -169,7 +182,7 @@ run_watcher() { run "$WATCHER"; }
 }
 
 @test "missing active route marker fails closed without signal" {
-    rm "$SUSHIDA_OS_RUNTIME/active-route"
+    rm "$SUSHIDA_OS_RUNTIME/runtime-state.json"
     export NM_STATE=disconnected
     start_kiosk_fixture
     run_watcher
@@ -178,7 +191,7 @@ run_watcher() { run "$WATCHER"; }
 }
 
 @test "invalid active route marker fails closed without signal" {
-    printf 'ONLINE\n' > "$SUSHIDA_OS_RUNTIME/active-route"
+    write_state ONLINE
     export NM_STATE=disconnected
     start_kiosk_fixture
     run_watcher
@@ -267,6 +280,47 @@ run_watcher() { run "$WATCHER"; }
     assert_fixture_terminated
     term_count=$(grep -c 'action=term' <<< "$output")
     [ "$term_count" -eq 1 ]
+}
+
+@test "corrupted runtime state fails closed without signal" {
+    printf '{broken json\n' > "$SUSHIDA_OS_RUNTIME/runtime-state.json"
+    export NM_STATE=disconnected
+    start_kiosk_fixture
+    run_watcher
+    [ "$status" -eq 0 ]
+    assert_fixture_alive
+}
+
+@test "unknown state schema version fails closed without signal" {
+    printf '{"active_route":"online","connection_in_progress":false,"last_reason":"boot-route-selected","schema_version":2,"time_sync_required":false}\n' \
+        > "$SUSHIDA_OS_RUNTIME/runtime-state.json"
+    export NM_STATE=disconnected
+    start_kiosk_fixture
+    run_watcher
+    [ "$status" -eq 0 ]
+    assert_fixture_alive
+}
+
+@test "time-sync hold keeps the offline route without a restart" {
+    write_state offline true
+    export NM_STATE=connected NTP_SYNCED=0
+    start_kiosk_fixture
+    run_watcher
+    [ "$status" -eq 0 ]
+    assert_fixture_alive
+    grep -Fq '"time_sync_required":true' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
+}
+
+@test "synchronized clock clears the time-sync hold and resumes routing" {
+    write_state offline true
+    export NM_STATE=connected NTP_SYNCED=1
+    start_kiosk_fixture
+    run_watcher
+    [ "$status" -eq 0 ]
+    # Hold cleared in the state file; desired route becomes online while the
+    # recorded route is offline, so the validated restart fires.
+    grep -Fq '"time_sync_required":false' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
+    assert_fixture_terminated
 }
 
 @test "watcher sleeps at configured minimum after iteration" {

@@ -184,10 +184,7 @@ def _build_minimal_repo(root: Path) -> None:
         'readonly OFFLINE_URL="file://localhost/usr/share/sushida-os/offline.html"\n'
         'readonly SETUP_URL="http://127.0.0.1:8787/"\n'
         'mkdir -p "$BASE_RUNTIME"/{chromium,cache,tmp,downloads,xdg-runtime}\n'
-        'rm -f -- "$BASE_RUNTIME/time-sync-required"\n'
-        ': > "$BASE_RUNTIME/time-sync-required"\n'
-        'route_tmp=$(mktemp "$BASE_RUNTIME/.active-route.XXXXXXXX")\n'
-        'mv -f -- "$route_tmp" "$BASE_RUNTIME/active-route"\n'
+        '    python3 -m sushida_os.runtime.runtime_state \\\n'
         'ACTIVE_ROUTE="offline"\n'
         'ACTIVE_ROUTE="setup"\n'
         'ACTIVE_ROUTE="online"\n'
@@ -195,8 +192,7 @@ def _build_minimal_repo(root: Path) -> None:
     (root / "live-build/config/includes.chroot/usr/local/bin/sushida-network-watch").write_text(
         '#!/usr/bin/env bash\n'
         'readonly PROD_RUNTIME="/run/sushida-os"\n'
-        'readonly ACTIVE_ROUTE_FILE="$RUNTIME_DIR/active-route"\n'
-        'readonly TIME_SYNC_REQUIRED_MARKER="$RUNTIME_DIR/time-sync-required"\n'
+        '    python3 -m sushida_os.runtime.runtime_state \\\n'
         "printf '%s\\n' online\n"
         "printf '%s\\n' setup\n"
         "printf '%s\\n' offline\n"
@@ -270,6 +266,7 @@ def _build_minimal_repo(root: Path) -> None:
     )
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/runtime/runtime_state.py").write_text(
         'STATE_BASENAME = "runtime-state.json"\n'
+        'PROD_RUNTIME_DIR = Path("/run/sushida-os")\n'
     )
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/runtime/kiosk_signal.py").write_text(
         'KIOSK_SERVICE = "sushida-kiosk.service"\n'

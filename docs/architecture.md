@@ -57,8 +57,7 @@ mounts as tmpfs:
 | Downloads/temp files | `/run/sushida-os/downloads`, `/run/sushida-os/tmp` | None |
 | Synthetic home | `/run/sushida-os/home` | None |
 | Wayland/PipeWire/session sockets | `/run/sushida-os/xdg-runtime` | None |
-| Selected network route | `/run/sushida-os/active-route` | None |
-| Route state protocol (schema 1) | `/run/sushida-os/runtime-state.json` | None |
+| Selected network route (state protocol, schema 1; formerly `/run/sushida-os/active-route`) | `/run/sushida-os/runtime-state.json` | None |
 | Config-storage readiness | `/run/sushida-config/config-storage` | None |
 | Wi-Fi credential | `/var/lib/sushida-config/network/setup.json` | `SUSHIDA-CFG` only |
 | system journal | `/run/log/journal` (`Storage=volatile`) | None |
@@ -94,11 +93,12 @@ observations.  Kiosk restarts go through a single validated signal path —
 `/usr/local/libexec/sushida-kiosk-signal` for shell callers and
 `sushida_os.runtime.kiosk_signal` in-process for the navigation watcher —
 which accepts only a fixed reason token, never a PID, signal, or service
-name.  The launcher additionally publishes
-`/run/sushida-os/runtime-state.json` (schema 1: `active_route`,
-`time_sync_required`, `connection_in_progress`, `last_reason`); during the
-transition the legacy `active-route` and `time-sync-required` files remain
-the values the watchers read.
+name.  The route record is `/run/sushida-os/runtime-state.json` (schema 1:
+`active_route`, `time_sync_required`, `connection_in_progress`,
+`last_reason`): the launcher publishes it atomically at boot and the
+network watcher both reads it and clears the time-sync hold through the
+same protocol module; malformed or unknown-versioned state always reads
+as absent and never triggers a restart.
 
 - `https://sushida.net` — bare domain
 - `https://sushida.net/` — bare domain with slash

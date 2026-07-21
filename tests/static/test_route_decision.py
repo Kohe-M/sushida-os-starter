@@ -158,6 +158,7 @@ def test_launcher_publishes_runtime_state_protocol() -> None:
     assert "sushida_os.runtime.runtime_state" in text
     assert '--route "$ACTIVE_ROUTE"' in text
     assert "--time-sync-required" in text
-    # The legacy marker files stay authoritative during the transitional
-    # dual-write; the launcher must still publish them first.
-    assert 'mv -f -- "$route_tmp" "$BASE_RUNTIME/active-route"' in text
+    # BL-01: the state protocol is authoritative; the legacy files are gone
+    # (the --time-sync-required CLI flag legitimately remains).
+    assert "/active-route" not in text
+    assert '"$BASE_RUNTIME/time-sync-required"' not in text

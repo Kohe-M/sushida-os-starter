@@ -221,7 +221,7 @@ run_launcher() {
 @test "connected state selects configured URL and records online route" {
     run_launcher
     [ "$status" -eq 0 ]
-    [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = online ]
+    grep -Fq '"active_route":"online"' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
     grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[https://sushida.net/play.html]"
 }
 
@@ -233,7 +233,7 @@ run_launcher() {
     export WLR_RENDERER_ALLOW_SOFTWARE=1
     run_launcher
     [ "$status" -eq 0 ]
-    [ "$(cat "$SUSHIDA_OS_RUNTIME/active-route")" = offline ]
+    grep -Fq '"active_route":"offline"' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
     grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | \
         grep -qF "CHROMIUM_ARG:[file://localhost/usr/share/sushida-os/offline.html]"
 }
@@ -249,7 +249,7 @@ run_launcher() {
     export SUSHIDA_OS_NM_STATE=disconnected
     run_launcher
     [ "$status" -eq 0 ]
-    [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = setup ]
+    grep -Fq '"active_route":"setup"' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
     grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[http://127.0.0.1:8787/]"
 }
 
@@ -257,7 +257,7 @@ run_launcher() {
     export SUSHIDA_OS_NM_FAIL=1
     run_launcher
     [ "$status" -eq 0 ]
-    [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = setup ]
+    grep -Fq '"active_route":"setup"' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
     grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[http://127.0.0.1:8787/]"
 }
 
@@ -267,7 +267,7 @@ run_launcher() {
         export SUSHIDA_OS_NM_STATE="$state"
         run_launcher
         [ "$status" -eq 0 ]
-        [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = setup ]
+        grep -Fq '"active_route":"setup"' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
     done
 }
 
@@ -276,7 +276,7 @@ run_launcher() {
     export SUSHIDA_OS_SETUP_ACTIVE=0
     run_launcher
     [ "$status" -eq 0 ]
-    [ "$(< "$SUSHIDA_OS_RUNTIME/active-route")" = offline ]
+    grep -Fq '"active_route":"offline"' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
     grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[file://localhost/usr/share/sushida-os/offline.html]"
 }
 
