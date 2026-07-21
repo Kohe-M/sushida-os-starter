@@ -189,6 +189,7 @@ tests/
     test_audio_graphics.py
     test_builder.py
     test_chromium_policy.py
+    test_connection_marker.py
     test_development_tooling.py
     test_diagnostics.py
     test_documentation.py
