@@ -21,7 +21,7 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 
-from sushida_os.wifi import nmcli
+from sushida_os.wifi import nmcli, storage
 from sushida_os.wifi.types import (
     CONNECT_FAILED,
     CONNECT_IDLE,
@@ -48,6 +48,12 @@ class ConnectionCoordinator:
         with self._state_lock:
             return self._connect_state, self._state_message
 
+    def _mirror_progress(self) -> None:
+        """Publish the content-free in-progress marker (best effort)."""
+        with self._state_lock:
+            active = self._connect_state == CONNECT_WORKING
+        storage.set_connection_marker(active)
+
     def queue_connection(self, ssid: str, password: str) -> bool:
         """Accept at most one connection request at a time.
 
@@ -60,6 +66,7 @@ class ConnectionCoordinator:
             self._connect_state = CONNECT_WORKING
             self._state_message = ""
             self._pending_request = (ssid, password)
+        self._mirror_progress()
         return True
 
     def enqueue_interactive(self, ssid: str, password: str) -> bool:
@@ -82,9 +89,13 @@ class ConnectionCoordinator:
                 self._state_message = ""
                 self._pending_request = (ssid, password)
                 self._pending_interactive = None
-                return True
-            self._pending_interactive = (ssid, password)
-            return False
+                started = True
+            else:
+                self._pending_interactive = (ssid, password)
+                started = False
+        if started:
+            self._mirror_progress()
+        return started
 
     def start_after_response(self) -> None:
         """Wake the worker.  Called only after the HTTP response is written."""
@@ -100,6 +111,7 @@ class ConnectionCoordinator:
         with self._state_lock:
             self._connect_state = CONNECT_SUCCEEDED if success else CONNECT_FAILED
             self._state_message = message
+        self._mirror_progress()
 
     def consume_failure(self) -> str | None:
         """Reset a published failure when the setup form is rendered again."""
@@ -109,7 +121,8 @@ class ConnectionCoordinator:
             message = self._state_message
             self._connect_state = CONNECT_IDLE
             self._state_message = ""
-            return message
+        self._mirror_progress()
+        return message
 
     def reset_succeeded(self) -> None:
         """Forget a stale success once the network is gone again."""
@@ -117,6 +130,7 @@ class ConnectionCoordinator:
             if self._connect_state == CONNECT_SUCCEEDED:
                 self._connect_state = CONNECT_IDLE
                 self._state_message = ""
+        self._mirror_progress()
 
     def reset_failure(self) -> None:
         """Clear a failed attempt so the restore loop may retry."""
@@ -189,6 +203,7 @@ class ConnectionCoordinator:
                         CONNECT_SUCCEEDED if success else CONNECT_FAILED
                     )
                     self._state_message = message
+            self._mirror_progress()
 
 
 # The default coordinator resolves connect_wifi through the nmcli module

@@ -152,7 +152,9 @@ def main(argv: list[str]) -> int:
                           [--connection-in-progress 0|1]
       read:               --directory D --print active-route|time-sync-required
       clear time-sync:    --directory D --clear-time-sync
-                          (read-modify-write; fails closed when no valid state exists)
+      set progress:       --directory D --set-connection-in-progress 0|1
+                          (both read-modify-write; they fail closed when no
+                          valid state exists)
 
     A non-production directory requires SUSHIDA_OS_TEST_MODE=1, matching
     every other runtime script's test-override gate.  Reads print only the
@@ -165,6 +167,7 @@ def main(argv: list[str]) -> int:
     reason = ""
     print_field: str | None = None
     clear_time_sync = False
+    set_progress: bool | None = None
     write_flags_seen = False
     index = 0
     while index < len(argv):
@@ -174,7 +177,8 @@ def main(argv: list[str]) -> int:
             index += 1
             continue
         if flag not in ("--directory", "--route", "--time-sync-required",
-                        "--connection-in-progress", "--reason", "--print"):
+                        "--connection-in-progress", "--reason", "--print",
+                        "--set-connection-in-progress"):
             return 2
         index += 1
         if index >= len(argv):
@@ -187,6 +191,11 @@ def main(argv: list[str]) -> int:
             if value not in ("active-route", "time-sync-required"):
                 return 2
             print_field = value
+        elif flag == "--set-connection-in-progress":
+            parsed = _parse_bool_flag(value)
+            if parsed is None:
+                return 2
+            set_progress = parsed
         elif flag == "--route":
             write_flags_seen = True
             route = value
@@ -207,7 +216,8 @@ def main(argv: list[str]) -> int:
             connection_in_progress = parsed
     if directory is None:
         return 2
-    if (print_field is not None) + clear_time_sync + write_flags_seen > 1:
+    if ((print_field is not None) + clear_time_sync
+            + (set_progress is not None) + write_flags_seen) > 1:
         return 2
     if directory != PROD_RUNTIME_DIR and \
             os.environ.get("SUSHIDA_OS_TEST_MODE") != "1":
@@ -232,6 +242,22 @@ def main(argv: list[str]) -> int:
                 active_route=state.active_route,
                 time_sync_required=False,
                 connection_in_progress=state.connection_in_progress,
+                last_reason=state.last_reason,
+            ))
+        except (OSError, ValueError):
+            return 1
+        return 0
+    if set_progress is not None:
+        state = read_state(directory)
+        if state is None:
+            return 1
+        if state.connection_in_progress == set_progress:
+            return 0
+        try:
+            write_state(directory, RuntimeState(
+                active_route=state.active_route,
+                time_sync_required=state.time_sync_required,
+                connection_in_progress=set_progress,
                 last_reason=state.last_reason,
             ))
         except (OSError, ValueError):

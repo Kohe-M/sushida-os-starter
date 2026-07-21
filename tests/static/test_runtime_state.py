@@ -219,6 +219,24 @@ def test_cli_clear_time_sync_fails_closed_without_state(tmp_path: Path) -> None:
     assert runtime_state.read_state(tmp_path) is None
 
 
+def test_cli_set_connection_in_progress_round_trip(tmp_path: Path) -> None:
+    runtime_state.write_state(tmp_path, GOOD)
+    result = _run_cli("--directory", str(tmp_path),
+                      "--set-connection-in-progress", "1")
+    assert result.returncode == 0, result.stderr
+    assert runtime_state.read_state(tmp_path) == RuntimeState(
+        "online", False, True, "online-full")
+    result = _run_cli("--directory", str(tmp_path),
+                      "--set-connection-in-progress", "0")
+    assert result.returncode == 0
+    assert runtime_state.read_state(tmp_path) == GOOD
+    # Fails closed without valid state.
+    (tmp_path / "runtime-state.json").unlink()
+    result = _run_cli("--directory", str(tmp_path),
+                      "--set-connection-in-progress", "1")
+    assert result.returncode == 1
+
+
 def test_cli_modes_are_mutually_exclusive(tmp_path: Path) -> None:
     runtime_state.write_state(tmp_path, GOOD)
     for bad in (
@@ -228,6 +246,9 @@ def test_cli_modes_are_mutually_exclusive(tmp_path: Path) -> None:
          "--route", "online"],
         ["--directory", str(tmp_path), "--clear-time-sync",
          "--reason", "online-full"],
+        ["--directory", str(tmp_path), "--set-connection-in-progress", "1",
+         "--clear-time-sync"],
+        ["--directory", str(tmp_path), "--set-connection-in-progress", "yes"],
         ["--directory", str(tmp_path), "--print", "everything"],
     ):
         result = _run_cli(*bad)

@@ -10,6 +10,7 @@
     "runtime_state_file": "/run/sushida-os/runtime-state.json",
     "wifi_setup_runtime_dir": "/run/sushida-wifi-setup",
     "csrf_token_file": "/run/sushida-wifi-setup/csrf-token",
+    "wifi_connection_marker": "/run/sushida-wifi-status/connection-in-progress",
     "config_mount_path": "/var/lib/sushida-config",
     "config_storage_status": "/run/sushida-config/config-storage",
     "credential_file": "/var/lib/sushida-config/network/setup.json",

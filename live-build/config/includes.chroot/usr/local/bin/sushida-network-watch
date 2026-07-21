@@ -26,6 +26,11 @@ fi
 if [ -n "$TEST_CGROUP_FILE" ] && [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
     echo "ERROR: SUSHIDA_OS_TEST_CGROUP_FILE requires SUSHIDA_OS_TEST_MODE=1" >&2; exit 1
 fi
+WIFI_CONNECTION_MARKER="${SUSHIDA_OS_WIFI_MARKER:-/run/sushida-wifi-status/connection-in-progress}"
+if [ "$WIFI_CONNECTION_MARKER" != "/run/sushida-wifi-status/connection-in-progress" ] && \
+   [ "${SUSHIDA_OS_TEST_MODE:-0}" != "1" ]; then
+    echo "ERROR: SUSHIDA_OS_WIFI_MARKER override requires SUSHIDA_OS_TEST_MODE=1" >&2; exit 1
+fi
 case "${SUSHIDA_QEMU_FORCE_OFFLINE:-0}" in
     0) ;;
     1)
@@ -166,6 +171,11 @@ iteration=0
 while true; do
     if [ "$MAX_ITER" -gt 0 ] && [ "$iteration" -ge "$MAX_ITER" ]; then break; fi
     iteration=$((iteration + 1))
+    # Mirror the Wi-Fi backend's content-free in-progress marker into the
+    # state protocol (best effort; the marker itself stays authoritative).
+    connection_in_progress=0
+    [ ! -f "$WIFI_CONNECTION_MARKER" ] || connection_in_progress=1
+    runtime_state --set-connection-in-progress "$connection_in_progress" || true
     wanted=$(desired_route)
     if active=$(read_active_route) && [ "$active" != "$wanted" ]; then
         restart_kiosk || true

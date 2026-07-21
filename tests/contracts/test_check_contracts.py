@@ -84,7 +84,8 @@ def _build_minimal_repo(root: Path) -> None:
         "sushida-config-prepare.service":
             "[Service]\nRuntimeDirectory=sushida-config\n",
         "sushida-wifi-setup.service":
-            "[Service]\nRuntimeDirectory=sushida-wifi-setup\nRuntimeDirectoryMode=0700\n",
+            "[Service]\nRuntimeDirectory=sushida-wifi-setup\nRuntimeDirectoryMode=0700\n"
+            "ReadWritePaths=/run/sushida-wifi-status\n",
         "var-lib-sushida\\x2dconfig.mount":
             "[Mount]\nWhere=/var/lib/sushida-config\n",
     }
@@ -193,6 +194,7 @@ def _build_minimal_repo(root: Path) -> None:
         '#!/usr/bin/env bash\n'
         'readonly PROD_RUNTIME="/run/sushida-os"\n'
         '    python3 -m sushida_os.runtime.runtime_state \\\n'
+        'WIFI_CONNECTION_MARKER="${SUSHIDA_OS_WIFI_MARKER:-/run/sushida-wifi-status/connection-in-progress}"\n'
         "printf '%s\\n' online\n"
         "printf '%s\\n' setup\n"
         "printf '%s\\n' offline\n"
@@ -287,6 +289,7 @@ def _build_minimal_repo(root: Path) -> None:
         'CONFIG_FILE = CONFIG_DIR / "setup.json"\n'
         'STORAGE_STATUS = Path("/run/sushida-config/config-storage")\n'
         'CSRF_TOKEN_FILE = Path("/run/sushida-wifi-setup/csrf-token")\n'
+        'CONNECTION_MARKER_FILE = Path("/run/sushida-wifi-status/connection-in-progress")\n'
     )
 
     # Polkit, NM config, offline page referenced by mappings

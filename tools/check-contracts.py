@@ -535,6 +535,24 @@ def _drift_runtime_paths(rpaths: dict, services: dict, texts: dict[str, str],
                             result, "DRIFT_PATH", "runtime_paths.wifi_setup_runtime_dir",
                             f"wifi-setup unit RuntimeDirectory != {wifi_setup_dir!r}")
 
+    marker = rpaths.get("wifi_connection_marker", "")
+    if marker:
+        _expect_pattern(texts, labels, "wifi_storage",
+                        rf'CONNECTION_MARKER_FILE = Path\("{re.escape(marker)}"\)',
+                        result, "DRIFT_PATH", "runtime_paths.wifi_connection_marker",
+                        f"connection marker {marker!r} not declared")
+        _expect_pattern(texts, labels, "netwatch", re.escape(marker),
+                        result, "DRIFT_PATH", "runtime_paths.wifi_connection_marker",
+                        f"connection marker {marker!r} not observed by watcher")
+        wifi_unit = services.get("wifi_setup_service", "")
+        if wifi_unit:
+            _expect_pattern(unit_texts, unit_labels, wifi_unit,
+                            rf"^ReadWritePaths={re.escape(os.path.dirname(marker))}$",
+                            result, "DRIFT_PATH",
+                            "runtime_paths.wifi_connection_marker",
+                            f"wifi-setup unit lacks write access to "
+                            f"{os.path.dirname(marker)!r}")
+
     config_mount = rpaths.get("config_mount_path", "")
     if config_mount:
         _expect_pattern(texts, labels, "wifi_storage",

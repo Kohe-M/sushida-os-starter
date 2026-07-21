@@ -21,6 +21,11 @@ CONFIG_DIR = CONFIG_MOUNT / "network"
 CONFIG_FILE = CONFIG_DIR / "setup.json"
 STORAGE_STATUS = Path("/run/sushida-config/config-storage")
 CSRF_TOKEN_FILE = Path("/run/sushida-wifi-setup/csrf-token")
+# Content-free, world-readable marker for an in-flight connection attempt.
+# It lives in its own 0755 wifi-setup runtime directory (tmpfiles.d) so the
+# kiosk-user network watcher can observe it without any access to the
+# private /run/sushida-wifi-setup state.
+CONNECTION_MARKER_FILE = Path("/run/sushida-wifi-status/connection-in-progress")
 FILESYSTEM_LABEL = "SUSHIDA-CFG"
 MAX_CONFIG_BYTES = 8192
 CSRF_TOKEN_BYTES = 32
@@ -55,6 +60,47 @@ def storage_status() -> Path:
 
 def csrf_token_file() -> Path:
     return _test_path("SUSHIDA_WIFI_SETUP_CSRF_TOKEN_FILE", CSRF_TOKEN_FILE)
+
+
+def connection_marker_file() -> Path | None:
+    """Marker path, or None when publication is disabled.
+
+    Unlike the mandatory storage paths, the marker is optional telemetry:
+    in test mode it is published only when a test opts in with
+    SUSHIDA_WIFI_SETUP_CONNECTION_MARKER (which must stay under /tmp).
+    """
+    if os.environ.get("SUSHIDA_WIFI_SETUP_TEST_MODE") == "1":
+        value = os.environ.get("SUSHIDA_WIFI_SETUP_CONNECTION_MARKER")
+        if not value:
+            return None
+        if not value.startswith("/tmp/"):
+            raise RuntimeError(
+                "unsafe test path for SUSHIDA_WIFI_SETUP_CONNECTION_MARKER"
+            )
+        return Path(value)
+    return CONNECTION_MARKER_FILE
+
+
+def set_connection_marker(active: bool) -> None:
+    """Best-effort publication of an in-flight connection attempt.
+
+    The marker is empty (existence only) so it can never leak an SSID or
+    credential, and any failure is swallowed: publication must never
+    affect the connection flow itself.
+    """
+    path = connection_marker_file()
+    if path is None:
+        return
+    try:
+        if active:
+            descriptor = os.open(
+                path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o644
+            )
+            os.close(descriptor)
+        else:
+            path.unlink()
+    except OSError:
+        return
 
 
 def _read_csrf_token(path: Path) -> str:

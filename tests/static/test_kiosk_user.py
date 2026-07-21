@@ -224,6 +224,7 @@ def test_tmpfiles_exact_paths() -> None:
         "/run/sushida-os/tmp",
         "/run/sushida-os/downloads",
         "/run/sushida-os/xdg-runtime",
+        "/run/sushida-wifi-status",
     }
     assert set(paths) == expected, f"Unexpected runtime paths: {paths}"
 
@@ -251,11 +252,18 @@ def test_tmpfiles_home_mode_0700() -> None:
 
 
 def test_tmpfiles_ownership() -> None:
+    """kiosk owns its runtime tree; only the content-free Wi-Fi progress
+    marker directory belongs to wifi-setup (world-readable, 0755)."""
     content = TMPFILES.read_text()
     for line in content.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
         fields = stripped.split()
+        if fields[1] == "/run/sushida-wifi-status":
+            assert fields[2] == "0755", f"Expected 0755 for status dir: {line}"
+            assert fields[3] == "wifi-setup", f"Owner must be wifi-setup: {line}"
+            assert fields[4] == "wifi-setup", f"Group must be wifi-setup: {line}"
+            continue
         assert fields[3] == "kiosk", f"Owner must be kiosk: {line}"
         assert fields[4] == "kiosk", f"Group must be kiosk: {line}"

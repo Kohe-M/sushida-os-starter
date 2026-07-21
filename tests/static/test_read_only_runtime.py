@@ -56,13 +56,19 @@ def test_all_mutable_kiosk_paths_are_volatile() -> None:
         "/run/sushida-os/tmp": "0700",
         "/run/sushida-os/downloads": "0700",
         "/run/sushida-os/xdg-runtime": "0700",
+        # Content-free Wi-Fi progress marker dir (BL-02): world-readable by
+        # design, owned by wifi-setup, still volatile tmpfs state.
+        "/run/sushida-wifi-status": "0755",
     }
     assert set(entries) == set(expected)
     for path, mode in expected.items():
         fields = entries[path]
         assert fields[0] == "d"
         assert fields[2] == mode
-        assert fields[3:5] == ["kiosk", "kiosk"]
+        if path == "/run/sushida-wifi-status":
+            assert fields[3:5] == ["wifi-setup", "wifi-setup"]
+        else:
+            assert fields[3:5] == ["kiosk", "kiosk"]
 
 
 def test_journal_is_volatile_and_bounded() -> None:

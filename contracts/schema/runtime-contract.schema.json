@@ -43,7 +43,7 @@
       "additionalProperties": false,
       "required": [
         "runtime_dir", "runtime_state_file",
-        "wifi_setup_runtime_dir", "csrf_token_file",
+        "wifi_setup_runtime_dir", "csrf_token_file", "wifi_connection_marker",
         "config_mount_path", "config_storage_status", "credential_file",
         "chromium_profile_dir", "chromium_sessions_dir"
       ],
@@ -52,6 +52,7 @@
         "runtime_state_file":        { "type": "string", "pattern": "^/" },
         "wifi_setup_runtime_dir":    { "type": "string", "pattern": "^/" },
         "csrf_token_file":           { "type": "string", "pattern": "^/" },
+        "wifi_connection_marker":    { "type": "string", "pattern": "^/" },
         "config_mount_path":         { "type": "string", "pattern": "^/" },
         "config_storage_status":     { "type": "string", "pattern": "^/" },
         "credential_file":           { "type": "string", "pattern": "^/" },

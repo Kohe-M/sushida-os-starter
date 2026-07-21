@@ -10,6 +10,7 @@ setup() {
     export SUSHIDA_OS_RUNTIME="$TEST_ROOT/run"
     export SUSHIDA_OS_MAX_ITERATIONS=1
     export SUSHIDA_OS_TEST_CGROUP_FILE="$TEST_ROOT/cgroup"
+    export SUSHIDA_OS_WIFI_MARKER="$TEST_ROOT/run/connection-in-progress"
     export NM_STATE=connected
     export NM_FAIL=0
     export SERVICE_ACTIVE=1
@@ -321,6 +322,24 @@ run_watcher() { run "$WATCHER"; }
     # recorded route is offline, so the validated restart fires.
     grep -Fq '"time_sync_required":false' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
     assert_fixture_terminated
+}
+
+@test "wifi progress marker is mirrored into the state protocol" {
+    : > "$SUSHIDA_OS_WIFI_MARKER"
+    start_kiosk_fixture
+    run_watcher
+    [ "$status" -eq 0 ]
+    grep -Fq '"connection_in_progress":true' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
+}
+
+@test "absent wifi progress marker mirrors false into the state protocol" {
+    write_state online true
+    # tsr stays true (clock not synced) while progress mirrors to false.
+    export NM_STATE=connected NTP_SYNCED=0
+    run_watcher
+    [ "$status" -eq 0 ]
+    grep -Fq '"connection_in_progress":false' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
+    grep -Fq '"time_sync_required":true' "$SUSHIDA_OS_RUNTIME/runtime-state.json"
 }
 
 @test "watcher sleeps at configured minimum after iteration" {
