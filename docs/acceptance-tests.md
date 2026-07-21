@@ -119,6 +119,10 @@
 | Run | 対象 ID | Class | 対象 commit | ISO SHA-256 | 環境（機種/FW/QEMU 版） | 手順との差分 | 結果 (PASS/FAIL) | 確認日 | 確認者 | 証拠（log/screenshot パス） |
 |---|---|---|---|---|---|---|---|---|---|---|
 | R1 | D01, D02 | automated | `789ac24` | `d541644fc5fadee372c350cabba539cd65d319e98301da540547b78468d87dac` | rootless podman `--privileged` builder (trixie) on WSL2 | clone 上で実行（本 repo と同一 commit）。単独 `make verify` は privileged で実施 | PASS | 2026-07-21 | agent (Claude) / 依頼: repo owner | `~/code/sushida-os-iso-validation/build/iso-build.log`（会期外は再ビルドで再現） |
+| R2 | D01, D02 | automated | `c9dd1ad` | `aebbd14b36673ac2360a3590b98cb904746b24bdea748d1fd0f9ec95216bf745` | rootless podman `--privileged` builder (trixie), WSL2 | BL-01/02/04 反映後の最終ビルド。verify は build 内で実行 | PASS | 2026-07-21 | agent (Claude) / 依頼: repo owner | `~/code/sushida-os-iso-validation/build/iso-build.log` |
+| R3 | D03, D04, K01（QEMU 範囲）, P08 | QEMU | `c9dd1ad` | `aebbd14b36673ac2360a3590b98cb904746b24bdea748d1fd0f9ec95216bf745` | QEMU 10.x TCG（builder コンテナ、KVM なし）、BIOS+UEFI 各 900s | `make test-qemu-boot` + `make test-qemu-powerdown`。BIOS/UEFI とも production bootloader→kiosk 起動、自然 poweroff、SUSHIDA-CFG（by-UUID）mount/unmount 証跡 | PASS | 2026-07-21 | agent (Claude) | `build/qemu/{bios,uefi}-offline{,-powerdown}/serial.log` + `result.env` |
+| R4 | D03, D12（QEMU 範囲）, D05 補助 | QEMU | `c9dd1ad` | `aebbd14b36673ac2360a3590b98cb904746b24bdea748d1fd0f9ec95216bf745` | 同上、BIOS smoke 観測 1500s | `make test-qemu-runtime` 相当（BIOS）。screenshot 完全性・login prompt 不在・kiosk/graphical 到達・config FS + Wi-Fi service 起動の 8 判定 | PASS | 2026-07-21 | agent (Claude) | `build/qemu/bios-offline/{screenshot.png,serial.plain.log,result.env}` |
+| R5 | D03, D12（UEFI smoke） | QEMU | `c9dd1ad` | `aebbd14b36673ac2360a3590b98cb904746b24bdea748d1fd0f9ec95216bf745` | 同上、UEFI smoke（OVMF + TCG） | screenshot 完全性判定が不成立（OVMF+TCG では post-GOP scanout が黒のままになり得る既知制約。serial では graphical.target・全 service 起動を確認） | FAIL（環境制約。KVM または実機で要再実施） | 2026-07-21 | agent (Claude) | `build/qemu/uefi-offline/serial.plain.log` |
 
 Class の定義:
 

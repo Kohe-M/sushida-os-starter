@@ -39,8 +39,10 @@ E↔F も E の成果物（reproducible-builds.md 等）を F が参照するた
 | `tests/shell/`（bats、コンテナ内） | 214 件 | 緑 |
 | `python3 tools/check-contracts.py` | runtime/release/drift | exit 0 |
 | `make check-structure` | STRUCTURE.txt 鮮度 | PASS |
-| `make iso` + verify（内部/単独） | commit `789ac24`、ISO SHA `d541644f…` | **PASS**（acceptance registry R1） |
-| QEMU 系 / 実機回帰 | — | **未実行**（BL-05） |
+| `make iso` + verify（内部/単独） | 最終: commit `c9dd1ad`、ISO SHA `aebbd14b…` | **PASS**（registry R1/R2） |
+| QEMU boot / powerdown（BIOS+UEFI）・smoke（BIOS） | 同上、TCG | **PASS**（registry R3/R4） |
+| QEMU smoke（UEFI） | — | **FAIL: OVMF+TCG の scanout 制約**（registry R5、KVM/実機で要再実施） |
+| 実機回帰 | — | **未実行**（BL-05 残） |
 
 ## 0.3 残作業の全体像
 

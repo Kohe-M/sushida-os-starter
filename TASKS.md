@@ -112,20 +112,24 @@ production Git history.
 
 ### BL-05 / 実 ISO・QEMU・実機検証の消化
 
-- Status: IN_PROGRESS | Severity: High | Dependency: ビルド環境
-- 進捗 (2026-07-21): `make iso && make verify` は **PASS**（commit `789ac24`、
-  ISO SHA `d541644f…`、acceptance registry R1）。exact 31件の byte/mode/owner
-  照合・partition stage・bootloader 配置とも実 ISO で成立し、contract の降格は
-  不要だった。残: QEMU 系・実機回帰。
-  既知の制約: rootless podman では `make container-verify`（非 privileged）が
-  bind mount 上の scratch 作成で失敗する。privileged 実行か docker を使う。
-- 内容: `make iso && make verify`（exact 昇格の positive 検証・partition stage 含む）、
-  `make test-qemu*`、実機回帰（work order §4.3/§4.4 の未実行項目）
-- Acceptance criteria: verify exit 0 の実 ISO が存在し、acceptance registry に
-  commit / ISO SHA / 確認日つきで記録される。exact 昇格で乖離が出た mapping は
-  証拠つきで contract を修正する
-- Verification: `make iso && make verify`、`make test-qemu-runtime`
-- Manual checks: acceptance registry の QEMU/実機分類の全項目
+- Status: IN_PROGRESS | Severity: High | Dependency: 実機（+ KVM 環境が望ましい）
+- 済み (2026-07-21、registry R1〜R5):
+  - `make iso && make verify`: PASS ×2（`789ac24`→R1、最終 `c9dd1ad`→R2。
+    exact 31件 byte/mode/owner・partition・bootloader・metadata 相互照合すべて成立）
+  - QEMU boot（BIOS/UEFI）: PASS — production bootloader から kiosk service 到達
+  - QEMU powerdown（BIOS/UEFI）: PASS — 自然 poweroff + SUSHIDA-CFG（by-UUID）
+    mount/unmount 証跡
+  - QEMU smoke（BIOS）: PASS — screenshot 完全性・login prompt 不在・
+    graphical.target・config FS/Wi-Fi service 起動
+  - 途中で検出・修正した基盤バグ: boot 待機の 120s 固定（`d0a23c1`）、
+    serial 照合の pipefail×SIGPIPE（`c9dd1ad`）、既定 boot entry の
+    serial console 欠如（`e09c5ec`、BL-04-3）
+- 残:
+  1. QEMU smoke（UEFI）: OVMF+TCG の scanout 制約で screenshot 判定不成立
+     （registry R5）。KVM（`sudo usermod -aG kvm $USER` 後）または実機で再実施
+  2. 実機回帰: acceptance registry の physical hardware 分類全項目
+     （K/G/P/A/V シリーズ）
+- Acceptance criteria: 残 2 項目が registry に記録されること
 
 ### BL-06 / kiosk-signal の shell/Python 双子の同一性照合
 
