@@ -229,8 +229,18 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     assert 'QEMU_ARGS+=(-device virtio-vga)' in runner
     assert 'rm -f -- "$SERIAL_LOG" "$SCREENSHOT" "$SCREENSHOT_PPM" "$MONITOR_SOCKET"' in runner
     assert '"$RESULT_FILE" "$REPORT"' in runner
-    assert runner.index('if [ "$DRY_RUN" = true ]; then') < runner.index('mkdir -p "$QEMU_ROOT" "$RUN_DIR"')
-    assert runner.index('if [ "$DRY_RUN" = true ]; then') < runner.index('cp -- "$OVMF_VARS" "$VARS_COPY"')
+    # The dry-run exit must precede every filesystem-touching stage.  The
+    # runner is organized as stage functions, so the guarantee lives in
+    # main()'s call order: print_dry_run comes before prepare_run_dir and
+    # stage_boot_media (G-02).
+    main_body = runner[runner.index("main() {"):runner.index("\n}", runner.index("main() {"))]
+    assert main_body.index("print_dry_run") < main_body.index("prepare_run_dir")
+    assert main_body.index("print_dry_run") < main_body.index("stage_boot_media")
+    # print_dry_run itself ends the process and never creates files.
+    dry_fn = runner[runner.index("print_dry_run() {"):runner.index("\n}", runner.index("print_dry_run() {"))]
+    assert "exit 0" in dry_fn
+    for touching in ("mkdir", "rm -f", "cp ", "> \"$"):
+        assert touching not in dry_fn
     assert "[ -c /dev/kvm ]" in runner
     assert 'QEMU_ACCEL="tcg"' in runner
     assert 'QEMU_ACCEL="kvm:tcg"' in runner
