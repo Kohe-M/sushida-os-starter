@@ -21,9 +21,27 @@ setup() {
     cp scripts/verify-iso.sh "$REPO/scripts/"
     cp scripts/lib/iso-extract.sh "$REPO/scripts/lib/"
     cp contracts/release-contract.json "$REPO/contracts/"
-    # Tracked production tree exactly as committed (modes preserved).
+    # Tracked production tree exactly as committed.  git-archive canonicalizes
+    # entry modes through tar.umask (default 002: dirs 0775, files 0664/0775)
+    # and GNU tar's directory-mode restore uses fchmodat flags the container
+    # seccomp profile rejects, so extraction goes through Python with the
+    # git-canonical 0755/0644 modes re-applied — the fixture is then identical
+    # for every uid, umask, and container runtime.
     git archive HEAD live-build/config/includes.chroot live-build/config/bootloaders \
-        | tar -x -C "$REPO"
+        > "$BATS_TEST_TMPDIR/tracked.tar"
+    python3 - "$BATS_TEST_TMPDIR/tracked.tar" "$REPO" <<'PY'
+import sys
+import tarfile
+
+archive_path, destination = sys.argv[1], sys.argv[2]
+with tarfile.open(archive_path) as archive:
+    for member in archive.getmembers():
+        if member.isdir() or member.mode & 0o100:
+            member.mode = 0o755
+        else:
+            member.mode = 0o644
+        archive.extract(member, destination, filter="tar")
+PY
     printf 'artifacts/\nbuild/\n' > "$REPO/.gitignore"
     git -C "$REPO" init -q
     git -C "$REPO" -c user.email=fixture@test -c user.name=fixture add -A
