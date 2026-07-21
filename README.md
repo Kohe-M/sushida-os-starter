@@ -33,7 +33,8 @@ not infer those results from static tests or package presence.
 make doctor           # check host prerequisites
 make test             # run static tests, contract tests, shell tests
 make check-contracts  # verify contracts against current source
-make ci               # non-destructive checks (test + check-contracts + git diff)
+make check-structure  # verify STRUCTURE.txt is up to date
+make ci               # test + check-contracts + check-structure + git diff
 ```
 
 ## Quick start (Docker/Podman)
@@ -76,9 +77,14 @@ SSDs are not supported. Codex and automated tests must not flash a real device.
 - [Build and test](docs/build.md)
 - [Installation](docs/installation.md)
 - [Networking](docs/networking.md)
+- [Wi-Fi state machine](docs/wifi-state-machine.md)
+- [Runtime routes](docs/runtime-routes.md)
 - [Maintenance and diagnostics](docs/maintenance.md)
 - [Threat model](docs/threat-model.md)
 - [Hardware compatibility](docs/hardware-compatibility.md)
 - [Acceptance tests](docs/acceptance-tests.md)
+- [Reproducible builds](docs/reproducible-builds.md)
+- [Documentation map](docs/documentation-map.md) — 正本の一覧
+- [Refactoring work order](docs/refactoring-work-order.md) — 進捗と逸脱記録の正本
 
 `AGENTS.md` is the authoritative project and safety contract.
