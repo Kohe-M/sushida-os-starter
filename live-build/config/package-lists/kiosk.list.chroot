@@ -22,6 +22,9 @@ pipewire-pulse
 wireplumber
 libspa-0.2-modules
 dbus-user-session
+# ALSA UCM profiles: wireplumber cannot route modern Intel laptop codecs
+# (sof-hda-dsp) without them
+alsa-ucm-conf
 
 # Graphics acceleration -- Mesa DRI, VA-API, EGL, GLES, GBM, DRM
 libgl1-mesa-dri
@@ -48,6 +51,9 @@ firmware-intel-graphics
 firmware-iwlwifi
 firmware-realtek
 firmware-amd-graphics
+# Intel Smart Sound (SOF) DSP firmware: post-2019 Intel laptops expose no
+# audio card at all without it
+firmware-sof-signed
 
 # CPU microcode
 intel-microcode

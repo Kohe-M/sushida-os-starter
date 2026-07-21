@@ -291,7 +291,7 @@ def test_required_packages_unique() -> None:
 
 def test_package_count_matches() -> None:
     pkgs = _load(RELEASE_CONTRACT)["required_packages"]
-    assert len(pkgs) == 38, f"expected 38 packages, got {len(pkgs)}"
+    assert len(pkgs) == 40, f"expected 40 packages, got {len(pkgs)}"
 
 
 # ── Forbidden keys ──────────────────────────────────────────────────────

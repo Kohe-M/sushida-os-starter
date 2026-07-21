@@ -80,7 +80,7 @@ def test_network() -> None:
 
 def test_audio() -> None:
     s = _package_set()
-    for pkg in ("pipewire", "pipewire-pulse", "wireplumber"):
+    for pkg in ("pipewire", "pipewire-pulse", "wireplumber", "alsa-ucm-conf"):
         assert pkg in s, f"Missing audio package: {pkg}"
 
 
@@ -120,6 +120,7 @@ def test_firmware() -> None:
         "firmware-iwlwifi",
         "firmware-realtek",
         "firmware-amd-graphics",
+        "firmware-sof-signed",
         "intel-microcode",
         "amd64-microcode",
     ):
@@ -133,6 +134,7 @@ def test_only_target_firmware_is_explicit() -> None:
         "firmware-iwlwifi",
         "firmware-realtek",
         "firmware-amd-graphics",
+        "firmware-sof-signed",
     }
 
 
