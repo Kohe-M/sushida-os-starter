@@ -5,6 +5,7 @@
 .containerignore
 .dockerignore
 .github/
+  pull_request_template.md
   workflows/
     ci.yml
 .gitignore
@@ -27,6 +28,7 @@ docs/
   acceptance-tests.md
   architecture.md
   build.md
+  change-checklist.md
   contract-inventory.md
   documentation-map.md
   hardware-compatibility.md
@@ -35,7 +37,9 @@ docs/
   networking.md
   refactoring-work-order.md
   reproducible-builds.md
+  runtime-routes.md
   threat-model.md
+  wifi-state-machine.md
 live-build/
   auto/
     build
