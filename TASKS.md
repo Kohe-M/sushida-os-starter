@@ -124,12 +124,18 @@ production Git history.
   - 途中で検出・修正した基盤バグ: boot 待機の 120s 固定（`d0a23c1`）、
     serial 照合の pipefail×SIGPIPE（`c9dd1ad`）、既定 boot entry の
     serial console 欠如（`e09c5ec`、BL-04-3）
+- 済み (2026-07-22 追記):
+  - QEMU smoke（UEFI）: PASS — KVM 有効化（ユーザーが kvm グループ追加・再起動）
+    後、builder コンテナ + `/dev/kvm` で AUTOMATED 8 判定すべて成立（registry R5
+    更新。旧 TCG 失敗は R5a として保存）。QEMU 側の残項目はこれで消化
+  - 実機一次確認（ユーザー報告 2026-07-22、非公式）: ログイン画面なしで起動、
+    Wi-Fi 設定→接続成功、全画面 Chromium で寿司打プレイ可、キーボード入力正常。
+    同時に発見された不具合: 再起動後の SSID 復元失敗（`62d545a` で修正）、
+    音声が出ない（W-3 対応中）
 - 残:
-  1. QEMU smoke（UEFI）: OVMF+TCG の scanout 制約で screenshot 判定不成立
-     （registry R5）。KVM（`sudo usermod -aG kvm $USER` 後）または実機で再実施
-  2. 実機回帰: acceptance registry の physical hardware 分類全項目
-     （K/G/P/A/V シリーズ）
-- Acceptance criteria: 残 2 項目が registry に記録されること
+  1. 実機回帰: acceptance registry の physical hardware 分類全項目
+     （K/G/P/A/V シリーズ）の正式記録
+- Acceptance criteria: 残項目が registry に記録されること
 
 ### BL-06 / kiosk-signal の shell/Python 双子の同一性照合
 
