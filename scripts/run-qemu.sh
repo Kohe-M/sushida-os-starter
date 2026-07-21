@@ -326,8 +326,10 @@ done
 [ -S "$MONITOR_SOCKET" ] || fail "QEMU monitor did not become ready"
 
 if [ "$QEMU_SMOKE" = true ]; then
+    # Bound marker/boot waits by the requested duration: the historical
+    # fixed 90/120-second loops assumed KVM and starve TCG-only hosts.
     QEMU_BOOT_MARKER="SUSHIDA_QEMU_FORCE_OFFLINE=1"
-    for _check in $(seq 1 90); do
+    for _check in $(seq 1 "$DURATION"); do
         if grep -Fq "$QEMU_BOOT_MARKER" "$SERIAL_LOG"; then break; fi
         sleep 1
     done
@@ -337,7 +339,7 @@ fi
 
 if [ "$QEMU_BOOT_TEST" = true ]; then
     kiosk_ready=false
-    for _boot in $(seq 1 120); do
+    for _boot in $(seq 1 "$DURATION"); do
         if serial_matches 'Started[[:space:]]+sushida-(kiosk|navigation-watch)\.service([[:space:]-]|$)'; then
             kiosk_ready=true
             break
