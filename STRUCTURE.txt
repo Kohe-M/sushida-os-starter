@@ -36,6 +36,7 @@ docs/
   installation.md
   maintenance.md
   networking.md
+  refactoring-work-order-2.md
   refactoring-work-order.md
   reproducible-builds.md
   runtime-routes.md

@@ -85,6 +85,7 @@ SSDs are not supported. Codex and automated tests must not flash a real device.
 - [Acceptance tests](docs/acceptance-tests.md)
 - [Reproducible builds](docs/reproducible-builds.md)
 - [Documentation map](docs/documentation-map.md) — 正本の一覧
-- [Refactoring work order](docs/refactoring-work-order.md) — 進捗と逸脱記録の正本
+- [Refactoring work order](docs/refactoring-work-order.md) — Stage A〜F の記録（確定）
+- [Refactoring work order 2](docs/refactoring-work-order-2.md) — 次回リファクタリング（Stage G）の実行正本
 
 `AGENTS.md` is the authoritative project and safety contract.

@@ -638,6 +638,9 @@ BL-03（time-sync route 判断: 専用 route 化しないと決定）/ BL-04（U
 RTC floor・serial console 方針）/ BL-06（signal 双子の同一性照合）は **DONE**。
 残: **BL-05**（QEMU 系の残り + 実機回帰）のみ。
 
+次回リファクタリング（Stage G: QEMU helper 集約ほか）は
+`docs/refactoring-work-order-2.md` が実行正本。本書はこれ以上更新しない。
+
 ---
 
 # 8. 最終完了判定（Definition of Done 対応表）

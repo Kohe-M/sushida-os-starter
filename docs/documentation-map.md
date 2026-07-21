@@ -15,7 +15,7 @@
 | Chromium navigation 境界 | `etc/chromium/policies/managed/sushida-os.json` + `sushida-navigation-watch` の `classify_url` | `docs/architecture.md` | checker（allow/blocklist）+ `test_navigation_watch.py` |
 | repository 構成一覧 | `git ls-files`（生成: `tools/gen-structure.py`） | `STRUCTURE.txt`（生成物） | `make check-structure`（CI） |
 | 開発・検証の入口 | `Makefile`（`make help`） | `README.md`、docs | `test_development_tooling.py` / `test_documentation.py` |
-| 進捗・作業手順・逸脱記録 | `docs/refactoring-work-order.md` | — | —（人手） |
+| 進捗・作業手順・逸脱記録 | `docs/refactoring-work-order.md`（Stage A〜F、確定）+ `docs/refactoring-work-order-2.md`（Stage G、実行正本） | — | —（人手） |
 | 残タスク backlog | `TASKS.md`（task record 形式） | work order §7 | `test_documentation.py`（DONE の証拠列） |
 | 受け入れ試験の証拠 | `docs/acceptance-tests.md`（registry） | Definition of Done | `test_documentation.py` |
 | エージェント安全境界 | `AGENTS.md` | 全作業 | `test_documentation.py`（一部文言） |
