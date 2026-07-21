@@ -2,111 +2,131 @@
 
 ## Shortcut and escape prevention
 
-| ID | Operation | Expected result | Actual result | Pass/Fail | Notes |
-|---|---|---|---|---|---|
-| K01 | Power on | Kiosk starts without a login screen |  |  | Live image boots directly to Cage |
-| K02 | Alt+Tab | No application switcher appears |  |  | Cage: single-application compositor, no DE |
-| K03 | Alt+F2 | No application launcher or run dialog appears |  |  | Cage: single-application compositor, no DE installed |
-| K04 | Alt+F4 | Kiosk remains or restarts within 5 seconds |  |  | Restart=always + RestartSec=3 |
-| K05 | Super | No desktop shell or overview appears |  |  | Cage: no DE installed |
-| K06 | Super+D | No desktop shown |  |  | Cage: no DE installed |
-| K07 | Super+R | No run dialog appears |  |  | Cage: no DE installed |
-| K08 | Ctrl+Alt+T | No terminal opens |  |  | No terminal emulator installed |
-| K09 | Ctrl+Alt+F1 | No usable login console appears |  |  | Cage -s absent + NAutoVTs=0 + getty mask |
-| K10 | Ctrl+Alt+F2 | No usable login console appears |  |  | Cage -s absent + NAutoVTs=0 + getty mask |
-| K11 | Ctrl+Alt+F3 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
-| K12 | Ctrl+Alt+F4 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
-| K13 | Ctrl+Alt+F5 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
-| K14 | Ctrl+Alt+F6 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
-| K15 | Ctrl+Alt+F7 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
-| K16 | Ctrl+Alt+F8 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
-| K17 | Ctrl+Alt+F9 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
-| K18 | Ctrl+Alt+F10 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
-| K19 | Ctrl+Alt+F11 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
-| K20 | Ctrl+Alt+F12 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
-| K21 | Ctrl+Alt+Delete (single) | No reboot or logout |  |  | ctrl-alt-del.target masked |
-| K22 | Ctrl+Alt+Delete (rapid burst) | No forced action from systemd |  |  | CtrlAltDelBurstAction=none |
-| K23 | Ctrl+L | Address bar not usable or not visible |  |  | Chromium --kiosk mode |
-| K24 | Ctrl+T | No new tab opens |  |  | Chromium --kiosk mode |
-| K25 | Ctrl+N | No new window opens |  |  | Chromium --kiosk mode |
-| K26 | Ctrl+Shift+N | No incognito window opens |  |  | IncognitoModeAvailability=1 |
-| K27 | Ctrl+W | Browser tab closes but Cage recovers within 5 seconds |  |  | Restart=always + RestartSec=3 |
-| K28 | Ctrl+U | Page source does not open |  |  | DeveloperToolsAvailability=2 + view-source:* |
-| K29 | Ctrl+Shift+I | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
-| K30 | F11 | No full-screen toggle (already kiosk) |  |  | Chromium --kiosk mode |
-| K31 | F12 | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
-| K32 | Disconnect network | Local Wi-Fi setup screen appears |  |  | Low-frequency watcher restarts the managed kiosk session |
-| K32a | After using Sushi-da for several minutes, disconnect the active network and wait up to about 50 seconds | The constrained Wi-Fi setup screen reappears and accepts a new connection |  |  | 30-second watcher interval, bounded service restart, and up to 15-second launcher grace; confirms setup is not first-boot-only |
-| K33 | Restore network | Sushi-da page returns automatically |  |  | Fresh session selects the validated configured URL |
-| K34 | First boot without Ethernet | Wi-Fi networks appear after the 15-second grace period |  |  | Loopback setup UI; physical Wi-Fi required; NetworkManager wait-online is not on the kiosk dependency path |
-| K34a | Select each visible SSID row and press `再スキャン` | Radio selection works; rescan returns to the setup list without a white `Not found` page |  |  | Physical Cage/Wayland input required |
-| K34b | Let NetworkManager change state while the setup page remains visible | Visible SSID rows, password field, and connect button stay interactive until the watcher changes routes |  |  | Covers the launcher/render timing race |
-| K35 | Enter valid Wi-Fi credential | Association succeeds and Sushi-da opens |  |  | Credential is saved only after successful association |
-| K35a | Submit after an automatic Wi-Fi backend restart | The existing form remains valid and association proceeds; no plain `Forbidden` page appears |  |  | CSRF token is preserved only across automatic service restart |
-| K35b | Submit a stale or invalid setup form | A Japanese error appears inside the interactive setup page and the password is not reflected |  |  | Retrying requires password re-entry |
-| K35c | Disconnect after one successful setup, then enter a replacement credential | The replacement is saved persistently despite the intervening kiosk restart |  |  | Confirms config readiness is independent of `/run/sushida-os` |
-| K35d | Connect successfully while NetworkManager auto-connect modification is delayed or unavailable | The request stays on a valid transition page; no white error or traceback appears |  |  | Persistent setup credential remains the reboot recovery path |
-| K36 | Clean reboot after K35 | Saved Wi-Fi reconnects and Sushi-da opens |  |  | Verify `SUSHIDA-CFG` persistence |
-| K36a | Boot with saved Wi-Fi while Ethernet is connected, then unplug Ethernet | Managed Wi-Fi is already associated and online routing recovers without credential re-entry |  |  | General wired connectivity must not suppress Wi-Fi restoration |
-| K37 | Enter invalid Wi-Fi credential | Error remains inside setup UI and no credential is saved |  |  | No arbitrary browser navigation |
-| K38 | Boot with missing/damaged config partition | Boot continues; setup refuses persistent save |  |  | Static offline fallback remains available |
-| K38a | Select an SSID with the config partition unavailable | Controls remain interactive and Wi-Fi connects for the current boot with a non-persistence warning |  |  | Must not silently claim that credentials were saved |
-| K38b | Submit an open SSID with a non-empty password | Backend rejects it before changing NetworkManager and asks for an empty password |  |  | Open mode never creates a passwd-file |
-| K38c | Submit WEP, 802.1X/Enterprise, OWE, SAE-only WPA3, hidden, or unknown security | A specific unsupported-mode Japanese message appears and no profile/radio change occurs |  |  | Backend re-scan owns the security decision; WPA2/WPA3 transition mode is supported as WPA Personal |
-| K38d | Submit a WPA Personal password containing spaces, a colon, and symbols | Association succeeds without the password appearing in argv, logs, or the HTTP response |  |  | Confirm with redacted diagnostics only |
-| K38e | Stop and restart the test AP after a successful WPA Personal setup | NetworkManager reconnects during the same boot without a second password entry |  |  | Confirm the runtime profile uses `psk-flags=0`; reboot recovery remains through `setup.json` |
-| K38f | Submit a Wi-Fi credential while the backend holds previous connection state | The response contains the connecting page, not a post-success form; the browser does not show `ERR_NETWORK_CHANGED` or any other error page, and the setup page eventually transitions to the success message or the interactive form depending on the outcome |  |  | The async state machine guarantees the HTTP response completes before NetworkManager is changed |
-| K38g | Submit two duplicate connection requests rapidly | The second request receives a `409 Conflict` response; exactly one connection attempt runs, and only the first credential is persisted |  |  | Duplicate POSTs are serialized; the second credential is never stored |
+| ID | Class | Operation | Expected result | Actual result | Pass/Fail | Notes |
+|---|---|---|---|---|---|---|
+| K01 | QEMU / physical | Power on | Kiosk starts without a login screen |  |  | Live image boots directly to Cage |
+| K02 | physical hardware | Alt+Tab | No application switcher appears |  |  | Cage: single-application compositor, no DE |
+| K03 | physical hardware | Alt+F2 | No application launcher or run dialog appears |  |  | Cage: single-application compositor, no DE installed |
+| K04 | physical hardware | Alt+F4 | Kiosk remains or restarts within 5 seconds |  |  | Restart=always + RestartSec=3 |
+| K05 | physical hardware | Super | No desktop shell or overview appears |  |  | Cage: no DE installed |
+| K06 | physical hardware | Super+D | No desktop shown |  |  | Cage: no DE installed |
+| K07 | physical hardware | Super+R | No run dialog appears |  |  | Cage: no DE installed |
+| K08 | physical hardware | Ctrl+Alt+T | No terminal opens |  |  | No terminal emulator installed |
+| K09 | physical hardware | Ctrl+Alt+F1 | No usable login console appears |  |  | Cage -s absent + NAutoVTs=0 + getty mask |
+| K10 | physical hardware | Ctrl+Alt+F2 | No usable login console appears |  |  | Cage -s absent + NAutoVTs=0 + getty mask |
+| K11 | physical hardware | Ctrl+Alt+F3 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
+| K12 | physical hardware | Ctrl+Alt+F4 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
+| K13 | physical hardware | Ctrl+Alt+F5 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
+| K14 | physical hardware | Ctrl+Alt+F6 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
+| K15 | physical hardware | Ctrl+Alt+F7 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
+| K16 | physical hardware | Ctrl+Alt+F8 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
+| K17 | physical hardware | Ctrl+Alt+F9 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
+| K18 | physical hardware | Ctrl+Alt+F10 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
+| K19 | physical hardware | Ctrl+Alt+F11 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
+| K20 | physical hardware | Ctrl+Alt+F12 | No usable login console appears |  |  | Same controls as Ctrl+Alt+F2 |
+| K21 | physical hardware | Ctrl+Alt+Delete (single) | No reboot or logout |  |  | ctrl-alt-del.target masked |
+| K22 | physical hardware | Ctrl+Alt+Delete (rapid burst) | No forced action from systemd |  |  | CtrlAltDelBurstAction=none |
+| K23 | physical hardware | Ctrl+L | Address bar not usable or not visible |  |  | Chromium --kiosk mode |
+| K24 | physical hardware | Ctrl+T | No new tab opens |  |  | Chromium --kiosk mode |
+| K25 | physical hardware | Ctrl+N | No new window opens |  |  | Chromium --kiosk mode |
+| K26 | physical hardware | Ctrl+Shift+N | No incognito window opens |  |  | IncognitoModeAvailability=1 |
+| K27 | physical hardware | Ctrl+W | Browser tab closes but Cage recovers within 5 seconds |  |  | Restart=always + RestartSec=3 |
+| K28 | physical hardware | Ctrl+U | Page source does not open |  |  | DeveloperToolsAvailability=2 + view-source:* |
+| K29 | physical hardware | Ctrl+Shift+I | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
+| K30 | physical hardware | F11 | No full-screen toggle (already kiosk) |  |  | Chromium --kiosk mode |
+| K31 | physical hardware | F12 | Developer tools do not open |  |  | DeveloperToolsAvailability=2 |
+| K32 | physical hardware | Disconnect network | Local Wi-Fi setup screen appears |  |  | Low-frequency watcher restarts the managed kiosk session |
+| K32a | physical hardware | After using Sushi-da for several minutes, disconnect the active network and wait up to about 50 seconds | The constrained Wi-Fi setup screen reappears and accepts a new connection |  |  | 30-second watcher interval, bounded service restart, and up to 15-second launcher grace; confirms setup is not first-boot-only |
+| K33 | physical hardware | Restore network | Sushi-da page returns automatically |  |  | Fresh session selects the validated configured URL |
+| K34 | physical hardware | First boot without Ethernet | Wi-Fi networks appear after the 15-second grace period |  |  | Loopback setup UI; physical Wi-Fi required; NetworkManager wait-online is not on the kiosk dependency path |
+| K34a | physical hardware | Select each visible SSID row and press `再スキャン` | Radio selection works; rescan returns to the setup list without a white `Not found` page |  |  | Physical Cage/Wayland input required |
+| K34b | physical hardware | Let NetworkManager change state while the setup page remains visible | Visible SSID rows, password field, and connect button stay interactive until the watcher changes routes |  |  | Covers the launcher/render timing race |
+| K35 | physical hardware | Enter valid Wi-Fi credential | Association succeeds and Sushi-da opens |  |  | Credential is saved only after successful association |
+| K35a | physical hardware | Submit after an automatic Wi-Fi backend restart | The existing form remains valid and association proceeds; no plain `Forbidden` page appears |  |  | CSRF token is preserved only across automatic service restart |
+| K35b | physical hardware | Submit a stale or invalid setup form | A Japanese error appears inside the interactive setup page and the password is not reflected |  |  | Retrying requires password re-entry |
+| K35c | physical hardware | Disconnect after one successful setup, then enter a replacement credential | The replacement is saved persistently despite the intervening kiosk restart |  |  | Confirms config readiness is independent of `/run/sushida-os` |
+| K35d | physical hardware | Connect successfully while NetworkManager auto-connect modification is delayed or unavailable | The request stays on a valid transition page; no white error or traceback appears |  |  | Persistent setup credential remains the reboot recovery path |
+| K36 | physical hardware | Clean reboot after K35 | Saved Wi-Fi reconnects and Sushi-da opens |  |  | Verify `SUSHIDA-CFG` persistence |
+| K36a | physical hardware | Boot with saved Wi-Fi while Ethernet is connected, then unplug Ethernet | Managed Wi-Fi is already associated and online routing recovers without credential re-entry |  |  | General wired connectivity must not suppress Wi-Fi restoration |
+| K37 | physical hardware | Enter invalid Wi-Fi credential | Error remains inside setup UI and no credential is saved |  |  | No arbitrary browser navigation |
+| K38 | physical hardware | Boot with missing/damaged config partition | Boot continues; setup refuses persistent save |  |  | Static offline fallback remains available |
+| K38a | physical hardware | Select an SSID with the config partition unavailable | Controls remain interactive and Wi-Fi connects for the current boot with a non-persistence warning |  |  | Must not silently claim that credentials were saved |
+| K38b | physical hardware | Submit an open SSID with a non-empty password | Backend rejects it before changing NetworkManager and asks for an empty password |  |  | Open mode never creates a passwd-file |
+| K38c | physical hardware | Submit WEP, 802.1X/Enterprise, OWE, SAE-only WPA3, hidden, or unknown security | A specific unsupported-mode Japanese message appears and no profile/radio change occurs |  |  | Backend re-scan owns the security decision; WPA2/WPA3 transition mode is supported as WPA Personal |
+| K38d | physical hardware | Submit a WPA Personal password containing spaces, a colon, and symbols | Association succeeds without the password appearing in argv, logs, or the HTTP response |  |  | Confirm with redacted diagnostics only |
+| K38e | physical hardware | Stop and restart the test AP after a successful WPA Personal setup | NetworkManager reconnects during the same boot without a second password entry |  |  | Confirm the runtime profile uses `psk-flags=0`; reboot recovery remains through `setup.json` |
+| K38f | physical hardware | Submit a Wi-Fi credential while the backend holds previous connection state | The response contains the connecting page, not a post-success form; the browser does not show `ERR_NETWORK_CHANGED` or any other error page, and the setup page eventually transitions to the success message or the interactive form depending on the outcome |  |  | The async state machine guarantees the HTTP response completes before NetworkManager is changed |
+| K38g | physical hardware | Submit two duplicate connection requests rapidly | The second request receives a `409 Conflict` response; exactly one connection attempt runs, and only the first credential is persisted |  |  | Duplicate POSTs are serialized; the second credential is never stored |
 
 ## Navigation recovery
 
-| ID | Operation | Expected result | Actual result | Pass/Fail | Notes |
-|---|---|---|---|---|---|
-| K39 | Click a non-allowlisted link inside the Sushi-da play page | Within about 10 seconds the kiosk returns to the Sushi-da play page; no user interaction is required |  |  | The navigation watcher detects the blocked entry in Chromium's session file and restarts the kiosk |
-| K39a | Click a link with `target="_blank"` to a non-allowlisted origin | The popup window opens briefly but the kiosk returns to the Sushi-da play page within about 15 seconds |  |  | The watcher examines every tab's current entry; no managed policy can prevent user-gesture popups |
-| K39b | Press every non-allowlisted shortcut while the game is running | The kiosk remains on the Sushi-da play page; no unexpected restart occurs |  |  | Normal gameplay URLs are all within the allowlist; the watcher never triggers on allowed pages |
-| K39c | Disconnect the network while Sushi-da is displayed | The network watcher routes to the offline or setup page; the navigation watcher sees that page as allowed and does not restart the kiosk |  |  | The navigation watcher only acts on concretely disallowed URLs (blocked pages, error interstitials) |
+| ID | Class | Operation | Expected result | Actual result | Pass/Fail | Notes |
+|---|---|---|---|---|---|---|
+| K39 | physical hardware | Click a non-allowlisted link inside the Sushi-da play page | Within about 10 seconds the kiosk returns to the Sushi-da play page; no user interaction is required |  |  | The navigation watcher detects the blocked entry in Chromium's session file and restarts the kiosk |
+| K39a | physical hardware | Click a link with `target="_blank"` to a non-allowlisted origin | The popup window opens briefly but the kiosk returns to the Sushi-da play page within about 15 seconds |  |  | The watcher examines every tab's current entry; no managed policy can prevent user-gesture popups |
+| K39b | physical hardware | Press every non-allowlisted shortcut while the game is running | The kiosk remains on the Sushi-da play page; no unexpected restart occurs |  |  | Normal gameplay URLs are all within the allowlist; the watcher never triggers on allowed pages |
+| K39c | physical hardware | Disconnect the network while Sushi-da is displayed | The network watcher routes to the offline or setup page; the navigation watcher sees that page as allowed and does not restart the kiosk |  |  | The navigation watcher only acts on concretely disallowed URLs (blocked pages, error interstitials) |
  
 ## Gameplay input
 
-| ID | Operation | Expected result | Actual result | Pass/Fail | Notes |
-|---|---|---|---|---|---|
-| G01 | Letters (a-z) | Typed characters appear in-game |  |  | No keyboard filter applied |
-| G02 | Digits (0-9) | Typed characters appear in-game |  |  | No keyboard filter applied |
-| G03 | Punctuation | Typed characters appear in-game |  |  | No keyboard filter applied |
-| G04 | Space | Space character works in-game |  |  | No keyboard filter applied |
-| G05 | Enter | Enter key works in-game |  |  | No keyboard filter applied |
-| G06 | Backspace | Backspace works in-game |  |  | No keyboard filter applied |
-| G07 | Physical JIS `@` key | `@` is entered as `@` |  |  | Verify on the target keyboard, not a US-layout substitute |
-| G08 | Shift+2 | `"` is entered as `"` |  |  | JIS symbol mapping |
-| G09 | JIS punctuation | `^`, `:`, `¥`/backslash, `_`, `[`, and `]` all enter correctly |  |  | Record the physical key and resulting character |
-| G10 | JIS Wi-Fi test password | A dedicated test AP accepts a password containing the symbols above |  |  | Do not include the SSID or PSK in shared evidence |
+| ID | Class | Operation | Expected result | Actual result | Pass/Fail | Notes |
+|---|---|---|---|---|---|---|
+| G01 | physical hardware | Letters (a-z) | Typed characters appear in-game |  |  | No keyboard filter applied |
+| G02 | physical hardware | Digits (0-9) | Typed characters appear in-game |  |  | No keyboard filter applied |
+| G03 | physical hardware | Punctuation | Typed characters appear in-game |  |  | No keyboard filter applied |
+| G04 | physical hardware | Space | Space character works in-game |  |  | No keyboard filter applied |
+| G05 | physical hardware | Enter | Enter key works in-game |  |  | No keyboard filter applied |
+| G06 | physical hardware | Backspace | Backspace works in-game |  |  | No keyboard filter applied |
+| G07 | physical hardware | Physical JIS `@` key | `@` is entered as `@` |  |  | Verify on the target keyboard, not a US-layout substitute |
+| G08 | physical hardware | Shift+2 | `"` is entered as `"` |  |  | JIS symbol mapping |
+| G09 | physical hardware | JIS punctuation | `^`, `:`, `¥`/backslash, `_`, `[`, and `]` all enter correctly |  |  | Record the physical key and resulting character |
+| G10 | physical hardware | JIS Wi-Fi test password | A dedicated test AP accepts a password containing the symbols above |  |  | Do not include the SSID or PSK in shared evidence |
 
 ## Power and recovery
 
-| ID | Operation | Expected result | Actual result | Pass/Fail | Notes |
-|---|---|---|---|---|---|
-| P01 | Chromium crash | Cage exits; service restarts within 5 seconds |  |  | Restart=always + RestartSec=3 |
-| P02 | Cage crash | Service restarts within 5 seconds |  |  | Restart=always + RestartSec=3 |
-| P03 | Power loss | On next boot, system returns to known-good kiosk state |  |  | Immutable SquashFS plus volatile overlay |
-| P04 | Power loss during credential update | Root still boots; prior or new complete credential is present, never partial JSON |  |  | Sacrificial media; atomic replace does not prove ext4 durability |
-| P05 | Normal shutdown | `SUSHIDA-CFG` unmounts without failure |  |  | Record exact unit if any unmount warning appears |
-| P06 | Press the physical power button once | systemd-logind reaches the normal `poweroff.target` path and the guest/host test ends naturally |  |  | No acpid or custom event monitor is installed |
-| P07 | Hold the physical power button | Long press is ignored; only the normal short-press action is supported |  |  | Confirm with firmware/ACPI behavior |
-| P08 | QEMU monitor `system_powerdown` | Dedicated BIOS/UEFI test exits naturally, serial logs show normal poweroff, and explicit `SUSHIDA-CFG` mount plus unmount evidence is present |  |  | Monitor socket must be below `build/qemu`; result is bound to current Git commit and release checksums |
+| ID | Class | Operation | Expected result | Actual result | Pass/Fail | Notes |
+|---|---|---|---|---|---|---|
+| P01 | QEMU / physical | Chromium crash | Cage exits; service restarts within 5 seconds |  |  | Restart=always + RestartSec=3 |
+| P02 | QEMU / physical | Cage crash | Service restarts within 5 seconds |  |  | Restart=always + RestartSec=3 |
+| P03 | destructive-manual-approval-required | Power loss | On next boot, system returns to known-good kiosk state |  |  | Immutable SquashFS plus volatile overlay |
+| P04 | destructive-manual-approval-required | Power loss during credential update | Root still boots; prior or new complete credential is present, never partial JSON |  |  | Sacrificial media; atomic replace does not prove ext4 durability |
+| P05 | physical hardware | Normal shutdown | `SUSHIDA-CFG` unmounts without failure |  |  | Record exact unit if any unmount warning appears |
+| P06 | physical hardware | Press the physical power button once | systemd-logind reaches the normal `poweroff.target` path and the guest/host test ends naturally |  |  | No acpid or custom event monitor is installed |
+| P07 | physical hardware | Hold the physical power button | Long press is ignored; only the normal short-press action is supported |  |  | Confirm with firmware/ACPI behavior |
+| P08 | QEMU | QEMU monitor `system_powerdown` | Dedicated BIOS/UEFI test exits naturally, serial logs show normal poweroff, and explicit `SUSHIDA-CFG` mount plus unmount evidence is present |  |  | Monitor socket must be below `build/qemu`; result is bound to current Git commit and release checksums |
 
 ## Audio
 
-| ID | Operation | Expected result | Actual result | Pass/Fail | Notes |
-|---|---|---|---|---|---|
-| A01 | Play Sushi-da game audio | Audio is audible on the selected output |  |  | PipeWire + WirePlumber |
+| ID | Class | Operation | Expected result | Actual result | Pass/Fail | Notes |
+|---|---|---|---|---|---|---|
+| A01 | physical hardware | Play Sushi-da game audio | Audio is audible on the selected output |  |  | PipeWire + WirePlumber |
 
 ## Graphics
 
-| ID | Operation | Expected result | Actual result | Pass/Fail | Notes |
-|---|---|---|---|---|---|
-| V01 | Check WebGL | Chromium uses WebGL without deliberate GPU disable flags |  |  | No --disable-gpu or --disable-webgl |
-| V02 | Check HW acceleration | GPU-accelerated compositing is active |  |  | --ozone-platform=wayland |
+| ID | Class | Operation | Expected result | Actual result | Pass/Fail | Notes |
+|---|---|---|---|---|---|---|
+| V01 | physical hardware | Check WebGL | Chromium uses WebGL without deliberate GPU disable flags |  |  | No --disable-gpu or --disable-webgl |
+| V02 | physical hardware | Check HW acceleration | GPU-accelerated compositing is active |  |  | --ozone-platform=wayland |
+
+## Registry: 実行記録（PASS の唯一の根拠）
+
+上の各表の `Actual result` / `Pass/Fail` は、この registry に対応する記録行が
+あるときだけ埋めてよい。**未実施は PASS にしない。古い ISO の結果を最新 ISO に
+流用しない**（ISO SHA が変わったら再実施するまで空欄に戻す）。
+
+記録 schema（1 実行 = 1 行。secret・SSID・PSK・MAC を書かない）:
+
+| Run | 対象 ID | Class | 対象 commit | ISO SHA-256 | 環境（機種/FW/QEMU 版） | 手順との差分 | 結果 (PASS/FAIL) | 確認日 | 確認者 | 証拠（log/screenshot パス） |
+|---|---|---|---|---|---|---|---|---|---|---|
+|  |  |  |  |  |  |  |  |  |  |  |
+
+Class の定義:
+
+- `automated`: リポジトリ内の自動テスト（commit に紐づく）
+- `QEMU`: 有界 QEMU 実行（serial log / screenshot が証拠）
+- `manual VM`: 手動 VM 操作
+- `physical hardware`: 実機（`hardware-compatibility.md` の matrix 記載機で実施）
+- `destructive-manual-approval-required`: 犠牲ハードでの破壊試験。事前承認必須
 
 ## Definition of Done coverage map
 
