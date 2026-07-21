@@ -133,7 +133,12 @@ def test_smoke_report_distinguishes_automated_and_manual_checks() -> None:
     assert "ModuleNotFoundError" in text
     assert "Wi-Fi setup or watcher service failure" in text
     assert "Invalid pattern file://" in text
-    assert "result_value()" in text
+    # Shared evidence helpers live in scripts/lib/qemu-lib.sh (G-01).
+    assert 'scripts/lib/qemu-lib.sh"' in text
+    lib = Path("scripts/lib/qemu-lib.sh").read_text()
+    assert "result_value()" in lib
+    assert "serial_without_ansi()" in lib
+    assert "SIGPIPE" in lib
     assert "result_sha" in text
     assert "current_sha" in text
     assert "ISO SHA-256 matches the current release artifact" in text

@@ -149,6 +149,7 @@ scripts/
   flash.sh
   lib/
     iso-extract.sh
+    qemu-lib.sh
   powerdown-test.sh
   run-qemu.sh
   shellcheck-targets.sh

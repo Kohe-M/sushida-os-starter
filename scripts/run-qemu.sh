@@ -36,19 +36,8 @@ fail() {
     exit 1
 }
 
-# systemd's serial console decorates status lines with ANSI colour sequences.
-# Strip those sequences before matching lifecycle evidence so the checks are
-# based on the actual unit messages rather than terminal presentation.
-serial_without_ansi() {
-    sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g' "$SERIAL_LOG"
-}
-
-serial_matches() {
-    # grep must consume the whole stream: with pipefail, `grep -q` exiting at
-    # the first match sends SIGPIPE to sed once the log outgrows the pipe
-    # buffer, turning genuine matches into pipeline failures.
-    serial_without_ansi | grep -Ei -- "$1" > /dev/null
-}
+# shellcheck source=scripts/lib/qemu-lib.sh
+. "$SCRIPT_DIR/lib/qemu-lib.sh"
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -343,7 +332,7 @@ fi
 if [ "$QEMU_BOOT_TEST" = true ]; then
     kiosk_ready=false
     for _boot in $(seq 1 "$DURATION"); do
-        if serial_matches 'Started[[:space:]]+sushida-(kiosk|navigation-watch)\.service([[:space:]-]|$)'; then
+        if serial_matches "$SERIAL_LOG" 'Started[[:space:]]+sushida-(kiosk|navigation-watch)\.service([[:space:]-]|$)'; then
             kiosk_ready=true
             break
         fi
@@ -360,7 +349,7 @@ if [ "$POWERDOWN" = true ]; then
     # build/qemu; no host shutdown command is ever used.
     kiosk_ready=false
     for _boot in $(seq 1 "$DURATION"); do
-        if serial_matches 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)'; then
+        if serial_matches "$SERIAL_LOG" 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)'; then
             kiosk_ready=true
             break
         fi
@@ -387,11 +376,11 @@ if [ "$POWERDOWN" = true ]; then
     [ "$qemu_status" -eq 0 ] || fail "QEMU returned status $qemu_status after powerdown"
     config_mount_seen=false
     config_unmount_seen=false
-    if serial_matches \
+    if serial_matches "$SERIAL_LOG" \
         'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dcon)'; then
         config_mount_seen=true
     fi
-    if serial_matches \
+    if serial_matches "$SERIAL_LOG" \
         'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dcon)'; then
         config_unmount_seen=true
     fi

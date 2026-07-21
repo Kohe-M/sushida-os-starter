@@ -5,9 +5,13 @@ setup() {
     mkdir -p "$QEMU_FIXTURE/scripts" "$QEMU_FIXTURE/artifacts" \
         "$QEMU_FIXTURE/bin" "$QEMU_FIXTURE/build/qemu/bios-offline"
 
-    # Copy the production script so the fixture is self-contained.
+    # Copy the production script (and the library it sources) so the
+    # fixture is self-contained.
+    mkdir -p "$QEMU_FIXTURE/scripts/lib"
     cp "$BATS_TEST_DIRNAME/../../scripts/run-qemu.sh" \
         "$QEMU_FIXTURE/scripts/run-qemu.sh"
+    cp "$BATS_TEST_DIRNAME/../../scripts/lib/qemu-lib.sh" \
+        "$QEMU_FIXTURE/scripts/lib/qemu-lib.sh"
     chmod 0755 "$QEMU_FIXTURE/scripts/run-qemu.sh"
 
     # Fake ISO — the dry-run path only checks existence.

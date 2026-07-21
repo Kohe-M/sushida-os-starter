@@ -25,15 +25,10 @@ png_signature="$(head -c 8 "$SCREENSHOT" | od -An -tx1 | tr -d ' \n')"
     exit 1
 }
 
-result_value() {
-    local key="$1"
-    awk -F= -v key="$key" '
-        $1 == key { count++; value = substr($0, index($0, "=") + 1) }
-        END { if (count != 1) exit 1; print value }
-    ' "$RESULT"
-}
+# shellcheck source=scripts/lib/qemu-lib.sh
+. "$PROJECT_ROOT/scripts/lib/qemu-lib.sh"
 
-result_sha="$(result_value ISO_SHA256)" || {
+result_sha="$(result_value "$RESULT" ISO_SHA256)" || {
     echo "ERROR: result.env must contain exactly one ISO_SHA256 entry" >&2
     exit 1
 }
@@ -54,11 +49,11 @@ current_sha="$(sha256sum "$ISO" | awk '{print $1}')"
 }
 
 timestamp_pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
-run_started="$(result_value RUN_STARTED_AT)" || {
+run_started="$(result_value "$RESULT" RUN_STARTED_AT)" || {
     echo "ERROR: result.env must contain exactly one RUN_STARTED_AT entry" >&2
     exit 1
 }
-run_finished="$(result_value RUN_FINISHED_AT)" || {
+run_finished="$(result_value "$RESULT" RUN_FINISHED_AT)" || {
     echo "ERROR: result.env must contain exactly one RUN_FINISHED_AT entry" >&2
     exit 1
 }

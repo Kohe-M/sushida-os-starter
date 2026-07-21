@@ -25,9 +25,12 @@ if [ ! -f "$SERIAL" ] || [ ! -f "$RESULT" ]; then
     exit 1
 fi
 
+# shellcheck source=scripts/lib/qemu-lib.sh
+. "$PROJECT_ROOT/scripts/lib/qemu-lib.sh"
+
 # Strip ANSI colour sequences from systemd's console output.
 SERIAL_PLAIN="$RUN_DIR/serial.plain.log"
-sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g' "$SERIAL" > "$SERIAL_PLAIN"
+serial_without_ansi "$SERIAL" > "$SERIAL_PLAIN"
 _exit_report=0
 
 # Verify the bootloader succeeded in reaching kiosk services.

@@ -29,38 +29,22 @@ for command_name in awk git python3 sha256sum; do
     }
 done
 
-result_value() {
-    local key="$1"
-    awk -F= -v key="$key" '
-        $1 == key { count++; value = substr($0, index($0, "=") + 1) }
-        END { if (count != 1) exit 1; print value }
-    ' "$RESULT"
-}
+# shellcheck source=scripts/lib/qemu-lib.sh
+. "$PROJECT_ROOT/scripts/lib/qemu-lib.sh"
 
-serial_without_ansi() {
-    sed -E $'s/\x1B\\[[0-9;?]*[ -/]*[@-~]//g' "$SERIAL"
-}
-
-serial_matches() {
-    # grep must consume the whole stream: with pipefail, `grep -q` exiting at
-    # the first match sends SIGPIPE to sed once the log outgrows the pipe
-    # buffer, turning genuine matches into pipeline failures.
-    serial_without_ansi | grep -Ei -- "$1" > /dev/null
-}
-
-[ "$(result_value POWERDOWN_MODE)" = true ] || {
+[ "$(result_value "$RESULT" POWERDOWN_MODE)" = true ] || {
     echo "ERROR: result is not a powerdown run" >&2
     exit 1
 }
-[ "$(result_value POWERDOWN_SENT)" = true ] || {
+[ "$(result_value "$RESULT" POWERDOWN_SENT)" = true ] || {
     echo "ERROR: monitor system_powerdown was not sent" >&2
     exit 1
 }
-[ "$(result_value NATURAL_POWERDOWN)" = true ] || {
+[ "$(result_value "$RESULT" NATURAL_POWERDOWN)" = true ] || {
     echo "ERROR: QEMU did not report a natural guest shutdown" >&2
     exit 1
 }
-[ "$(result_value QEMU_STATUS)" = 0 ] || {
+[ "$(result_value "$RESULT" QEMU_STATUS)" = 0 ] || {
     echo "ERROR: QEMU powerdown status was not zero" >&2
     exit 1
 }
@@ -74,12 +58,12 @@ git_status="$(git -C "$PROJECT_ROOT" status --porcelain --untracked-files=all)"
     echo "ERROR: current Git worktree is dirty; commit source changes first" >&2
     exit 1
 }
-[ "$(result_value GIT_COMMIT)" = "$current_commit" ] || {
+[ "$(result_value "$RESULT" GIT_COMMIT)" = "$current_commit" ] || {
     echo "ERROR: QEMU result was produced from a different Git commit" >&2
     exit 1
 }
 
-result_sha="$(result_value ISO_SHA256)"
+result_sha="$(result_value "$RESULT" ISO_SHA256)"
 current_sha="$(sha256sum "$ISO" | awk '{print $1}')"
 [ "$result_sha" = "$current_sha" ] || {
     echo "ERROR: QEMU result ISO SHA-256 does not match the current ISO" >&2
@@ -109,33 +93,33 @@ if metadata.get("iso_sha256") != expected_sha:
     raise SystemExit("build-info.json ISO checksum does not match the current ISO")
 PY
 
-serial_matches 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)' || {
+serial_matches "$SERIAL" 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)' || {
     echo "ERROR: serial log lacks kiosk startup evidence" >&2
     exit 1
 }
-serial_matches 'poweroff\.target|Powering off|Reached target Shutdown' || {
+serial_matches "$SERIAL" 'poweroff\.target|Powering off|Reached target Shutdown' || {
     echo "ERROR: serial log lacks normal systemd poweroff evidence" >&2
     exit 1
 }
-if serial_without_ansi | grep -F 'var-lib-sushida\x2dcon' | \
+if serial_without_ansi "$SERIAL" | grep -F 'var-lib-sushida\x2dcon' | \
     grep -Ei 'failed|failure|error' > /dev/null; then
     echo "ERROR: SUSHIDA-CFG mount has a shutdown failure" >&2
     exit 1
 fi
-[ "$(result_value CONFIG_MOUNT_SEEN)" = true ] || {
+[ "$(result_value "$RESULT" CONFIG_MOUNT_SEEN)" = true ] || {
     echo "ERROR: serial log lacks successful SUSHIDA-CFG mount evidence" >&2
     exit 1
 }
-[ "$(result_value CONFIG_UNMOUNT_SEEN)" = true ] || {
+[ "$(result_value "$RESULT" CONFIG_UNMOUNT_SEEN)" = true ] || {
     echo "ERROR: serial log lacks successful SUSHIDA-CFG unmount evidence" >&2
     exit 1
 }
-serial_matches \
+serial_matches "$SERIAL" \
     'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dcon)' || {
     echo "ERROR: serial log lacks positive SUSHIDA-CFG mount evidence" >&2
     exit 1
 }
-serial_matches \
+serial_matches "$SERIAL" \
     'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dcon)' || {
     echo "ERROR: serial log lacks positive SUSHIDA-CFG unmount evidence" >&2
     exit 1
