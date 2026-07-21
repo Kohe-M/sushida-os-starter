@@ -25,7 +25,7 @@
 | **C** | Wi-Fi backend モジュール分割（挙動不変） | ✅ 完了 | `e825678`〜`2c096ef` |
 | **D** | route 判定・kiosk signal 共通化（挙動不変） | ✅ 完了 | `04f3f64`〜`b2bd238` |
 | **E** | release manifest 正本化・ISO 照合・再現性 | ✅ 完了 | `7d02146`〜（§4.5 参照） |
-| **F** | 文書正本化（AGENTS/TASKS/STRUCTURE/docs） | ⬜ 未着手 | — |
+| **F** | 文書正本化（AGENTS/TASKS/STRUCTURE/docs） | ✅ 完了 | `867ba4f`〜（§4.6 参照） |
 
 **並行禁止**: D↔E は checker の同じ adapter・contract に触るため直列に実施する。
 E↔F も E の成果物（reproducible-builds.md 等）を F が参照するため直列とする。
@@ -34,22 +34,21 @@ E↔F も E の成果物（reproducible-builds.md 等）を F が参照するた
 
 | 検証 | 規模 | 状態 |
 |---|---|---|
-| `tests/static/`（pytest） | 658 件 | 緑 |
+| `tests/static/`（pytest） | 665 件 | 緑 |
 | `tests/contracts/`（pytest） | 112 件 | 緑 |
 | `tests/shell/`（bats、コンテナ内） | 214 件 | 緑 |
 | `python3 tools/check-contracts.py` | runtime/release/drift | exit 0 |
-| `make iso` / `make verify` / QEMU 系 | — | **未実行**（全 Stage 通して） |
-| 実機回帰 | — | **未実行** |
+| `make check-structure` | STRUCTURE.txt 鮮度 | PASS |
+| `make iso` + verify（内部/単独） | commit `789ac24`、ISO SHA `d541644f…` | **PASS**（acceptance registry R1） |
+| QEMU 系 / 実機回帰 | — | **未実行**（BL-05） |
 
 ## 0.3 残作業の全体像
 
-1. **Stage E**（§5）: release contract を artifact manifest の正本にし、
-   `verify-iso.sh` を manifest 駆動へ。再現可能ビルドの調査と安全な範囲の実装。
-2. **Stage F**（§6）: 文書の正本化と drift 検出の CI 化。
-3. **繰延 backlog**（§7）: Stage C/D の逸脱から生まれた宿題（runtime-state 完全移行など）と、
-   初版でスコープ外とされた独立タスク。Stage F の TASKS.md 再編（F-03）で task record 化する。
-4. **未実行検証の消化**: ISO ビルド・QEMU・実機回帰は環境が用意でき次第、
-   §8 の Definition of Done 表に沿って実施する。
+全 Stage（A〜F）完了。残るのは backlog のみ:
+
+1. **繰延 backlog**: `TASKS.md` §2（BL-01〜06）が正本（F-03 で task record 化済み）。
+2. **未実行検証の消化**（BL-05）: 実 ISO の `make iso && make verify` は PASS 済み
+   （registry R1）。QEMU 系・実機回帰が残り、§8 の Definition of Done 表に沿って実施する。
 
 ---
 
@@ -327,6 +326,44 @@ bats **214**〔iso-extract 12 / verify-stale 13 を含む〕）全 pass、checke
 `git diff --check` クリーン。`make configure && make iso && make verify` および
 QEMU 系は**未実行**（fixture で検証できない範囲: verify_partitions positive、
 実 live-build 生成物との exact 照合、bootloader 実配置）。
+
+## 4.6 Stage F: 文書正本化 — ✅
+
+**目的**: 文書とコードのドリフトを CI で検出し、全員が同じ正本を参照する構造にする。
+
+| Step | 内容 | 状態 |
+|---|---|---|
+| F-01 | 文書正本マップ（docs/documentation-map.md） | ✅ `867ba4f` |
+| F-02 | AGENTS.md を8節の境界中心構成へ再編 | ✅ `b628f64` |
+| F-03 | TASKS.md を task record backlog 化（BL-01〜06 取り込み） | ✅ `6b18ad5` |
+| F-04 | STRUCTURE.txt 自動生成（tools/gen-structure.py + make check-structure、CI 組込） | ✅ `6a3d9f1` |
+| F-05 | README 差分確認（ci 説明・doc リンク更新のみ） | ✅ `963d0ee` |
+| F-06 | domain 文書整理（wifi-state-machine.md / runtime-routes.md 新設） | ✅ `5217807` |
+| F-07 | acceptance registry 化（Class 列 + 実行記録 R 行） | ✅ `5d2ca89` |
+| F-08 | PR template + change-checklist | ✅ `897144a` |
+| F-09 | 文書整合テスト拡張 | ✅ `f2dc8dd`（parser 追随 `8ede4fd`） |
+| F-10 | 最終 Phase ゲート | ✅ 下記参照 |
+
+**併行して実施: exact 昇格の実 ISO 検証（BL-05 前半）**: 現 HEAD の clone 上で
+`make container-iso`（rootless podman --privileged）を実行し、build 内 verify と
+単独 `make verify`（privileged）の両方が **PASS**（commit `789ac24`、
+ISO SHA `d541644f…`、`52ae92a` で registry R1 として記録）。exact 31件の
+byte/mode/owner 照合・partition stage positive・bootloader 配置が実 ISO で成立し、
+contract の降格は不要だった。
+既知の制約: rootless podman では非 privileged の `make container-verify` が
+bind mount 上の scratch 作成で失敗する（docs/build.md に記載）。
+
+**逸脱・記録**:
+1. F-07 の Class 列挿入で `test_lockdown.py` の表 parser の列 index がずれ、
+   6件が赤のまま `f2dc8dd` をコミットしてしまった（パイプで exit code を隠した
+   ミス。P1 違反）。直後の `8ede4fd` で parser を追随させ修正。
+2. F-09 の「資格情報は破棄」検査は本書自身（タスクカードの引用）を除外対象とした。
+3. STRUCTURE.txt の鮮度検査が F-06〜F-08 の追加ファイル分の陳腐化を即検出
+   （機構が機能した初例）。
+
+**F-10 結果（2026-07-21）**: コンテナ `make test`（static 665 + contracts 112 +
+bats 214）全 pass、checker exit 0、`make check-structure` PASS、
+`git diff --check` クリーン。QEMU 系・実機回帰は**未実行**（BL-05）。
 
 ---
 
