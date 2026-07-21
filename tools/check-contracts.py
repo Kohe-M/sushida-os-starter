@@ -808,6 +808,17 @@ def _drift_release_iso_paths(rc: dict, verify_text: str, result: Result) -> None
     mappings_by_image: dict[str, dict] = {}
     for mapping in rc.get("source_image_mappings", []):
         mappings_by_image.setdefault(mapping["image_path"], mapping)
+    # verify-iso.sh is manifest-driven: instead of repeating each iso-root
+    # path literal, it must read the release contract and loop over the
+    # iso-root region.  Individual paths are validated for self-consistency
+    # (pattern ↔ path) below.
+    if any(e.get("region") == "iso-root" for e in rc.get("required_iso_paths", [])):
+        if "release-contract.json" not in verify_text or \
+                '.region == "iso-root"' not in verify_text:
+            result.error("DRIFT_ISO_PATH", "release", "required_iso_paths",
+                         "scripts/verify-iso.sh",
+                         "verify-iso.sh does not read iso-root paths from "
+                         "the release contract")
     for entry in rc.get("required_iso_paths", []):
         path = entry["path"]
         label = f"required_iso_paths.{path}"
@@ -833,11 +844,8 @@ def _drift_release_iso_paths(rc: dict, verify_text: str, result: Result) -> None
                     result.error("DRIFT_ISO_PATH_ATTR", "release", label, "contract",
                                  f"mapping {attr}={mapping.get(attr)!r} != "
                                  f"iso path {attr}={entry.get(attr)!r}")
-        elif entry["region"] == "iso-root":
-            # verify-iso.sh writes initrd/squashfs in regex-escaped form
-            if path not in verify_text and re.escape(path) not in verify_text:
-                result.error("DRIFT_ISO_PATH", "release", label, "scripts/verify-iso.sh",
-                             f"required ISO path {path!r} not referenced by verify-iso.sh")
+        # iso-root entries need no per-path reference in verify-iso.sh: the
+        # verifier loops over the contract itself (checked above).
 
 
 def _drift_release_metadata(meta: dict, result: Result) -> None:

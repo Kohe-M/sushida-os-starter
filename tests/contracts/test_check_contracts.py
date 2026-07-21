@@ -138,7 +138,8 @@ def _build_minimal_repo(root: Path) -> None:
     (root / "scripts/verify-iso.sh").write_text(
         'sushida-os-amd64.iso\nSHA256SUMS\npackage-manifest.txt\nbuild-info.json\n'
         '/live/filesystem.squashfs\n/live/vmlinuz\n/live/initrd.img\n'
-        '/boot/grub/grub.cfg\n/isolinux/isolinux.cfg\n/isolinux/live.cfg\n'
+        'CONTRACT="$PROJECT_ROOT/contracts/release-contract.json"\n'
+        'jq -j \'.required_iso_paths[] | select(.region == "iso-root")\'\n'
     )
     (root / "live-build/config/bootloaders/grub-pc/config.cfg").write_text(
         'set timeout=0\n'
@@ -424,11 +425,11 @@ class TestCheckContracts:
         assert "RELEASE_MAPPING_SOURCE" in r.stdout
         assert "symlink" in r.stdout
 
-    # ── Bootloader ISO path must be referenced by the verifier ──────
+    # ── Verifier must read iso-root paths from the release contract ──
 
-    def test_bootloader_iso_path_not_verified_exit_1(self, clean_repo: Path) -> None:
+    def test_verifier_not_manifest_driven_exit_1(self, clean_repo: Path) -> None:
         vs = clean_repo / "scripts/verify-iso.sh"
-        vs.write_text(vs.read_text().replace("/boot/grub/grub.cfg\n", ""))
+        vs.write_text(vs.read_text().replace("release-contract.json", "hardcoded"))
         r = _run_checker(clean_repo)
         assert r.returncode == 1
         assert "DRIFT_ISO_PATH" in r.stdout

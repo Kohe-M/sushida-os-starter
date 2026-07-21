@@ -1,5 +1,6 @@
 """Static safety and completeness checks for build artifacts."""
 
+import json
 import os
 import stat
 from pathlib import Path
@@ -95,29 +96,57 @@ def test_verify_checks_iso_and_squashfs_contents() -> None:
     assert "-find / -type f -exec echo" in text
     assert "-find / -type f -print" not in text
     assert "unsquashfs" in text
+    assert "filesystem.squashfs" in text
+    assert "SUSHIDA-CFG" in text
+    # The required path lists live in the release contract; the verifier
+    # loops over both regions instead of repeating path literals.
+    assert "release-contract.json" in text
+    assert 'select(.region == "iso-root")' in text
+    assert 'select(.region == "squashfs")' in text
+    contract = json.loads(Path("contracts/release-contract.json").read_text())
+    squashfs_paths = {
+        entry["path"] for entry in contract["required_iso_paths"]
+        if entry["region"] == "squashfs"
+    }
     for path in (
-        "filesystem.squashfs",
-        "sushida-os.json",
-        "sushida-kiosk.service",
-        "sushida-network-watch.service",
-        "sushida-wifi-setup.service",
-        "sushida-config-prepare",
-        "SUSHIDA-CFG",
-        "sushida-session",
-        "offline.html",
+        "/etc/chromium/policies/managed/sushida-os.json",
+        "/etc/systemd/system/sushida-kiosk.service",
+        "/etc/systemd/system/sushida-network-watch.service",
+        "/etc/systemd/system/sushida-wifi-setup.service",
+        "/etc/systemd/system/sushida-config-prepare.service",
+        "/usr/local/libexec/sushida-session",
+        "/usr/local/libexec/sushida-config-prepare",
+        "/usr/local/libexec/sushida-wifi-setup",
+        "/usr/share/sushida-os/offline.html",
     ):
-        assert path in text
+        assert path in squashfs_paths
 
 
 def test_verify_rejects_stale_wifi_runtime_files() -> None:
     text = _verify_text()
     assert "cmp -s" in text
-    assert "ISO contains a stale Wi-Fi setup backend" in text
-    assert "ISO contains a stale Wi-Fi setup service" in text
-    assert "ISO contains a stale configuration prepare helper" in text
-    assert "ISO contains a stale configuration prepare service" in text
-    assert "ISO contains a stale configuration mount unit" in text
+    assert "ISO contains stale content" in text
     assert "unsquashfs -cat" in text
+    # Exact verification is contract-driven; the historically byte-compared
+    # Wi-Fi/config files must stay declared exact in the manifest.
+    assert '.current_verification == "exact"' in text
+    contract = json.loads(Path("contracts/release-contract.json").read_text())
+    exact_paths = {
+        mapping["image_path"]
+        for mapping in contract["source_image_mappings"]
+        if mapping["current_verification"] == "exact"
+    }
+    for path in (
+        "/usr/local/libexec/sushida-wifi-setup",
+        "/etc/systemd/system/sushida-wifi-setup.service",
+        "/usr/local/libexec/sushida-config-prepare",
+        "/etc/systemd/system/sushida-config-prepare.service",
+        "/etc/systemd/system/var-lib-sushida\\x2dconfig.mount",
+    ):
+        assert path in exact_paths
+    # Declared mode/owner/group are enforced inside the image for exact files.
+    assert "mode_to_symbolic" in text
+    assert "unexpected image owner" in text
 
 
 def test_verify_restricts_selected_directory() -> None:

@@ -27,9 +27,17 @@ case "$resolved_dir" in
     *) fail "artifact directory is outside the repository artifact root" ;;
 esac
 
-for cmd in awk blkid cmp dd git grep jq sha256sum unsquashfs wc xorriso; do
+for cmd in awk blkid cmp dd git grep jq mkdir sed sha256sum unsquashfs wc xorriso; do
     command -v "$cmd" > /dev/null 2>&1 || fail "required command not found: $cmd"
 done
+
+# The release contract is the manifest this verifier executes.
+CONTRACT="$PROJECT_ROOT/contracts/release-contract.json"
+if [ ! -f "$CONTRACT" ] || [ -L "$CONTRACT" ]; then
+    fail "release contract not found: $CONTRACT"
+fi
+jq -e '.schema_version == 1' "$CONTRACT" > /dev/null || \
+    fail "unsupported release contract schema"
 for file in "$ISO_NAME" SHA256SUMS package-manifest.txt build-info.json; do
     path="$resolved_dir/$file"
     if [ ! -f "$path" ] || [ -L "$path" ] || [ ! -s "$path" ]; then
@@ -89,18 +97,23 @@ iso="$resolved_dir/$ISO_NAME"
 iso_listing="$VERIFY_ROOT/iso-files.txt"
 iso_list_files "$iso" "$iso_listing" || \
     fail "cannot read ISO filesystem"
-grep -Eq "^'?/live/filesystem\.squashfs'?$" "$iso_listing" || \
-    fail "required ISO path missing: /live/filesystem.squashfs"
-grep -Eq "^'?/live/vmlinuz([.-][^/]*)?'?$" "$iso_listing" || \
-    fail "live kernel missing from ISO"
-grep -Eq "^'?/live/initrd\.img([.-][^/]*)?'?$" "$iso_listing" || \
-    fail "live initrd missing from ISO"
-grep -Eq "^'?/boot/grub/grub\.cfg'?$" "$iso_listing" || \
-    fail "required ISO path missing: /boot/grub/grub.cfg"
-grep -Eq "^'?/isolinux/isolinux\.cfg'?$" "$iso_listing" || \
-    fail "required ISO path missing: /isolinux/isolinux.cfg"
-grep -Eq "^'?/isolinux/live\.cfg'?$" "$iso_listing" || \
-    fail "required ISO path missing: /isolinux/live.cfg"
+# Required ISO paths (iso-root region) come from the release contract.
+# Literal paths are regex-escaped; regex entries carry their own pattern.
+# Records are NUL-separated: TSV would re-escape backslashes in patterns.
+while IFS= read -r -d '' req_path && \
+      IFS= read -r -d '' req_pattern && \
+      IFS= read -r -d '' req_match; do
+    if [ "$req_match" = regex ]; then
+        inner_re="${req_pattern#^}"
+        inner_re="${inner_re%$}"
+    else
+        inner_re="$(printf '%s' "$req_path" | sed -e 's/[.[\*^$()+?{|]/\\&/g')"
+    fi
+    grep -Eq "^'?${inner_re}'?\$" "$iso_listing" || \
+        fail "required ISO path missing: $req_path"
+done < <(jq -j '.required_iso_paths[] | select(.region == "iso-root")
+    | (.path + "\u0000" + (.path_pattern // "") + "\u0000"
+       + (.match_type // "literal") + "\u0000")' "$CONTRACT")
 
 system_area="$VERIFY_ROOT/system-area.txt"
 iso_report_system_area "$iso" "$system_area" || \
@@ -124,65 +137,64 @@ iso_extract_file "$iso" /live/filesystem.squashfs "$VERIFY_ROOT/filesystem.squas
     fail "cannot extract SquashFS"
 squashfs_list "$VERIFY_ROOT/filesystem.squashfs" "$VERIFY_ROOT/squashfs-files.txt" || \
     fail "cannot list SquashFS"
-for path in \
-    etc/chromium/policies/managed/sushida-os.json \
-    etc/systemd/system/sushida-kiosk.service \
-    etc/systemd/system/sushida-network-watch.service \
-    etc/systemd/system/sushida-config-prepare.service \
-    etc/systemd/system/sushida-wifi-setup.service \
-    'etc/systemd/system/var-lib-sushida\x2dconfig.mount' \
-    etc/polkit-1/rules.d/60-sushida-wifi-setup.rules \
-    usr/local/bin/sushida-launch \
-    usr/local/bin/sushida-network-watch \
-    usr/local/libexec/sushida-session \
-    usr/local/libexec/sushida-config-prepare \
-    usr/local/libexec/sushida-wifi-setup \
-    usr/share/sushida-os/offline.html; do
-    grep -Fq "squashfs-root/$path" "$VERIFY_ROOT/squashfs-files.txt" || \
-        fail "required image path missing: /$path"
-done
+# Required image paths (squashfs region) come from the release contract.
+while IFS= read -r -d '' req_path; do
+    grep -Fq "squashfs-root$req_path" "$VERIFY_ROOT/squashfs-files.txt" || \
+        fail "required image path missing: $req_path"
+done < <(jq -j '.required_iso_paths[] | select(.region == "squashfs")
+    | (.path + "\u0000")' "$CONTRACT")
 
-# These files control the exact real-hardware failure mode of the on-device
-# Wi-Fi UI. Presence alone is insufficient: reject a stale ISO built from an
-# older worktree revision.
-embedded_wifi="$VERIFY_ROOT/sushida-wifi-setup"
-squashfs_cat "$VERIFY_ROOT/filesystem.squashfs" \
-    usr/local/libexec/sushida-wifi-setup "$embedded_wifi" || \
-    fail "cannot extract Wi-Fi setup backend from SquashFS"
-cmp -s \
-    "$PROJECT_ROOT/live-build/config/includes.chroot/usr/local/libexec/sushida-wifi-setup" \
-    "$embedded_wifi" || fail "ISO contains a stale Wi-Fi setup backend"
+# Convert a contract octal mode (e.g. 0644) to the symbolic form printed by
+# unsquashfs -ll so declared modes can be compared inside the image.
+mode_to_symbolic() {
+    local digits="${1#0}" digit out=""
+    [ "${#digits}" -eq 3 ] || return 1
+    while [ -n "$digits" ]; do
+        digit="${digits%"${digits#?}"}"
+        digits="${digits#?}"
+        case "$digit" in
+            0) out="${out}---" ;; 1) out="${out}--x" ;; 2) out="${out}-w-" ;;
+            3) out="${out}-wx" ;; 4) out="${out}r--" ;; 5) out="${out}r-x" ;;
+            6) out="${out}rw-" ;; 7) out="${out}rwx" ;;
+            *) return 1 ;;
+        esac
+    done
+    printf '%s' "$out"
+}
 
-embedded_wifi_service="$VERIFY_ROOT/sushida-wifi-setup.service"
-squashfs_cat "$VERIFY_ROOT/filesystem.squashfs" \
-    etc/systemd/system/sushida-wifi-setup.service "$embedded_wifi_service" || \
-    fail "cannot extract Wi-Fi setup service from SquashFS"
-cmp -s \
-    "$PROJECT_ROOT/live-build/config/includes.chroot/etc/systemd/system/sushida-wifi-setup.service" \
-    "$embedded_wifi_service" || fail "ISO contains a stale Wi-Fi setup service"
-
-embedded_config_prepare="$VERIFY_ROOT/sushida-config-prepare"
-squashfs_cat "$VERIFY_ROOT/filesystem.squashfs" \
-    usr/local/libexec/sushida-config-prepare "$embedded_config_prepare" || \
-    fail "cannot extract configuration prepare helper from SquashFS"
-cmp -s \
-    "$PROJECT_ROOT/live-build/config/includes.chroot/usr/local/libexec/sushida-config-prepare" \
-    "$embedded_config_prepare" || fail "ISO contains a stale configuration prepare helper"
-
-embedded_config_prepare_service="$VERIFY_ROOT/sushida-config-prepare.service"
-squashfs_cat "$VERIFY_ROOT/filesystem.squashfs" \
-    etc/systemd/system/sushida-config-prepare.service "$embedded_config_prepare_service" || \
-    fail "cannot extract configuration prepare service from SquashFS"
-cmp -s \
-    "$PROJECT_ROOT/live-build/config/includes.chroot/etc/systemd/system/sushida-config-prepare.service" \
-    "$embedded_config_prepare_service" || fail "ISO contains a stale configuration prepare service"
-
-embedded_mount="$VERIFY_ROOT/sushida-config.mount"
-squashfs_cat "$VERIFY_ROOT/filesystem.squashfs" \
-    'etc/systemd/system/*config.mount' "$embedded_mount" || \
-    fail "cannot extract configuration mount unit from SquashFS"
-cmp -s \
-    "$PROJECT_ROOT/live-build/config/includes.chroot/etc/systemd/system/var-lib-sushida\x2dconfig.mount" \
-    "$embedded_mount" || fail "ISO contains a stale configuration mount unit"
+# Mappings with current_verification "exact" are byte-compared against the
+# tracked source tree, and their mode/owner/group inside the image must
+# match the contract declaration.  Presence alone is insufficient for these
+# files: a stale ISO built from an older worktree revision is rejected.
+while IFS= read -r -d '' map_source && \
+      IFS= read -r -d '' map_image && \
+      IFS= read -r -d '' map_mode && \
+      IFS= read -r -d '' map_owner && \
+      IFS= read -r -d '' map_group; do
+    src="$PROJECT_ROOT/$map_source"
+    if [ ! -f "$src" ] || [ -L "$src" ]; then
+        fail "mapping source missing or symlinked: $map_source"
+    fi
+    inner="${map_image#/}"
+    # unsquashfs matches extract paths as globs; escape glob characters and
+    # backslashes so the contract path is taken literally.
+    inner_glob="$(printf '%s' "$inner" | sed -e 's/[\\*?[]/\\&/g')"
+    extracted="$VERIFY_ROOT/exact$map_image"
+    mkdir -p "$(dirname "$extracted")"
+    squashfs_cat "$VERIFY_ROOT/filesystem.squashfs" "$inner_glob" "$extracted" || \
+        fail "cannot extract from SquashFS: $map_image"
+    cmp -s "$src" "$extracted" || fail "ISO contains stale content: $map_image"
+    entry="$(grep -F "squashfs-root$map_image" "$VERIFY_ROOT/squashfs-files.txt" | head -n 1)"
+    [ -n "$entry" ] || fail "cannot locate image entry: $map_image"
+    symbolic="$(mode_to_symbolic "$map_mode")" || \
+        fail "invalid contract mode for $map_image"
+    [ "${entry%% *}" = "-$symbolic" ] || \
+        fail "unexpected image mode for $map_image"
+    [ "$(printf '%s\n' "$entry" | awk '{print $2}')" = "$map_owner/$map_group" ] || \
+        fail "unexpected image owner for $map_image"
+done < <(jq -j '.source_image_mappings[]
+    | select(.region == "squashfs" and .current_verification == "exact")
+    | (.source + "\u0000" + .image_path + "\u0000" + .mode + "\u0000"
+       + .owner + "\u0000" + .group + "\u0000")' "$CONTRACT")
 
 echo "Artifact verification passed."
