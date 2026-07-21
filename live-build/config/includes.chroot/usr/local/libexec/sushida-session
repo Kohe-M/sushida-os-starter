@@ -134,6 +134,9 @@ CHROMIUM_ARGS=(
     --disk-cache-dir="${XDG_RUNTIME_DIR%/xdg-runtime}/cache"
     --ozone-platform=wayland
     --hide-crash-restore-bubble
+    # Fixed 2x UI scale so the Sushi-da play area fills the kiosk screen
+    # instead of sitting small in the corner of a full-HD panel.
+    --force-device-scale-factor=2
 )
 
 # QEMU smoke adapters have no accelerated render node, so select Chromium's

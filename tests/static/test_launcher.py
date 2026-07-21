@@ -279,6 +279,11 @@ def test_helper_ozone_platform_wayland() -> None:
     args = _helper_args_array()
     assert any("ozone-platform=wayland" in a for a in args)
 
+def test_helper_display_scale_is_fixed_two() -> None:
+    """The kiosk UI runs at a fixed 2x scale (physical deployment request)."""
+    args = _helper_args_array()
+    assert any(a == "--force-device-scale-factor=2" for a in args)
+
 def test_helper_forbidden_flags_absent() -> None:
     args = _helper_args_array()
     for a in args:
