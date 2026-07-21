@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -96,7 +97,11 @@ def _chromium_policy() -> dict:
 
 
 def _acceptance_operations() -> list[str]:
-    """Extract Operation column from the acceptance-tests.md tables."""
+    """Extract Operation column from the acceptance-tests.md item tables.
+
+    Item tables carry ID | Class | Operation | ...; the execution registry
+    (R-prefixed rows) has a different layout and is excluded.
+    """
     content = ACCEPTANCE.read_text()
     ops: list[str] = []
     in_table = False
@@ -106,9 +111,9 @@ def _acceptance_operations() -> list[str]:
             continue
         if in_table and line.startswith("|"):
             cells = [c.strip() for c in line.split("|")]
-            if len(cells) >= 3 and cells[1].strip().startswith(("K", "G", "P")) \
-               and cells[2].strip():
-                ops.append(cells[2].strip())
+            if len(cells) >= 4 and cells[1].strip().startswith(("K", "G", "P")) \
+               and cells[3].strip():
+                ops.append(cells[3].strip())
     return ops
 
 
@@ -514,7 +519,11 @@ def test_acceptance_ids_unique() -> None:
 
 
 def test_acceptance_actual_and_pass_empty() -> None:
-    """Un-tested items must have empty Actual result and Pass/Fail."""
+    """Un-tested items must have empty Actual result and Pass/Fail.
+
+    Results live only in the execution registry (R-prefixed rows), which
+    has its own layout and its own traceability test.
+    """
     content = ACCEPTANCE.read_text()
     in_table = False
     for line in content.splitlines():
@@ -523,16 +532,17 @@ def test_acceptance_actual_and_pass_empty() -> None:
             continue
         if in_table and line.startswith("|"):
             cells = [c.strip() for c in line.split("|")]
-            if len(cells) >= 6:
-                actual = cells[4].strip() if len(cells) > 4 else ""
-                passed = cells[5].strip() if len(cells) > 5 else ""
+            row_id = cells[1].strip() if len(cells) > 1 else ""
+            if re.fullmatch(r"R\d+", row_id) or row_id in ("", "ID", "Run"):
+                continue
+            if len(cells) >= 7:
+                actual = cells[5].strip() if len(cells) > 5 else ""
+                passed = cells[6].strip() if len(cells) > 6 else ""
                 if actual or passed:
-                    # Allow non-empty for header row check
-                    if cells[1].strip() and cells[1].strip() != "ID":
-                        raise AssertionError(
-                            f"Row {cells[1]}: Actual='{actual}' Pass='{passed}' "
-                            "must be empty until tested"
-                        )
+                    raise AssertionError(
+                        f"Row {row_id}: Actual='{actual}' Pass='{passed}' "
+                        "must be empty until tested"
+                    )
 
 
 def test_acceptance_cage_crash_notes_correct() -> None:
@@ -546,9 +556,9 @@ def test_acceptance_cage_crash_notes_correct() -> None:
             continue
         if in_table and line.startswith("|"):
             cells = [c.strip() for c in line.split("|")]
-            if len(cells) >= 7 and cells[1].strip() == "P02":
+            if len(cells) >= 8 and cells[1].strip() == "P02":
                 found_p02 = True
-                notes = cells[6].strip() if len(cells) > 6 else ""
+                notes = cells[7].strip() if len(cells) > 7 else ""
                 assert "Restart=always" in notes, (
                     f"P02 notes missing Restart=always: {notes}"
                 )
@@ -572,8 +582,8 @@ def test_acceptance_gameplay_operations() -> None:
             continue
         if in_table and line.startswith("|"):
             cells = [c.strip() for c in line.split("|")]
-            if len(cells) >= 3 and cells[2].strip():
-                ops.append(cells[2].strip())
+            if len(cells) >= 4 and cells[3].strip():
+                ops.append(cells[3].strip())
     for item in ("Letters (a-z)", "Digits (0-9)", "Punctuation",
                  "Space", "Enter", "Backspace"):
         assert item in ops, f"Gameplay input missing from acceptance: {item}"
