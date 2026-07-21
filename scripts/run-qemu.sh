@@ -44,7 +44,10 @@ serial_without_ansi() {
 }
 
 serial_matches() {
-    serial_without_ansi | grep -Eiq "$1"
+    # grep must consume the whole stream: with pipefail, `grep -q` exiting at
+    # the first match sends SIGPIPE to sed once the log outgrows the pipe
+    # buffer, turning genuine matches into pipeline failures.
+    serial_without_ansi | grep -Ei -- "$1" > /dev/null
 }
 
 while [ "$#" -gt 0 ]; do

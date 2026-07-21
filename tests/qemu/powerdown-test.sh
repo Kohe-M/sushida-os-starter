@@ -42,7 +42,10 @@ serial_without_ansi() {
 }
 
 serial_matches() {
-    serial_without_ansi | grep -Eiq "$1"
+    # grep must consume the whole stream: with pipefail, `grep -q` exiting at
+    # the first match sends SIGPIPE to sed once the log outgrows the pipe
+    # buffer, turning genuine matches into pipeline failures.
+    serial_without_ansi | grep -Ei -- "$1" > /dev/null
 }
 
 [ "$(result_value POWERDOWN_MODE)" = true ] || {
@@ -115,7 +118,7 @@ serial_matches 'poweroff\.target|Powering off|Reached target Shutdown' || {
     exit 1
 }
 if serial_without_ansi | grep -F 'var-lib-sushida\x2dcon' | \
-    grep -Eiq 'failed|failure|error'; then
+    grep -Ei 'failed|failure|error' > /dev/null; then
     echo "ERROR: SUSHIDA-CFG mount has a shutdown failure" >&2
     exit 1
 fi
