@@ -159,3 +159,50 @@ git diff --check
 - G-01/G-02 は可能なら QEMU boot-test 実走1回（TCG 可）。不可なら未実施と明記。
 - 完了時に本書へ §形式（状態表・逸脱・ゲート結果）で記録を追記し、
   `docs/refactoring-work-order.md` 側は触らない。
+
+## 8. Stage G 完了記録（2026-07-21）
+
+### 状態表
+
+| タスク | 状態 | コミット | 備考 |
+|---|---|---|---|
+| G-01 QEMU helper 集約 | DONE | 98e3e89 | `scripts/lib/qemu-lib.sh` 新設。serial_without_ansi / serial_matches / result_value を smoke / boot / powerdown の3 assessor で共有。SIGPIPE 回避（grep が stream 全消費）を helper 内で一元化 |
+| G-02 run-qemu.sh stage 関数化 | DONE | 0e0afea | parse_args〜write_result の stage 関数 + main() 順次呼び出し + sourced-guard。--dry-run 4 変種（bios/uefi/smoke/powerdown）を再構成前後で byte-identical 確認 |
+| G-03 structure 検査の未 add 対応 | DONE | a6b57e4 | `git ls-files --cached --others --exclude-standard` へ変更。fixture repo テストで自己包含バグ（STRUCTURE.txt 自身が未 add 扱い）も検出・修正 |
+| G-04 pytest 共通 conftest | DONE | 5f73b6b | `tests/static/conftest.py` に sys.path 挿入 + dont_write_bytecode を集約。4 ファイルから重複除去。test_wifi_setup_backend.py（characterization）は方針どおり不変 |
+| G-05 check-contracts 分割 | DEFERRED | — | §5 の発動条件（checker 800 行超 or ドリフト種別追加）まで見送り |
+
+### QEMU 実走検証（G-01/G-02 条件）
+
+検証クローン（HEAD c9dd1ad, ISO aebbd14b…f745）に再構成後の
+run-qemu.sh / qemu-lib.sh / boot-test.sh を未コミットで持ち込み、実 ISO の
+BIOS boot-test（TCG, --duration 900, --writable-media）を1回実走:
+RUN=0 / ASSESS=0。assessor の AUTOMATED 3 項目
+（ISO SHA ↔ SHA256SUMS、build-info git_commit ↔ HEAD、production
+bootloader → kiosk service 到達）すべて PASS。検証後クローンは
+git checkout + コピー削除で原状復帰し、レジストリ参照中の R2–R5 証跡
+（build/qemu）は退避・復元で保全した。
+
+### 逸脱
+
+- タスク実施順は G-03 → G-01 → G-02 → G-04（書面の並びと異なる）。
+  G-03 が「STRUCTURE.txt 陳腐化」を先に塞ぐことで後続コミットの
+  生成物追随を確実にするための判断。各コミットは単独 green（P1）。
+- G-02 に伴い tests/static/test_qemu_tooling.py の dry-run 順序
+  assertion を「行順」から「main() 呼び出し順 + print_dry_run() の
+  純粋性（filesystem 非接触 + exit 0）」の検査に書き換えた。これは
+  ソースパターン検査（P2 で移動追随が許される種別）であり、挙動
+  assertion の変更ではない。
+
+### ゲート結果（2026-07-21, HEAD 0e0afea）
+
+| 項目 | 結果 |
+|---|---|
+| python3 tools/check-contracts.py | exit 0 |
+| pytest tests/static/ tests/contracts/ -q | 802 passed |
+| make check-structure | exit 0 |
+| make container-shell CONTAINER_ENGINE=podman | exit 0（bats 220 ok / 0 fail, ShellCheck -S warning） |
+| git diff --check | exit 0 |
+
+Stage G 完了。残作業は本書スコープ外の BL-05 残件（KVM または実機での
+UEFI smoke、実機受け入れ項目）のみ。
