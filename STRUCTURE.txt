@@ -10,6 +10,7 @@
     ci.yml
 .gitignore
 AGENTS.md
+CLAUDE.md
 LICENSE
 Makefile
 README.md
@@ -194,6 +195,7 @@ tests/
     test_flash_safety.py
     test_image_validation.py
     test_keyboard.py
+    test_kiosk_signal_equivalence.py
     test_kiosk_user.py
     test_launcher.py
     test_live_build_config.py
