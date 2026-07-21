@@ -180,6 +180,7 @@ tests/
     qemu-tools.bats
     verify-stale.bats
   static/
+    conftest.py
     fixtures/
       snss/
         allowed-file-url.bin

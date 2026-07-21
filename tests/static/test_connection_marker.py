@@ -15,13 +15,7 @@ from pathlib import Path
 
 import pytest
 
-sys.dont_write_bytecode = True
-
-DIST_PACKAGES = Path(
-    "live-build/config/includes.chroot/usr/lib/python3/dist-packages"
-).resolve()
-if str(DIST_PACKAGES) not in sys.path:
-    sys.path.insert(0, str(DIST_PACKAGES))
+# sys.path and dont_write_bytecode are prepared suite-wide in conftest.py.
 
 
 @pytest.fixture()
