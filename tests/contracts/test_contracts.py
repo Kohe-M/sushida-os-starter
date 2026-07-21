@@ -246,21 +246,39 @@ def test_mapping_all_have_verification_level() -> None:
 
 
 def test_exact_verification_set_matches_verify_iso() -> None:
-    """Only files that verify-iso.sh actually cmps should be marked exact."""
+    """verify-iso.sh byte-compares whatever the contract marks exact.
+
+    The comparison loop is contract-driven, so this pins the *floor*: the
+    historically byte-compared Wi-Fi/config files must never drop below
+    exact, and every squashfs mapping is expected to be exact (the image
+    installs includes.chroot files verbatim from a clean worktree).  A
+    demotion requires evidence from a real build and a deliberate edit
+    here.
+    """
     rc = _load(RELEASE_CONTRACT)
     exact_paths = {
         m["image_path"]
         for m in rc["source_image_mappings"]
         if m["current_verification"] == "exact"
     }
-    expected = {
+    historical_floor = {
         "/etc/systemd/system/sushida-config-prepare.service",
         "/etc/systemd/system/sushida-wifi-setup.service",
         "/etc/systemd/system/var-lib-sushida\\x2dconfig.mount",
         "/usr/local/libexec/sushida-config-prepare",
         "/usr/local/libexec/sushida-wifi-setup",
     }
-    assert exact_paths == expected, f"exact set mismatch: {exact_paths} != {expected}"
+    assert historical_floor <= exact_paths, (
+        f"historically exact files were demoted: {historical_floor - exact_paths}"
+    )
+    squashfs_paths = {
+        m["image_path"]
+        for m in rc["source_image_mappings"]
+        if m["region"] == "squashfs"
+    }
+    assert exact_paths == squashfs_paths, (
+        f"squashfs mappings not marked exact: {squashfs_paths - exact_paths}"
+    )
 
 
 # ── Packages ────────────────────────────────────────────────────────────
