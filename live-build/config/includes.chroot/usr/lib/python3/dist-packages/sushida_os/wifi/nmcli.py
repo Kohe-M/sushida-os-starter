@@ -90,6 +90,32 @@ def managed_wifi_active() -> bool:
     return False
 
 
+def wifi_device_waiting() -> bool:
+    """True only while a Wi-Fi device exists but cannot scan yet.
+
+    Right after boot the adapter passes through firmware load and
+    NetworkManager takeover ("unmanaged"/"unavailable") before its first
+    scan can return anything.  The restore supervisor uses this to defer
+    credential restoration instead of burning retries on guaranteed-empty
+    scan results.  Any query failure reports False so callers never wait
+    on a system whose NetworkManager is unreachable.
+    """
+    try:
+        result = run_nmcli(
+            "-t", "--escape", "yes", "-f", "DEVICE,TYPE,STATE",
+            "device", "status", timeout=8,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        return False
+    for line in result.stdout.splitlines():
+        fields = _split_escaped(line)
+        if len(fields) == 3 and fields[1] in ("wifi", "802-11-wireless"):
+            return fields[2] in ("unmanaged", "unavailable")
+    return False
+
+
 def _split_escaped(line: str) -> list[str]:
     fields: list[str] = []
     current: list[str] = []

@@ -36,7 +36,7 @@
     "wifi_activation_process_timeout_seconds": 35,
     "restore_backoff_min_seconds": 2.0,
     "restore_backoff_max_seconds": 16.0,
-    "restore_max_retries": 5,
+    "restore_max_retries": 8,
     "restore_deadline_seconds": 120,
     "nav_poll_interval_seconds": 2.0,
     "nav_cooldown_seconds": 30.0,

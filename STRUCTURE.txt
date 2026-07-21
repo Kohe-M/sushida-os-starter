@@ -214,6 +214,7 @@ tests/
     test_route_decision.py
     test_runtime_state.py
     test_systemd_units.py
+    test_wifi_restore_readiness.py
     test_wifi_setup.py
     test_wifi_setup_backend.py
     test_windows_wrappers.py

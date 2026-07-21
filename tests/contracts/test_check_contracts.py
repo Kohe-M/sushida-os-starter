@@ -243,7 +243,7 @@ def _build_minimal_repo(root: Path) -> None:
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/restore.py").write_text(
         '    BACKOFF_MIN = 2.0\n'
         '    BACKOFF_MAX = 16.0\n'
-        '    MAX_RETRIES = 5\n'
+        '    MAX_RETRIES = 8\n'
         '    deadline = monotonic() + 120.0\n'
     )
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi/nmcli.py").write_text(
@@ -590,7 +590,7 @@ class TestCheckContracts:
             ("usr/lib/python3/dist-packages/sushida_os/wifi/restore.py",
              "BACKOFF_MIN = 2.0", "BACKOFF_MIN = 3.0"),
             ("usr/lib/python3/dist-packages/sushida_os/wifi/restore.py",
-             "MAX_RETRIES = 5", "MAX_RETRIES = 6"),
+             "MAX_RETRIES = 8", "MAX_RETRIES = 9"),
             ("usr/lib/python3/dist-packages/sushida_os/wifi/restore.py",
              "deadline = monotonic() + 120.0",
              "deadline = monotonic() + 130.0"),

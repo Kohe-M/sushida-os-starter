@@ -30,7 +30,7 @@ def restore_saved_connection(
     """
     BACKOFF_MIN = 2.0
     BACKOFF_MAX = 16.0
-    MAX_RETRIES = 5
+    MAX_RETRIES = 8
     backoff = BACKOFF_MIN
     retries = 0
     deadline = monotonic() + 120.0
@@ -44,6 +44,13 @@ def restore_saved_connection(
         # or about to retry, stop immediately — the worker will handle it.
         if coordinator.interactive_pending():
             return
+        # Right after boot the Wi-Fi adapter is still loading firmware or
+        # being taken over by NetworkManager; a connect attempt now would
+        # fail with an empty scan ("SSID not found").  Wait without
+        # consuming a retry — the overall deadline still bounds this.
+        if nmcli.wifi_device_waiting():
+            sleep(2.0)
+            continue
         saved = storage.load_credentials()
         if saved is None:
             return
