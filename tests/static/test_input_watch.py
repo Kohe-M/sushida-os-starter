@@ -146,6 +146,7 @@ def test_config_env_declares_boot_defaults() -> None:
     text = CONFIG.read_text()
     assert "AUDIO_VOLUME_PERCENT=70\n" in text
     assert "SCREEN_BRIGHTNESS_PERCENT=80\n" in text
+    assert "SCREEN_ZOOM_PERCENT=180\n" in text
 
 
 def test_launcher_validates_and_exports_volume() -> None:
@@ -154,6 +155,15 @@ def test_launcher_validates_and_exports_volume() -> None:
     assert "SCREEN_BRIGHTNESS_PERCENT) ;;" in text
     assert 'export SUSHIDA_AUDIO_VOLUME_PERCENT="$AUDIO_VOLUME_PERCENT"' in text
     assert "AUDIO_VOLUME_PERCENT exceeds maximum 100" in text
+
+
+def test_launcher_validates_and_exports_zoom() -> None:
+    text = LAUNCHER.read_text()
+    assert "SCREEN_ZOOM_PERCENT)" in text
+    assert "Duplicate SCREEN_ZOOM_PERCENT" in text
+    assert "SCREEN_ZOOM_PERCENT must be an integer" in text
+    assert "SCREEN_ZOOM_PERCENT must be between 50 and 300" in text
+    assert 'export SUSHIDA_SCREEN_ZOOM_PERCENT="$SCREEN_ZOOM_PERCENT"' in text
 
 
 def test_session_applies_volume_best_effort() -> None:
@@ -170,6 +180,7 @@ def test_network_watch_tolerates_the_new_keys() -> None:
     text = WATCHER.read_text()
     assert "AUDIO_VOLUME_PERCENT) ;;" in text
     assert "SCREEN_BRIGHTNESS_PERCENT) ;;" in text
+    assert "SCREEN_ZOOM_PERCENT) ;;" in text
 
 
 # ── image registration ───────────────────────────────────────────────────

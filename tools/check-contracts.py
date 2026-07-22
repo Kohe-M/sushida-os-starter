@@ -702,6 +702,7 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
             "NETWORK_SETUP_GRACE_SECONDS",
             "AUDIO_VOLUME_PERCENT",
             "SCREEN_BRIGHTNESS_PERCENT",
+            "SCREEN_ZOOM_PERCENT",
         }
         seen: set[str] = set()
         for line_number, raw_line in enumerate(

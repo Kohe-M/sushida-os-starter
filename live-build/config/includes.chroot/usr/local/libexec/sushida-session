@@ -152,21 +152,35 @@ CHROMIUM_ARGS=(
     --hide-crash-restore-bubble
 )
 
-# Fixed 2x page zoom so the Sushi-da play area fills the kiosk screen
-# instead of sitting small in the corner of a full-HD panel.  Seeded as the
-# profile-wide default zoom (3.8017... = log1.2(2.0)) into the fresh tmpfs
-# profile; a device-scale-factor override is deliberately NOT used because
-# Chromium then disagrees with the Cage output scale and renders into a
-# quarter of the screen (verified in QEMU).  The default partition key is
-# "x" (= "x" + HexEncode of the empty relative path) in current Chromium;
-# the numeric key is the legacy hash of the same empty path, kept for
-# older releases.  If a Chromium update changes the preference schema the
-# page harmlessly renders at 1x.
+# Configurable page zoom so the Sushi-da play area fills the kiosk screen
+# instead of sitting small in the corner of a full-HD panel.  The percent
+# comes from config.env via the launcher (SCREEN_ZOOM_PERCENT, validated
+# there; 180 when unset) and is seeded as the profile-wide default zoom
+# into the fresh tmpfs profile, so users can still adjust at runtime with
+# Ctrl+"+" / Ctrl+"-" and return to this default with Ctrl+0; a reboot
+# always starts back at the default.  A device-scale-factor override is
+# deliberately NOT used because Chromium then disagrees with the Cage
+# output scale and renders into a quarter of the screen (verified in
+# QEMU).  The default partition key is "x" (= "x" + HexEncode of the empty
+# relative path) in current Chromium; the numeric key is the legacy hash
+# of the same empty path, kept for older releases.  If a Chromium update
+# changes the preference schema the page harmlessly renders at 1x.
+_ZOOM_PERCENT="${SUSHIDA_SCREEN_ZOOM_PERCENT:-180}"
+case "$_ZOOM_PERCENT" in ''|*[!0-9]*) _ZOOM_PERCENT=180 ;; esac
+if [ "$_ZOOM_PERCENT" -lt 50 ] || [ "$_ZOOM_PERCENT" -gt 300 ]; then
+    _ZOOM_PERCENT=180
+fi
+# Chromium stores zoom as log base 1.2 of the factor.
+_ZOOM_LEVEL="$(LC_ALL=C awk -v p="$_ZOOM_PERCENT" \
+    'BEGIN { printf "%.17g", log(p / 100) / log(1.2) }')" || _ZOOM_LEVEL=""
+case "$_ZOOM_LEVEL" in
+    ''|*[!0-9.eE+-]*) _ZOOM_LEVEL="3.2239010857415455" ;;  # log1.2(1.8) = 180%
+esac
 _PROFILE_DEFAULT="${XDG_RUNTIME_DIR%/xdg-runtime}/chromium/Default"
 if [ ! -f "$_PROFILE_DEFAULT/Preferences" ]; then
     mkdir -p "$_PROFILE_DEFAULT"
-    printf '%s' '{"partition":{"default_zoom_level":{"x":3.8017570004448078,"14695981039346656037":3.8017570004448078}}}' \
-        > "$_PROFILE_DEFAULT/Preferences" || true
+    printf '{"partition":{"default_zoom_level":{"x":%s,"14695981039346656037":%s}}}' \
+        "$_ZOOM_LEVEL" "$_ZOOM_LEVEL" > "$_PROFILE_DEFAULT/Preferences" || true
 fi
 
 # QEMU smoke adapters have no accelerated render node, so select Chromium's

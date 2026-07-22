@@ -153,15 +153,20 @@ The blocklist entries are `*` (default deny) and `view-source:*`
 The environment file `/etc/sushida-os/config.env` contains `SUSHIDA_URL`,
 `NETWORK_SETUP_GRACE_SECONDS`, `NETWORK_CHECK_INTERVAL_SECONDS`, and the
 boot defaults `AUDIO_VOLUME_PERCENT` (0–100, applied to the PipeWire
-default sink by the session helper) and `SCREEN_BRIGHTNESS_PERCENT`
-(5–100, applied to the backlight by `sushida-input-watch`).  Changing the
-URL only changes the initial URL Chromium opens; it cannot bypass the
-launcher validation or the managed policy boundary.
+default sink by the session helper), `SCREEN_BRIGHTNESS_PERCENT`
+(5–100, applied to the backlight by `sushida-input-watch`), and
+`SCREEN_ZOOM_PERCENT` (50–300, default 180; seeded by the session helper
+as Chromium's profile-default page zoom into the fresh tmpfs profile).
+Changing the URL only changes the initial URL Chromium opens; it cannot
+bypass the launcher validation or the managed policy boundary.
 
 During operation the keyboard volume keys and brightness keys adjust the
 mixer and backlight in fixed steps via the root `sushida-input-watch`
 listener (fixed key→action table, rate-limited, 5% brightness floor so
-the panel can never be driven to black).
+the panel can never be driven to black).  Page zoom stays adjustable with
+Chromium's built-in `Ctrl`+`+` / `Ctrl`+`-` shortcuts, and `Ctrl`+`0`
+returns to the configured default; zoom changes live in the tmpfs
+profile, so every reboot starts back at `SCREEN_ZOOM_PERCENT`.
 
 Only URLs within the official `https://sushida.net/` origin are permitted.
 Any attempt to set `SUSHIDA_URL=http://...` or to another host is rejected

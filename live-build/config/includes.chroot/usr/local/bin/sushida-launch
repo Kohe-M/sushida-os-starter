@@ -62,7 +62,7 @@ readonly RUNTIME_LIB="$SELF_DIR/../../lib/python3/dist-packages"
 
 # ── Executable pre-check ─────────────────────────────────────────────────
 for cmd in cage chromium pipewire pipewire-pulse wireplumber dbus-run-session \
-    nmcli sleep stat systemctl python3 readlink; do
+    nmcli sleep stat systemctl python3 readlink awk; do
     if ! command -v "$cmd" > /dev/null 2>&1; then
         echo "ERROR: Required command not found: $cmd" >&2
         exit 1
@@ -81,9 +81,11 @@ fi
 SUSHIDA_URL=""
 NETWORK_SETUP_GRACE_SECONDS=15
 AUDIO_VOLUME_PERCENT=""
+SCREEN_ZOOM_PERCENT=""
 seen_url=false
 seen_setup_grace=false
 seen_volume=false
+seen_zoom=false
 while IFS= read -r line || [ -n "$line" ]; do
     line="${line%$'\r'}"
     if [ -z "$line" ] || [[ "$line" == "#"* ]]; then continue; fi
@@ -105,6 +107,11 @@ while IFS= read -r line || [ -n "$line" ]; do
                 echo "ERROR: Duplicate AUDIO_VOLUME_PERCENT" >&2; exit 1
             fi
             seen_volume=true; AUDIO_VOLUME_PERCENT="$value" ;;
+        SCREEN_ZOOM_PERCENT)
+            if $seen_zoom; then
+                echo "ERROR: Duplicate SCREEN_ZOOM_PERCENT" >&2; exit 1
+            fi
+            seen_zoom=true; SCREEN_ZOOM_PERCENT="$value" ;;
         NETWORK_CHECK_INTERVAL_SECONDS) ;;
         SCREEN_BRIGHTNESS_PERCENT) ;;
         *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;
@@ -132,6 +139,19 @@ if [ -n "$AUDIO_VOLUME_PERCENT" ]; then
     fi
     # Validated boot default for the session helper's best-effort wpctl call.
     export SUSHIDA_AUDIO_VOLUME_PERCENT="$AUDIO_VOLUME_PERCENT"
+fi
+if [ -n "$SCREEN_ZOOM_PERCENT" ]; then
+    case "$SCREEN_ZOOM_PERCENT" in
+        *[!0-9]*)
+            echo "ERROR: SCREEN_ZOOM_PERCENT must be an integer" >&2
+            exit 1 ;;
+    esac
+    if [ "$SCREEN_ZOOM_PERCENT" -lt 50 ] || [ "$SCREEN_ZOOM_PERCENT" -gt 300 ]; then
+        echo "ERROR: SCREEN_ZOOM_PERCENT must be between 50 and 300" >&2
+        exit 1
+    fi
+    # Validated boot default for the session helper's page-zoom seeding.
+    export SUSHIDA_SCREEN_ZOOM_PERCENT="$SCREEN_ZOOM_PERCENT"
 fi
 
 if [ -n "${SUSHIDA_OS_NETWORK_SETUP_GRACE_SECONDS:-}" ]; then

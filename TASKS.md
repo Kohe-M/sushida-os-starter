@@ -213,6 +213,25 @@ production Git history.
   root（CI 形）14/14・非 root gate 220/220 で検証。
 - Evidence: `650e642` / 2026-07-22
 
+### FB-06 / 既定ズーム 180% + ユーザー操作での拡大縮小
+
+- Status: DONE（イメージ側・実機未確認） | Severity: Low
+- 対応: 既定ズームを固定 200% から `SCREEN_ZOOM_PERCENT`（config.env、
+  50–300、既定 180）へ。launcher が検証して env 渡し、session が
+  log1.2(percent/100) を awk で計算しプロファイル既定ズームとしてシード
+  （不正値・計算失敗は 180% へフェイルクローズ、レベル文字列は文字集合
+  検証後に printf %s — 注入不能）。実行時の拡大縮小は Chromium 組み込みの
+  Ctrl+「+」/「-」（Ctrl+0 で既定に復帰）に任せる — kiosk モードでも有効な
+  アクセラレータで、フラグ・ポリシー・DOM 注入の追加は一切なし。ズーム
+  変更は tmpfs プロファイル内のみに残るため、再起動で必ず既定値に戻る。
+- Verification: `test_helper_seeds_configurable_page_zoom_default_180` /
+  `test_helper_zoom_level_is_injection_safe` /
+  `test_launcher_validates_and_exports_zoom`（旧
+  `test_helper_seeds_fixed_two_x_page_zoom` を置換）、境界値・注入値の
+  ブロック単体実行で JSON 出力確認、checker 0、bats+ShellCheck 221
+- Manual checks: 実機での 180% 表示・Ctrl+± 動作は未確認（要 ISO 再ビルド）
+- Evidence: 本タスクのコミット / 2026-07-22
+
 ## 4. 運用ルール（旧 Working rules の後継）
 
 - 1 タスク = 1 commit（`docs/refactoring-work-order.md` §1.2 の git 運用に従う）
