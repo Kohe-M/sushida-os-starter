@@ -206,3 +206,23 @@ git checkout + コピー削除で原状復帰し、レジストリ参照中の R
 
 Stage G 完了。残作業は本書スコープ外の BL-05 残件（KVM または実機での
 UEFI smoke、実機受け入れ項目）のみ。
+
+## 9. 外部レビュー対応と逸脱の追記（2026-07-22）
+
+### 逸脱（Stage G 当時に未記載だったもの）
+
+- **G-01**: 受け入れ条件のうち「release 照合（build-info↔HEAD↔ISO SHA）の
+  実装を1箇所へ」は実施せず、boot/powerdown の各 assessor に残した。
+  理由: 照合 python block は run_dir 引数・メッセージ文字列が registry
+  証跡の再現条件になっており、集約時の文言維持コストに対して重複2箇所の
+  保守リスクが小さいと判断（意図的逸脱）。再発時（3箇所目が生まれる時）に
+  `assert_release_binding` として集約する。
+
+### レビュー指摘への対応
+
+| 指摘 | 判断 | 対応 |
+|---|---|---|
+| gen-structure が未 stage 削除・rename を見逃す | 妥当 | `--deleted` を除外集合に追加、fixture テスト2件追加（`bef686a`） |
+| run-qemu.sh の source 時副作用（G-02 受け入れ条件違反） | 妥当 | strict mode・グローバル・lib 読込を `init_runtime`（main 先頭）へ移動。dry-run 4 変種 byte 一致、source 前後で shell option/変数不変の bats 追加（`760e2aa`） |
+| 起動時輝度の udev レース | 妥当 | rescan ループから適用成功まで再試行（適用は1回きり）。出現遅延の単体テスト追加（`49e632b`） |
+| 音量ホットキーの成否不明・Master 前提 | 部分採用 | 成否 bool + `result=ok|failed` ログ、固定候補（Master/PCM/Speaker/Headphone）からの control 自動選択、stub テスト追加（`49e632b`）。**root から kiosk の PipeWire への wpctl 実行は不採用** — 権限境界（root デーモン→ユーザー session の runtime dir アクセス）をまたぐ複雑化に対し、ALSA hw 層の操作で実用上十分（実機で動作確認済み）なため |
