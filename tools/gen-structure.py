@@ -43,6 +43,19 @@ def tracked_files() -> list[str]:
         for name in result.stdout.split(b"\0")
         if name
     }
+    # Files deleted in the worktree but still in the index would otherwise
+    # linger in the listing until the deletion is staged — the same
+    # one-commit-late blindness G-03 fixed for additions, and the source of
+    # a stale old path during an unstaged rename.
+    deleted = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "ls-files", "-z", "--deleted"],
+        capture_output=True, check=True,
+    )
+    names -= {
+        name.decode("utf-8")
+        for name in deleted.stdout.split(b"\0")
+        if name
+    }
     # The output file always lists itself: on first generation it does not
     # exist yet, and without this the freshly written index is immediately
     # stale against a listing that now contains it.

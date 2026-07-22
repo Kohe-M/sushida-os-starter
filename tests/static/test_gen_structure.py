@@ -70,3 +70,28 @@ def test_ignored_files_never_trigger_staleness(tmp_path: Path) -> None:
     (repo / "ignored-dir" / "more-junk.tmp").write_text("x\n")
     (repo / "another.secret").write_text("x\n")
     assert _run(repo, "--check").returncode == 0
+
+
+def test_unstaged_deletion_is_stale_before_git_add(tmp_path: Path) -> None:
+    repo = _make_fixture_repo(tmp_path)
+    assert _run(repo).returncode == 0
+    (repo / "src" / "app.py").unlink()
+    result = _run(repo, "--check")
+    assert result.returncode == 1, "unstaged deletion must already count as stale"
+    assert "stale" in result.stderr
+    # Regenerating drops the deleted path without any git add.
+    assert _run(repo).returncode == 0
+    assert "app.py" not in (repo / "STRUCTURE.txt").read_text()
+    assert _run(repo, "--check").returncode == 0
+
+
+def test_unstaged_rename_lists_only_the_new_path(tmp_path: Path) -> None:
+    repo = _make_fixture_repo(tmp_path)
+    assert _run(repo).returncode == 0
+    (repo / "src" / "app.py").rename(repo / "src" / "renamed.py")
+    assert _run(repo, "--check").returncode == 1
+    assert _run(repo).returncode == 0
+    text = (repo / "STRUCTURE.txt").read_text()
+    assert "renamed.py" in text
+    assert "app.py" not in text
+    assert _run(repo, "--check").returncode == 0
