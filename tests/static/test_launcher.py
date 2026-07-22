@@ -288,7 +288,10 @@ def test_helper_seeds_fixed_two_x_page_zoom() -> None:
     """
     content = SESSION_HELPER.read_text()
     assert '"default_zoom_level"' in content
-    assert "3.8017570004448078" in content  # log base 1.2 of 2.0
+    # Current Chromium keys the default partition as "x"; the numeric key
+    # is the legacy hash kept for older releases.
+    assert '"x":3.8017570004448078' in content  # log base 1.2 of 2.0
+    assert '"14695981039346656037":3.8017570004448078' in content
     assert "force-device-scale-factor" not in content
     seed = content[content.index("_PROFILE_DEFAULT="):]
     assert 'if [ ! -f "$_PROFILE_DEFAULT/Preferences" ]' in seed

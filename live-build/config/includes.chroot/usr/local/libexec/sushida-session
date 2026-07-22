@@ -157,12 +157,15 @@ CHROMIUM_ARGS=(
 # profile-wide default zoom (3.8017... = log1.2(2.0)) into the fresh tmpfs
 # profile; a device-scale-factor override is deliberately NOT used because
 # Chromium then disagrees with the Cage output scale and renders into a
-# quarter of the screen (verified in QEMU).  If a Chromium update changes
-# the preference schema the page harmlessly renders at 1x.
+# quarter of the screen (verified in QEMU).  The default partition key is
+# "x" (= "x" + HexEncode of the empty relative path) in current Chromium;
+# the numeric key is the legacy hash of the same empty path, kept for
+# older releases.  If a Chromium update changes the preference schema the
+# page harmlessly renders at 1x.
 _PROFILE_DEFAULT="${XDG_RUNTIME_DIR%/xdg-runtime}/chromium/Default"
 if [ ! -f "$_PROFILE_DEFAULT/Preferences" ]; then
     mkdir -p "$_PROFILE_DEFAULT"
-    printf '%s' '{"partition":{"default_zoom_level":{"14695981039346656037":3.8017570004448078}}}' \
+    printf '%s' '{"partition":{"default_zoom_level":{"x":3.8017570004448078,"14695981039346656037":3.8017570004448078}}}' \
         > "$_PROFILE_DEFAULT/Preferences" || true
 fi
 
