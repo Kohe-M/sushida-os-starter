@@ -63,8 +63,12 @@ def test_daemon_actions_are_fixed_and_bounded() -> None:
     assert "VOLUME_STEP_PERCENT = 5" in text
     assert "BRIGHTNESS_STEP_PERCENT = 10" in text
     assert "MIN_ACTION_INTERVAL_SECONDS = 0.15" in text
-    # Fixed log tokens only (P5).
-    assert 'print(f"action={name}", flush=True)' in text
+    # Fixed log tokens only (P5): action names and ok/failed, nothing
+    # device-derived.
+    assert 'print(f"action={name} result={outcome}", flush=True)' in text
+    assert '"ok" if action() else "failed"' in text
+    # The mixer control is always one of the fixed candidates.
+    assert 'MIXER_CANDIDATES = ("Master", "PCM", "Speaker", "Headphone")' in text
 
 
 def test_daemon_reads_only_the_fixed_config_and_sysfs_paths() -> None:
@@ -179,3 +183,74 @@ def test_service_is_enabled_and_validated_in_hooks() -> None:
     for package in ("alsa-utils", "python3-evdev", "firmware-sof-signed",
                     "alsa-ucm-conf"):
         assert package in validate, package
+
+
+def _write_stub_amixer(path: Path, exit_code: int, accept: str = "") -> None:
+    """Stub amixer: exit 0 only for a control named in `accept` (all if empty)."""
+    lines = ["#!/bin/sh"]
+    if accept:
+        lines.append(
+            'for a in "$@"; do [ "$a" = "%s" ] && exit 0; done; exit 1' % accept
+        )
+    else:
+        lines.append("exit %d" % exit_code)
+    path.write_text("\n".join(lines) + "\n")
+    path.chmod(0o755)
+
+
+def test_volume_actions_report_mixer_success_and_failure(tmp_path: Path) -> None:
+    module = _load_daemon_module()
+    stub = tmp_path / "amixer"
+
+    _write_stub_amixer(stub, 0)
+    module.AMIXER = str(stub)
+    assert module.volume_up() is True
+    assert module.volume_down() is True
+    assert module.volume_mute_toggle() is True
+
+    _write_stub_amixer(stub, 1)
+    assert module.volume_up() is False
+
+    module.AMIXER = str(tmp_path / "no-such-amixer")
+    assert module.volume_up() is False  # missing binary reports failure
+
+
+def test_mixer_control_falls_back_through_fixed_candidates(tmp_path: Path) -> None:
+    module = _load_daemon_module()
+    stub = tmp_path / "amixer"
+    module.AMIXER = str(stub)
+
+    # Master missing (SOF-style): the probe settles on PCM.
+    _write_stub_amixer(stub, 1, accept="PCM")
+    assert module.select_mixer_control() == "PCM"
+    assert module.MIXER_CONTROL == "PCM"
+
+    # No candidate at all: default stays Master and actions report failure.
+    _write_stub_amixer(stub, 1)
+    assert module.select_mixer_control() == "Master"
+    assert module.volume_up() is False
+
+
+def test_boot_brightness_retries_until_backlight_appears(tmp_path: Path) -> None:
+    module = _load_daemon_module()
+    backlight_root = tmp_path / "backlight"
+    module.BACKLIGHT_ROOT = backlight_root
+    config = tmp_path / "config.env"
+    config.write_text("SCREEN_BRIGHTNESS_PERCENT=40\n")
+    module.CONFIG_FILE = config
+
+    # udev race: no device yet — must report unapplied, not give up forever.
+    assert module.ensure_boot_brightness() is False
+    assert module.ensure_boot_brightness() is False
+
+    device = backlight_root / "intel_backlight"
+    device.mkdir(parents=True)
+    (device / "max_brightness").write_text("1000\n")
+    (device / "brightness").write_text("1000\n")
+    assert module.ensure_boot_brightness() is True
+    assert (device / "brightness").read_text().strip() == "400"
+
+    # Applied exactly once: later calls no-op even if the value changes.
+    (device / "brightness").write_text("777\n")
+    assert module.ensure_boot_brightness() is True
+    assert (device / "brightness").read_text().strip() == "777"

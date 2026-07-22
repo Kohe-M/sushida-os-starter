@@ -45,7 +45,7 @@ def read_config_percent(
     default: int,
     minimum: int,
     maximum: int,
-    path: Path = CONFIG_FILE,
+    path: Path | None = None,
 ) -> int:
     """Read an integer percent from config.env, failing closed to default.
 
@@ -53,6 +53,8 @@ def read_config_percent(
     anything else (missing file, malformed value, out of range) yields the
     default so a bad config can never black out the screen or blast audio.
     """
+    if path is None:
+        path = CONFIG_FILE
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
@@ -73,7 +75,9 @@ def clamp_brightness_raw(percent: int, max_raw: int) -> int:
     return max(floor_raw, min(max_raw, raw))
 
 
-def backlight_device(root: Path = BACKLIGHT_ROOT) -> Path | None:
+def backlight_device(root: Path | None = None) -> Path | None:
+    if root is None:
+        root = BACKLIGHT_ROOT
     try:
         for entry in sorted(root.iterdir()):
             if (entry / "brightness").is_file() and \
@@ -91,29 +95,30 @@ def _read_raw(path: Path) -> int | None:
         return None
 
 
-def set_brightness_percent(percent: int) -> None:
+def set_brightness_percent(percent: int) -> bool:
     device = backlight_device()
     if device is None:
-        return
+        return False
     max_raw = _read_raw(device / "max_brightness")
     if max_raw is None or max_raw <= 0:
-        return
+        return False
     try:
         (device / "brightness").write_text(
             f"{clamp_brightness_raw(percent, max_raw)}\n"
         )
     except OSError:
-        pass
+        return False
+    return True
 
 
-def step_brightness(direction: int) -> None:
+def step_brightness(direction: int) -> bool:
     device = backlight_device()
     if device is None:
-        return
+        return False
     max_raw = _read_raw(device / "max_brightness")
     current = _read_raw(device / "brightness")
     if max_raw is None or max_raw <= 0 or current is None:
-        return
+        return False
     percent = current * 100 // max_raw
     percent += direction * BRIGHTNESS_STEP_PERCENT
     percent = max(BRIGHTNESS_FLOOR_PERCENT, min(100, percent))
@@ -122,13 +127,14 @@ def step_brightness(direction: int) -> None:
             f"{clamp_brightness_raw(percent, max_raw)}\n"
         )
     except OSError:
-        pass
+        return False
+    return True
 
 
-def run_amixer(*args: str) -> None:
-    """Run amixer with a fixed argv; strictly best-effort."""
+def run_amixer(*args: str) -> bool:
+    """Run amixer with a fixed argv; best-effort but honest about failure."""
     try:
-        subprocess.run(
+        result = subprocess.run(
             [AMIXER, "-q", *args],
             check=False,
             stdout=subprocess.DEVNULL,
@@ -137,39 +143,82 @@ def run_amixer(*args: str) -> None:
             env={"LANG": "C", "LC_ALL": "C", "PATH": "/usr/bin:/bin"},
         )
     except (OSError, subprocess.TimeoutExpired):
-        pass
+        return False
+    return result.returncode == 0
 
 
-def volume_up() -> None:
-    run_amixer("set", "Master", f"{VOLUME_STEP_PERCENT}%+", "unmute")
+# Fixed candidates only: the chosen name is one of these constants, so a
+# log line naming it never carries device-derived content (P5).
+MIXER_CANDIDATES = ("Master", "PCM", "Speaker", "Headphone")
+MIXER_CONTROL = MIXER_CANDIDATES[0]
 
 
-def volume_down() -> None:
-    run_amixer("set", "Master", f"{VOLUME_STEP_PERCENT}%-", "unmute")
+def select_mixer_control() -> str:
+    """Pick the first present ALSA simple control from the fixed list.
+
+    SOF/UCM setups do not always expose "Master"; probing each candidate
+    with `amixer get` keeps hotkeys working there.  On total failure the
+    default remains "Master" and every action honestly reports failed.
+    """
+    global MIXER_CONTROL
+    MIXER_CONTROL = MIXER_CANDIDATES[0]
+    for name in MIXER_CANDIDATES:
+        if run_amixer("get", name):
+            MIXER_CONTROL = name
+            break
+    return MIXER_CONTROL
 
 
-def volume_mute_toggle() -> None:
-    run_amixer("set", "Master", "toggle")
+def volume_up() -> bool:
+    return run_amixer("set", MIXER_CONTROL, f"{VOLUME_STEP_PERCENT}%+", "unmute")
 
 
-def brightness_up() -> None:
-    step_brightness(1)
+def volume_down() -> bool:
+    return run_amixer("set", MIXER_CONTROL, f"{VOLUME_STEP_PERCENT}%-", "unmute")
 
 
-def brightness_down() -> None:
-    step_brightness(-1)
+def volume_mute_toggle() -> bool:
+    return run_amixer("set", MIXER_CONTROL, "toggle")
 
 
-def apply_boot_defaults() -> None:
-    # Some codecs power up with a muted Master/Speaker; unmute is idempotent.
-    run_amixer("set", "Master", "unmute")
-    run_amixer("set", "Speaker", "unmute")
-    set_brightness_percent(read_config_percent(
+def brightness_up() -> bool:
+    return step_brightness(1)
+
+
+def brightness_down() -> bool:
+    return step_brightness(-1)
+
+
+_BOOT_BRIGHTNESS_APPLIED = False
+
+
+def ensure_boot_brightness() -> bool:
+    """Apply the configured boot brightness once the backlight exists.
+
+    The backlight device can enumerate after this service starts (udev
+    ordering only sequences the daemons, not device discovery), so the
+    main loop keeps calling this until one application succeeds.
+    """
+    global _BOOT_BRIGHTNESS_APPLIED
+    if _BOOT_BRIGHTNESS_APPLIED:
+        return True
+    if set_brightness_percent(read_config_percent(
         "SCREEN_BRIGHTNESS_PERCENT",
         DEFAULT_BRIGHTNESS_PERCENT,
         BRIGHTNESS_FLOOR_PERCENT,
         100,
-    ))
+    )):
+        _BOOT_BRIGHTNESS_APPLIED = True
+        print("boot-brightness=applied", flush=True)
+    return _BOOT_BRIGHTNESS_APPLIED
+
+
+def apply_boot_defaults() -> None:
+    # Some codecs power up with a muted output; unmute is idempotent.
+    select_mixer_control()
+    run_amixer("set", MIXER_CONTROL, "unmute")
+    run_amixer("set", "Speaker", "unmute")
+    ensure_boot_brightness()
 
 
 def _watched_actions() -> dict[int, tuple[str, "callable"]]:
@@ -220,6 +269,9 @@ def main() -> int:
                     pass
             devices = _open_devices(watched)
             last_rescan = now
+            # The backlight may enumerate after startup; retry the boot
+            # default until it lands (no-op once applied).
+            ensure_boot_brightness()
             if not devices:
                 time.sleep(5.0)
                 continue
@@ -245,8 +297,8 @@ def main() -> int:
                     continue
                 last_action = now
                 name, action = entry
-                action()
-                print(f"action={name}", flush=True)
+                outcome = "ok" if action() else "failed"
+                print(f"action={name} result={outcome}", flush=True)
 
 
 if __name__ == "__main__":
