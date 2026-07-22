@@ -159,7 +159,7 @@ production Git history.
 - Verification: `tests/static/test_wifi_restore_readiness.py`（新規）、
   characterization 75 件不変、checker 0
 - Manual checks: 実機での再起動→自動再接続は未確認（次回実機試験で確認）
-- Evidence: `62d545a` / 2026-07-22
+- Evidence: `62d545a`、ISO `dc82bca1…`（R7/R8） / 2026-07-22
 
 ### FB-02 / 画面拡大率 2 倍
 
@@ -172,8 +172,8 @@ production Git history.
   変わった場合は無害に 1x 表示へフォールバック。サイト DOM・注入は一切なし。
 - Verification: `test_launcher.py::test_helper_seeds_fixed_two_x_page_zoom`
   （DSF フラグ再導入の禁止も検査）+ QEMU screenshot 比較
-- Manual checks: 実機での見え方は未確認
-- Evidence: `c76fdeb` → 改訂コミット / 2026-07-22
+- Manual checks: 実機での見え方は未確認（QEMU screenshot では 2 倍を確認済み）
+- Evidence: `c76fdeb` → `907abf1` → `38fccb6`、ISO `dc82bca1…`（R8 で 2 倍実効を確認） / 2026-07-22
 
 ### FB-03 / ノート PC で音声が出ない
 
@@ -181,7 +181,7 @@ production Git history.
 - 対応: `firmware-sof-signed` + `alsa-ucm-conf` を package list / release
   contract / 090 hook に追加（post-2019 Intel ノートは SOF なしでカード自体が
   出ない）。加えて FB-04 の起動時 unmute / 既定音量適用。
-- Manual checks: 実機での発音確認は再ビルド ISO で要確認
+- Manual checks: 実機での発音確認は ISO `dc82bca1…` で要確認
 - Evidence: `8910c99` / 2026-07-22
 
 ### FB-04 / 音量・輝度のホットキー + 起動時初期値
@@ -195,8 +195,8 @@ production Git history.
   3 点登録（release contract mapping / 090 hook / fixture）+ service enable。
 - Verification: `tests/static/test_input_watch.py`（新規）、checker 0、
   bats 220
-- Manual checks: 実機ホットキー動作は再ビルド ISO で要確認
-- Evidence: `424a8bd` / 2026-07-22
+- Manual checks: 実機ホットキー動作は ISO `dc82bca1…` で要確認
+- Evidence: `424a8bd`、QEMU serial で service 起動確認（R8） / 2026-07-22
 
 ### FB-05 / CI（docker root 実行）での verify-stale 5 件失敗
 
