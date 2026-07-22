@@ -2,25 +2,33 @@
 # Boot the release ISO in QEMU without modifying host disks or firmware state.
 #
 # The run is organized as stage functions invoked in a fixed order by
-# main(); sourcing this file only defines them.  Behavior, messages, and
-# the assembled QEMU argument order are part of the tested contract.
-set -euo pipefail
+# main(); sourcing this file only defines them — shell options, globals,
+# and the helper-library load all happen inside init_runtime at run time.
+# Behavior, messages, and the assembled QEMU argument order are part of
+# the tested contract.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-ISO="$PROJECT_ROOT/artifacts/sushida-os-amd64.iso"
-QEMU_ROOT="$PROJECT_ROOT/build/qemu"
-FIRMWARE="bios"
-NETWORK="online"
-HEADLESS=false
-DRY_RUN=false
-QEMU_SMOKE=false
-QEMU_BOOT_TEST=false
-WRITABLE_MEDIA_MODE=false
-POWERDOWN=false
-DURATION=0
-QEMU_PID=""
-EXTRACT_DIR=""
+init_runtime() {
+    set -euo pipefail
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+    ISO="$PROJECT_ROOT/artifacts/sushida-os-amd64.iso"
+    QEMU_ROOT="$PROJECT_ROOT/build/qemu"
+    FIRMWARE="bios"
+    NETWORK="online"
+    HEADLESS=false
+    DRY_RUN=false
+    QEMU_SMOKE=false
+    QEMU_BOOT_TEST=false
+    WRITABLE_MEDIA_MODE=false
+    POWERDOWN=false
+    DURATION=0
+    QEMU_PID=""
+    EXTRACT_DIR=""
+
+    # shellcheck source=scripts/lib/qemu-lib.sh
+    . "$SCRIPT_DIR/lib/qemu-lib.sh"
+}
 
 usage() {
     cat <<'EOF'
@@ -41,9 +49,6 @@ fail() {
     echo "ERROR: QEMU: $*" >&2
     exit 1
 }
-
-# shellcheck source=scripts/lib/qemu-lib.sh
-. "$SCRIPT_DIR/lib/qemu-lib.sh"
 
 parse_args() {
     while [ "$#" -gt 0 ]; do
@@ -496,6 +501,7 @@ write_result() {
 }
 
 main() {
+    init_runtime
     parse_args "$@"
     validate_inputs
     resolve_run_paths

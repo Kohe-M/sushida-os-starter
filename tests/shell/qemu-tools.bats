@@ -115,3 +115,17 @@ run_qemu_dry() {
     [ "$status" -ne 0 ]
     [[ "$output" == *"headless"* ]]
 }
+
+@test "sourcing the runner has no side effects" {
+    run bash -c '
+        before_opts="$(set +o)"
+        before_vars="$(compgen -v | sort)"
+        source "$1/scripts/run-qemu.sh"
+        [ "$before_opts" = "$(set +o)" ] || exit 1
+        new_vars="$(comm -13 <(printf "%s\n" "$before_vars") <(compgen -v | sort) \
+            | grep -Ev "^(before_opts|before_vars|new_vars)$" || true)"
+        [ -z "$new_vars" ] || { echo "leaked: $new_vars"; exit 2; }
+        [ -z "${FIRMWARE:-}" ] || exit 3
+    ' bash "$QEMU_FIXTURE"
+    [ "$status" -eq 0 ]
+}

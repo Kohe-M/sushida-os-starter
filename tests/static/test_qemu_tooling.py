@@ -236,6 +236,13 @@ def test_software_rendering_is_confined_to_explicit_qemu_entries() -> None:
     main_body = runner[runner.index("main() {"):runner.index("\n}", runner.index("main() {"))]
     assert main_body.index("print_dry_run") < main_body.index("prepare_run_dir")
     assert main_body.index("print_dry_run") < main_body.index("stage_boot_media")
+    # Sourcing must have no side effects (G-02): strict mode, globals, and
+    # the library load all live inside init_runtime, called first by main().
+    assert main_body.index("init_runtime") < main_body.index("parse_args")
+    init_body = runner[runner.index("init_runtime() {"):runner.index("\n}", runner.index("init_runtime() {"))]
+    assert "set -euo pipefail" in init_body
+    assert 'qemu-lib.sh"' in init_body
+    assert runner.index("set -euo pipefail") > runner.index("init_runtime() {")
     # print_dry_run itself ends the process and never creates files.
     dry_fn = runner[runner.index("print_dry_run() {"):runner.index("\n}", runner.index("print_dry_run() {"))]
     assert "exit 0" in dry_fn
