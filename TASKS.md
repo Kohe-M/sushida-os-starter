@@ -229,8 +229,11 @@ production Git history.
   `test_launcher_validates_and_exports_zoom`（旧
   `test_helper_seeds_fixed_two_x_page_zoom` を置換）、境界値・注入値の
   ブロック単体実行で JSON 出力確認、checker 0、bats+ShellCheck 221
-- Manual checks: 実機での 180% 表示・Ctrl+± 動作は未確認（要 ISO 再ビルド）
-- Evidence: 本タスクのコミット / 2026-07-22
+- QEMU 検証（R9/R10）: ISO `e5187348…` を再ビルド・verify、BIOS/UEFI
+  boot+smoke 全 PASS（180% 全画面描画）。monitor sendkey で Ctrl+−×4 →
+  screendump 差分 2.73%（縮小実効）、Ctrl+0 → 0 px 差で既定復帰を実証。
+- Manual checks: 実機での 180% 表示・Ctrl+± 動作は未確認（USB 再書き込みが必要）
+- Evidence: `1ef9670`、ISO `e5187348…`（R9/R10） / 2026-07-22
 
 ## 4. 運用ルール（旧 Working rules の後継）
 
