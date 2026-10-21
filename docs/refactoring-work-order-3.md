@@ -87,7 +87,7 @@ root で動きキー入力に反応する唯一のプロセスなのに、ステ
 
 | 候補 | 見送り理由 |
 |---|---|
-| launch/netwatch の config parser を共有 shell lib 化 | 本環境で bats 不可（挙動証拠なし）。H-01 で乖離は機械検出できるようになり、残る重複は「動くが冗長」なだけ |
+| launch/netwatch の config parser を共有 shell lib 化 | 本環境で bats 不可（挙動証拠なし）。→ **§6 H-03 で Python module として実施**（bats をローカルに用意） |
 | ズーム範囲（50–300 / 既定 180）を contract 化 | launcher・session・test に重複するが、FB-06 で入ったばかりで変更予定なし。シェル側の照合 regex が脆く、手間 > 利得 |
 | input-watch を `sushida_os` package へ移す | 新規 shipped file の 3 点登録（P3）と release contract 変更を伴い、単一ファイルで凝集しているため利得が薄い |
 | G-05 check-contracts.py 分割 | H-01 は既存エラーコード・既存節の拡張に留め、発動条件（新 contract 種別・adapter 大幅増）に当たらない |
@@ -133,3 +133,44 @@ git diff --check
 | git diff --check | exit 0 |
 | make container-shell（bats + ShellCheck） | **未実施**（container engine なし）。H-01/H-02 とも shell 無変更 |
 | make iso / verify / QEMU | **未実施**。H-02 は shipped file（`sushida-input-watch`）を変更したため、既存 ISO（R9/R10, `e5187348…`）は HEAD と一致しない。次回 `make iso` で反映・検証が必要 |
+
+## 6. H-03: config.env の単一 validator 化（2026-10-22、ユーザー追加依頼）
+
+発注: 「従来の設計や方針にとらわれず、あなたなりにリファクタリングしてほしい。
+必要なければそう言ってほしい」。全体を再評価した結論は**大半は不要**
+（凝集済み・テスト厚い）で、残る実害は config.env 処理の 4 重実装
+（launcher bash / network-watch bash / input-watch の寛容な Python /
+checker）のみ。§3 で見送った「parser 共通化」は bats 不在が理由だったが、
+bats-core（scratchpad）と shellcheck-py（`.venv`）をローカルに用意して
+挙動検証が可能になったため、shell lib ではなく Python module で実施した。
+
+| 項目 | 内容 |
+|---|---|
+| コミット | 9136d6e |
+| 新規 | `sushida_os/config.py`（構文・キー表・URL origin・範囲・既定値の唯一の正本、CLI `python3 -m sushida_os.config --file F KEY`） |
+| 呼び出し側 | launcher（4 キー）・network-watch（URL 検証 + interval）は CLI、input-watch は import（不正ファイルは丸ごと既定輝度へフォールバック） |
+| image | P3 登録（release contract path + exact mapping / 090 hook の module 一覧・import / checker fixture）。090 hook は出荷 config.env を全キー検証し、不正な既定値は ISO build で落ちる |
+| checker | contract `config_keys` ↔ module `Setting(...)` 表、呼び出し側が module を使い自前 parser を持たないこと、interval/grace 既定値 ↔ contract（`DRIFT_TIMEOUT`） |
+| 維持した多重防御 | launcher の SUSHIDA_URL `case`、session の zoom fallback |
+| テスト | `test_config.py` 38 件（コミットメッセージの「40」は誤記）、bats 8 件追加（zoom の profile seed 到達・範囲外/不正値/未知キー/URL 拒否・本番 config.env を watcher が受理）、source-pattern テストと checker fixture を新配線へ追随 |
+
+### 挙動差分（意図したもの）
+
+- エラー文言を統一（`KEY must be between A and B` 等）。未知キーは行内容ではなく
+  行番号で報告（P5 の精神。行内容に値が混入しうるため）。
+- input-watch: 他の行が不正なファイルでも輝度行だけ拾う寛容さを廃止し、
+  不正なら既定 80%（launcher も起動を拒否する状態なので実害なし）。
+- 起動コスト: launcher で python3 起動が 4 回増（本環境で計 約0.1 s）。
+  再起動 5 秒以内の要件に対して十分小さい。
+
+### ゲート結果（2026-10-22, HEAD 9136d6e）
+
+| 項目 | 結果 |
+|---|---|
+| python3 tools/check-contracts.py | exit 0 |
+| pytest tests/static/ tests/contracts/ -q | 871 passed |
+| make check-structure / git diff --check | exit 0 / exit 0 |
+| ShellCheck -S warning（shellcheck-py 0.11.0、builder は Debian 版） | exit 0 |
+| bats（bats-core v1.11.1、flash-safety 以外の全 suite） | 203 ok / 3 not ok / 15 skip。not ok 3 件（artifacts #5/#6: jq 不在、qemu-tools UEFI dry run: OVMF 不在）は**変更前の基準 run と同一の環境起因**。launch/network-watch は全件 ok |
+| bats flash-safety | 20 ok の後、fixture 書き込み試験で host 全体の `sync` が D 状態で停止し timeout（WSL の I/O 待ち）。flash.sh・同テストは本 Stage で無変更、基準 run では通過 → **完走は未確認** |
+| make iso / verify / QEMU / 実機 | **未実施**。launcher・watcher・input-watch・新 module が image に入るため、次回 `make iso && make verify` と QEMU boot/smoke での確認が必要 |
