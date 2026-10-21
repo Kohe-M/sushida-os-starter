@@ -77,7 +77,7 @@ Every column and its meaning:
 | TMO-03 | timeout | Wi-Fi connect timeout | 40 | sushida_os/wifi/nmcli.py (COMMAND_TIMEOUT_SECONDS) | nmcli --wait 30 in connect_wifi | NO | `wifi_connect_timeout_seconds` | PARTIAL | Nmcli per-stage timeout |
 | TMO-04 | timeout | Restore retry backoff min | 2.0 (seconds) | sushida_os/wifi/restore.py (BACKOFF_MIN) | — | NO | `restore_backoff_min_seconds` | PARTIAL | Bounded exponential backoff |
 | TMO-05 | timeout | Restore retry backoff max | 16.0 (seconds) | sushida_os/wifi/restore.py (BACKOFF_MAX) | — | NO | `restore_backoff_max_seconds` | PARTIAL | Bounded exponential backoff |
-| TMO-06 | timeout | Restore max retries | 5 | sushida_os/wifi/restore.py (MAX_RETRIES) | — | NO | `restore_max_retries` | YES | Integer count |
+| TMO-06 | timeout | Restore max retries | 8 | sushida_os/wifi/restore.py (MAX_RETRIES) | — | NO | `restore_max_retries` | YES | Integer count |
 | TMO-07 | timeout | Restore deadline | 120 (seconds) | sushida_os/wifi/restore.py (deadline) | — | NO | `restore_deadline_seconds` | YES | Total retry window |
 | TMO-08 | timeout | Navigation poll interval | 2.0 (seconds) | sushida-navigation-watch (DEFAULT_POLL_SECONDS) | — | NO | `nav_poll_interval_seconds` | YES | Configurable for tests |
 | TMO-09 | timeout | Navigation cooldown | 30.0 (seconds) | sushida-navigation-watch (DEFAULT_COOLDOWN_SECONDS) | — | NO | `nav_cooldown_seconds` | YES | Between restarts |
