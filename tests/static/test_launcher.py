@@ -69,13 +69,12 @@ def test_production_paths_fixed() -> None:
     assert "/run/sushida-os" in content
     assert "PROD_SESSION" in content
 
-def test_parser_single_equals_split() -> None:
+def test_config_goes_through_the_shared_validator() -> None:
+    # Parsing rules (single '=' split, CRLF, comments) are pinned in
+    # test_config.py; the launcher must not grow a second parser.
     content = LAUNCHER.read_text()
-    assert '${line%%=*}' in content
-    assert '${line#*=}' in content
-
-def test_parser_handles_crlf() -> None:
-    assert "'\\''r'" in LAUNCHER.read_text() or 'line%$' in LAUNCHER.read_text() or "$'\\r'" in LAUNCHER.read_text()
+    assert "python3 -m sushida_os.config" in content
+    assert "while IFS= read -r line" not in content
 
 def test_url_valid_sushida_origin() -> None:
     content = LAUNCHER.read_text()

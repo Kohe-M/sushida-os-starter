@@ -388,6 +388,13 @@ reject_url() {
     [ "$status" -ne 0 ]
 }
 
+@test "accepts the production config with every boot-default key" {
+    cp live-build/config/includes.chroot/etc/sushida-os/config.env "$SUSHIDA_OS_CONFIG"
+    run_watcher
+    [ "$status" -eq 0 ]
+    grep -qFx 30 "$TEST_ROOT/sleep.log"
+}
+
 @test "rejects duplicate URL" {
     printf 'SUSHIDA_URL=https://sushida.net/\nSUSHIDA_URL=https://sushida.net/play.html\n' > "$SUSHIDA_OS_CONFIG"
     run_watcher

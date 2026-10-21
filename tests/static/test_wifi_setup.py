@@ -250,7 +250,8 @@ def test_watcher_transitions_between_setup_and_online() -> None:
     assert "sushida_os.runtime.routes" in text
     assert "--setup-active" in text
     assert "sushida-wifi-setup.service" in text
-    assert "MIN_INTERVAL=30" in text
+    # The 30 s interval floor lives in the shared config validator.
+    assert "config_value NETWORK_CHECK_INTERVAL_SECONDS" in text
     assert "sushida-kiosk-signal" in text
     signal_helper = (
         ROOT / "usr/local/libexec/sushida-kiosk-signal"

@@ -72,8 +72,8 @@ Navigation is restricted at two independent layers.
 
 ### Layer 1: Launcher (sushida-launch)
 
-The launcher parses `/etc/sushida-os/config.env`, validates the configured
-`SUSHIDA_URL`, waits a bounded period for NetworkManager's connectivity state,
+The launcher reads `/etc/sushida-os/config.env` through the shared validator
+`sushida_os.config`, re-checks the configured `SUSHIDA_URL` itself, waits a bounded period for NetworkManager's connectivity state,
 and selects the
 official URL, fixed loopback setup URL, or static offline fallback before
 passing it to Chromium. Only configured URLs
@@ -157,6 +157,14 @@ default sink by the session helper), `SCREEN_BRIGHTNESS_PERCENT`
 (5–100, applied to the backlight by `sushida-input-watch`), and
 `SCREEN_ZOOM_PERCENT` (50–300, default 180; seeded by the session helper
 as Chromium's profile-default page zoom into the fresh tmpfs profile).
+All of these are parsed and range-checked by one module,
+`sushida_os.config` (the launcher and network watcher call it as
+`python3 -m sushida_os.config KEY`, the input watcher imports it, and the
+image validation hook runs it over the shipped file).  The file is data,
+never sourced: an unknown key, a line without `=`, or a duplicate key makes
+it invalid as a whole.  The launcher and watcher refuse to start on an
+invalid file; the input watcher falls back to its built-in brightness
+default so a bad file can never black out the panel.
 Changing the URL only changes the initial URL Chromium opens; it cannot
 bypass the launcher validation or the managed policy boundary.
 

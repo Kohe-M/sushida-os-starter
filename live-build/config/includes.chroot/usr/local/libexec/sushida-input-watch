@@ -4,7 +4,8 @@
 Root-only input listener with a fixed key->action table: the volume and
 brightness keys on the kiosk keyboard adjust the ALSA master mixer and the
 backlight in bounded steps.  At startup it applies the boot defaults from
-/etc/sushida-os/config.env (AUDIO unmute, SCREEN_BRIGHTNESS_PERCENT).
+/etc/sushida-os/config.env (AUDIO unmute, SCREEN_BRIGHTNESS_PERCENT), read
+through the shared sushida_os.config validator.
 
 Security posture: no configuration surface is reachable from the kiosk
 session — the action table, mixer argv, and sysfs paths are constants;
@@ -21,6 +22,8 @@ import sys
 import time
 from pathlib import Path
 
+from sushida_os import config
+
 try:  # test environments exercise the pure helpers without evdev
     import evdev
 except ImportError:  # pragma: no cover
@@ -35,38 +38,24 @@ BRIGHTNESS_STEP_PERCENT = 10
 # Never drive the panel to zero: a black screen on a lockdown kiosk is
 # indistinguishable from a crash and cannot be recovered by users.
 BRIGHTNESS_FLOOR_PERCENT = 5
-DEFAULT_BRIGHTNESS_PERCENT = 80
 MIN_ACTION_INTERVAL_SECONDS = 0.15
 DEVICE_RESCAN_SECONDS = 60.0
 
 
-def read_config_percent(
-    key: str,
-    default: int,
-    minimum: int,
-    maximum: int,
-    path: Path | None = None,
-) -> int:
-    """Read an integer percent from config.env, failing closed to default.
+def configured_brightness_percent(path: Path | None = None) -> int:
+    """Boot brightness from config.env, failing closed to the default.
 
-    Only a plain KEY=digits line within [minimum, maximum] is accepted;
-    anything else (missing file, malformed value, out of range) yields the
-    default so a bad config can never black out the screen or blast audio.
+    Any config problem (missing file, bad syntax, out-of-range value) yields
+    the validator's default, so a bad config can never black out the screen;
+    the validator's minimum is the same 5% floor the hotkeys keep.
     """
-    if path is None:
-        path = CONFIG_FILE
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return default
-    value = default
-    for line in lines:
-        if not line.startswith(key + "="):
-            continue
-        raw = line[len(key) + 1:].strip()
-        if raw.isdigit() and minimum <= int(raw) <= maximum:
-            value = int(raw)
-    return value
+        value = config.load("SCREEN_BRIGHTNESS_PERCENT", path or CONFIG_FILE)
+    except config.ConfigError:
+        value = None
+    if value is None:
+        value = config.SETTINGS["SCREEN_BRIGHTNESS_PERCENT"].default
+    return int(value)
 
 
 def clamp_brightness_raw(percent: int, max_raw: int) -> int:
@@ -210,12 +199,7 @@ def ensure_boot_brightness() -> bool:
     global _BOOT_BRIGHTNESS_APPLIED
     if _BOOT_BRIGHTNESS_APPLIED:
         return True
-    if set_brightness_percent(read_config_percent(
-        "SCREEN_BRIGHTNESS_PERCENT",
-        DEFAULT_BRIGHTNESS_PERCENT,
-        BRIGHTNESS_FLOOR_PERCENT,
-        100,
-    )):
+    if set_brightness_percent(configured_brightness_percent()):
         _BOOT_BRIGHTNESS_APPLIED = True
         print("boot-brightness=applied", flush=True)
     return _BOOT_BRIGHTNESS_APPLIED

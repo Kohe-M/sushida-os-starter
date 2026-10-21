@@ -34,20 +34,22 @@ def _skip_if_no_checker() -> None:
 
 
 CONFIG_KEYS = json.loads((CONTRACTS / "runtime-contract.json").read_text())["config_keys"]
+CONFIG_MODULE = ("live-build/config/includes.chroot/usr/lib/python3/dist-packages/"
+                 "sushida_os/config.py")
+CONFIG_DEFAULTS = {"NETWORK_CHECK_INTERVAL_SECONDS": 30, "NETWORK_SETUP_GRACE_SECONDS": 15}
 
 
-def _config_parser_stub(keys: list[str]) -> str:
-    """Shell config.env read loop accepting exactly ``keys`` (production form)."""
-    cases = "".join(f"        {key}) ;;\n" for key in keys)
-    return (
-        'while IFS= read -r line || [ -n "$line" ]; do\n'
-        '    key="${line%%=*}"; value="${line#*=}"\n'
-        '    case "$key" in\n'
-        f"{cases}"
-        '        *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;\n'
-        '    esac\n'
-        'done < "$CONFIG_FILE"\n'
-    )
+def _config_module_stub(keys: list[str]) -> str:
+    """Key table of sushida_os.config in production form."""
+    lines = []
+    for key in keys:
+        default = CONFIG_DEFAULTS.get(key)
+        extra = f", minimum=0, maximum=9999, default={default}" if default is not None else ""
+        lines.append(f'        Setting("{key}"{extra}),\n')
+    return "SETTINGS = {s.key: s for s in (\n" + "".join(lines) + ")}\n"
+
+
+CONFIG_CALL = ('    python3 -m sushida_os.config --file "$CONFIG_FILE" "$1"\n')
 
 
 def _build_minimal_repo(root: Path) -> None:
@@ -210,7 +212,7 @@ def _build_minimal_repo(root: Path) -> None:
         'ACTIVE_ROUTE="offline"\n'
         'ACTIVE_ROUTE="setup"\n'
         'ACTIVE_ROUTE="online"\n'
-        + _config_parser_stub(CONFIG_KEYS)
+        + CONFIG_CALL
     )
     (root / "live-build/config/includes.chroot/usr/local/bin/sushida-network-watch").write_text(
         '#!/usr/bin/env bash\n'
@@ -221,7 +223,7 @@ def _build_minimal_repo(root: Path) -> None:
         "printf '%s\\n' setup\n"
         "printf '%s\\n' offline\n"
         'case "$route" in online|setup|offline) printf \'%s\\n\' "$route" ;; *) return 1 ;; esac\n'
-        + _config_parser_stub(CONFIG_KEYS)
+        + CONFIG_CALL
     )
     (root / "live-build/config/includes.chroot/usr/local/bin/sushida-navigation-watch").write_text(
         '#!/usr/bin/env python3\n'
@@ -280,6 +282,7 @@ def _build_minimal_repo(root: Path) -> None:
         '                "activation", "--wait", "30", "connection", "up",\n'
         '                "id", CONNECTION_NAME, timeout=35,\n'
     )
+    (root / CONFIG_MODULE).write_text(_config_module_stub(CONFIG_KEYS))
     (root / "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/__init__.py").write_text(
         '"""stub"""\n'
     )
@@ -830,38 +833,51 @@ class TestCheckContracts:
         assert r.returncode == 1
         assert "DRIFT_CONFIG_KEY" in r.stdout
 
-    # ── config_keys: contract ↔ config.env ↔ both shell parsers (H-01) ──
+    # ── config_keys: contract ↔ config.env ↔ shared validator ↔ callers ──
 
-    def _parser_path(self, root: Path, script: str) -> Path:
-        return root / "live-build/config/includes.chroot/usr/local/bin" / script
+    def _script(self, root: Path, name: str) -> Path:
+        return root / "live-build/config/includes.chroot/usr/local/bin" / name
 
-    def test_launcher_parser_missing_contract_key_exit_1(self, clean_repo: Path) -> None:
-        launch = self._parser_path(clean_repo, "sushida-launch")
-        text = launch.read_text().replace("        SCREEN_ZOOM_PERCENT) ;;\n", "")
-        launch.write_text(text)
+    def test_validator_missing_contract_key_exit_1(self, clean_repo: Path) -> None:
+        module = clean_repo / CONFIG_MODULE
+        module.write_text(_config_module_stub(
+            [k for k in CONFIG_KEYS if k != "SCREEN_ZOOM_PERCENT"]))
         r = _run_checker(clean_repo)
         assert r.returncode == 1
-        assert "DRIFT_CONFIG_KEY" in r.stdout
-        assert "launcher config keys: missing ['SCREEN_ZOOM_PERCENT']" in r.stdout
+        assert "config validator keys: missing ['SCREEN_ZOOM_PERCENT'], unexpected []" in r.stdout
 
-    def test_netwatch_parser_unexpected_key_exit_1(self, clean_repo: Path) -> None:
-        netwatch = self._parser_path(clean_repo, "sushida-network-watch")
-        netwatch.write_text(netwatch.read_text().replace(
-            "        SUSHIDA_URL) ;;\n",
-            "        SUSHIDA_URL) ;;\n        EXTRA_KEY) ;;\n"))
+    def test_validator_unexpected_key_exit_1(self, clean_repo: Path) -> None:
+        module = clean_repo / CONFIG_MODULE
+        module.write_text(_config_module_stub([*CONFIG_KEYS, "EXTRA_KEY"]))
         r = _run_checker(clean_repo)
         assert r.returncode == 1
-        assert "network watcher config keys: missing [], unexpected ['EXTRA_KEY']" in r.stdout
+        assert "config validator keys: missing [], unexpected ['EXTRA_KEY']" in r.stdout
 
-    def test_parser_loop_absent_exit_1(self, clean_repo: Path) -> None:
-        launch = self._parser_path(clean_repo, "sushida-launch")
-        launch.write_text(launch.read_text().replace('done < "$CONFIG_FILE"\n', ""))
+    def test_validator_default_drift_exit_1(self, clean_repo: Path) -> None:
+        module = clean_repo / CONFIG_MODULE
+        module.write_text(module.read_text().replace("default=15", "default=20"))
         r = _run_checker(clean_repo)
         assert r.returncode == 1
-        assert "launcher config.env parser loop not found" in r.stdout
+        assert "DRIFT_TIMEOUT" in r.stdout
+        assert "network_setup_grace_seconds" in r.stdout
+
+    def test_caller_bypassing_validator_exit_1(self, clean_repo: Path) -> None:
+        launch = self._script(clean_repo, "sushida-launch")
+        launch.write_text(launch.read_text().replace(CONFIG_CALL, ""))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "launcher does not read config.env through sushida_os.config" in r.stdout
+
+    def test_caller_with_private_parser_exit_1(self, clean_repo: Path) -> None:
+        netwatch = self._script(clean_repo, "sushida-network-watch")
+        netwatch.write_text(netwatch.read_text()
+                            + 'while IFS= read -r line; do :; done < "$CONFIG_FILE"\n')
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "network watcher parses config.env itself" in r.stdout
 
     def test_contract_config_key_removed_exit_1(self, clean_repo: Path) -> None:
-        """Dropping a key from the contract alone flags config.env and both parsers."""
+        """Dropping a key from the contract alone flags config.env and the validator."""
         rc = clean_repo / "contracts/runtime-contract.json"
         data = json.loads(rc.read_text())
         data["config_keys"].remove("NETWORK_SETUP_GRACE_SECONDS")
@@ -869,8 +885,7 @@ class TestCheckContracts:
         r = _run_checker(clean_repo)
         assert r.returncode == 1
         assert "unknown config key at line 3" in r.stdout
-        assert "launcher config keys: missing [], unexpected ['NETWORK_SETUP_GRACE_SECONDS']" in r.stdout
-        assert "network watcher config keys: missing [], unexpected ['NETWORK_SETUP_GRACE_SECONDS']" in r.stdout
+        assert "config validator keys: missing [], unexpected ['NETWORK_SETUP_GRACE_SECONDS']" in r.stdout
 
     def test_contract_config_key_schema_pattern_exit_1(self, clean_repo: Path) -> None:
         rc = clean_repo / "contracts/runtime-contract.json"

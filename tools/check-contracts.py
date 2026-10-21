@@ -345,6 +345,7 @@ RUNTIME_SOURCE_FILES = {
     "wifi_web": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
                 "sushida_os/wifi/web.py",
     "configprep": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-config-prepare",
+    "config": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/sushida_os/config.py",
     "runtime_routes": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
                       "sushida_os/runtime/routes.py",
     "runtime_state": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
@@ -382,6 +383,12 @@ _TIMEOUT_ADAPTERS = (
      r"MAX_REQUEST_BYTES\s*=\s*{value}\b", 1),
     ("session_audio_timeout_seconds", "session",
      r"_raw_at={value}\b", 1),
+    # Defaults the shared config validator applies when config.env omits
+    # the key (config.env itself is compared verbatim in _drift_runtime).
+    ("network_check_interval_seconds", "config",
+     r'Setting\("NETWORK_CHECK_INTERVAL_SECONDS",[^)]*\bdefault={value}\b', 1),
+    ("network_setup_grace_seconds", "config",
+     r'Setting\("NETWORK_SETUP_GRACE_SECONDS",[^)]*\bdefault={value}\b', 1),
 )
 
 
@@ -678,33 +685,30 @@ def _drift_routes(routes: list, texts: dict[str, str], labels: dict[str, str],
                          f"route model constants {sorted(found)} != contract {sorted(expected)}")
 
 
-# The read loop both shell parsers use for config.env; its case labels are
-# the keys the script accepts (anything else aborts startup).
-_CONFIG_PARSER_BLOCK = re.compile(
-    r'^while IFS= read -r line\b.*?^done < "\$CONFIG_FILE"$',
-    re.MULTILINE | re.DOTALL)
-_CONFIG_PARSER_LABEL = re.compile(r"^\s*([A-Z][A-Z0-9_]*)\)", re.MULTILINE)
-
-
-def _drift_config_parsers(config_keys: list, texts: dict[str, str],
-                          labels: dict[str, str], result: Result) -> None:
+def _drift_config_keys(config_keys: list, texts: dict[str, str],
+                       labels: dict[str, str], result: Result) -> None:
+    """The validator's key table must equal the contract; its shell callers
+    must use it instead of parsing config.env themselves."""
     expected = set(config_keys)
     if not expected:
         return
+    module = texts.get("config")
+    if module is not None:
+        found = set(re.findall(r'^\s*Setting\("([A-Z][A-Z0-9_]*)"', module, re.MULTILINE))
+        if found != expected:
+            result.error("DRIFT_CONFIG_KEY", "runtime", "config_keys", labels["config"],
+                         f"config validator keys: missing {sorted(expected - found)}, "
+                         f"unexpected {sorted(found - expected)}")
     for key, name in (("launch", "launcher"), ("netwatch", "network watcher")):
         text = texts.get(key)
         if text is None:
             continue  # a missing source is reported separately
-        block = _CONFIG_PARSER_BLOCK.search(text)
-        if block is None:
+        if not re.search(r"python3 -m sushida_os\.config\b", text):
             result.error("DRIFT_CONFIG_KEY", "runtime", "config_keys", labels[key],
-                         f"{name} config.env parser loop not found")
-            continue
-        found = set(_CONFIG_PARSER_LABEL.findall(block.group(0)))
-        if found != expected:
+                         f"{name} does not read config.env through sushida_os.config")
+        if re.search(r'\bdone\s*<\s*"?\$\{?CONFIG_FILE\b', text):
             result.error("DRIFT_CONFIG_KEY", "runtime", "config_keys", labels[key],
-                         f"{name} config keys: missing {sorted(expected - found)}, "
-                         f"unexpected {sorted(found - expected)}")
+                         f"{name} parses config.env itself instead of sushida_os.config")
 
 
 def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
@@ -715,12 +719,12 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     timeouts = c.get("timeouts", {})
 
     # Production URL from config.env
-    # The production launcher and network-watch parse config.env verbatim:
+    # The shared validator (sushida_os.config) parses config.env verbatim:
     # only CR is stripped; quotes and leading whitespace are NOT removed.
     # Unknown keys, lines without '=', and duplicate keys all cause a startup
     # failure, so the checker must reject them too.  The accepted key set is
-    # the contract's config_keys; _drift_config_parsers() holds both shell
-    # parsers to the same set.
+    # the contract's config_keys; _drift_config_keys() holds the shared
+    # validator (sushida_os.config) and its callers to the same set.
     #
     # Error messages must never include config.env line content or values
     # because they could contain secrets.  Report line numbers only.
@@ -791,7 +795,7 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     _drift_runtime_paths(rpaths, services, texts, labels, unit_texts, unit_labels, result)
     _drift_timeouts(timeouts, texts, labels, result)
     _drift_routes(c.get("routes", []), texts, labels, result)
-    _drift_config_parsers(c.get("config_keys", []), texts, labels, result)
+    _drift_config_keys(c.get("config_keys", []), texts, labels, result)
 
     # Chromium managed policy URL allowlist and blocklist
     policy_file = _must_exist(root, f"{PRODUCTION_ROOT}/etc/chromium/policies/managed/sushida-os.json",

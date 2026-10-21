@@ -89,7 +89,7 @@ Every column and its meaning:
 
 | ID | Domain | Contract item | Current value | Production source | Other references | Mismatch | Candidate contract field | Automatable | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| CFG-01 | config | Accepted config.env keys | `SUSHIDA_URL`, `NETWORK_CHECK_INTERVAL_SECONDS`, `NETWORK_SETUP_GRACE_SECONDS`, `AUDIO_VOLUME_PERCENT`, `SCREEN_BRIGHTNESS_PERCENT`, `SCREEN_ZOOM_PERCENT` | `config.env` | sushida-launch / sushida-network-watch parser `case` (unknown key aborts startup), sushida-input-watch (reads `SCREEN_BRIGHTNESS_PERCENT`) | NO | `config_keys` | YES | Stage H-01. Adding a key = contract + config.env + both shell parsers in one commit |
+| CFG-01 | config | Accepted config.env keys | `SUSHIDA_URL`, `NETWORK_CHECK_INTERVAL_SECONDS`, `NETWORK_SETUP_GRACE_SECONDS`, `AUDIO_VOLUME_PERCENT`, `SCREEN_BRIGHTNESS_PERCENT`, `SCREEN_ZOOM_PERCENT` | `sushida_os/config.py` (`SETTINGS` table) | `config.env`; callers sushida-launch / sushida-network-watch (CLI), sushida-input-watch (import), 090 validate hook | NO | `config_keys` | YES | Stage H-01/H-03. Adding a key = contract + `SETTINGS` + config.env in one commit |
 
 ## Release inventory
 
@@ -138,6 +138,7 @@ Every column and its meaning:
 | ISO-29 | iso-path | Runtime state protocol | `/usr/lib/python3/dist-packages/sushida_os/runtime/runtime_state.py` | Python module | validate hook | NO | — | YES | Security-critical |
 | ISO-30 | iso-path | Kiosk signal module | `/usr/lib/python3/dist-packages/sushida_os/runtime/kiosk_signal.py` | Python module | validate hook | NO | — | YES | Security-critical |
 | ISO-31 | iso-path | Kiosk signal helper | `/usr/local/libexec/sushida-kiosk-signal` | Production script | validate hook | NO | — | YES | Security-critical |
+| ISO-32 | iso-path | Config validator | `/usr/lib/python3/dist-packages/sushida_os/config.py` | Python module | validate hook (also validates the shipped config.env) | NO | — | YES | Security-critical (URL origin check) |
 
 ### Source-image mappings
 
@@ -178,6 +179,7 @@ Every column and its meaning:
 | SIM-33 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/runtime/runtime_state.py` | squashfs | file (Python module) | `cmp` | YES |
 | SIM-34 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/runtime/kiosk_signal.py` | squashfs | file (Python module) | `cmp` | YES |
 | SIM-35 | mapping | (via auto/config) | `/usr/local/libexec/sushida-kiosk-signal` | squashfs | file (script) | `cmp` | YES |
+| SIM-36 | mapping | (via auto/config) | `/usr/lib/python3/dist-packages/sushida_os/config.py` | squashfs | file (Python module) | `cmp` | YES |
 
 **Stage E (2026-07-21) 以降**: squashfs 領域の全 mapping は `current_verification: "exact"`（verify-iso.sh が byte 比較 + mode/owner/group を image 内で照合）。bootloader 入力（SIM-20〜22 相当）は iso-root presence として mapping / required_iso_paths / verify に登録済み。build-info.json は schema_version 1 で `source_date_epoch` / `release_contract_sha256` / `package_manifest_sha256` を持ち、verify が相互照合する。
 
@@ -214,8 +216,8 @@ behaviour change is performed.
 | `runtime_paths.config_mount_path` | Literals in `sushida_os/wifi/storage.py`, config-prepare, mount unit `Where=` |
 | `runtime_paths.config_storage_status` / `credential_file` | Literals + derived components in `sushida_os/wifi/storage.py` + config-prepare |
 | `runtime_paths.chromium_profile_dir` / `chromium_sessions_dir` | Basename in launch/session; `SESSIONS_SUBDIR` chain in navwatch |
-| `timeouts.*` (14 fields: 2 in config.env + 12 in production scripts) | Literal values in the corresponding production sources, with config.env verbatim comparison and min-count checks for multi-site activation calls |
-| `config_keys` | Set comparison: contract == keys accepted in `config.env` == launcher config parser `case` labels == netwatch config parser `case` labels (Stage H-01) |
+| `timeouts.*` (14 fields: 2 in config.env and as `sushida_os.config` defaults + 12 in production scripts) | Literal values in the corresponding production sources, with config.env verbatim comparison and min-count checks for multi-site activation calls |
+| `config_keys` | Set comparison: contract == keys accepted in `config.env` == `Setting("KEY"…)` table in `sushida_os/config.py`; launcher and netwatch must call `python3 -m sushida_os.config` and must not parse config.env themselves (Stage H-01/H-03) |
 | `routes` | Set comparison: contract routes == launcher `ACTIVE_ROUTE=` literals == netwatch route `case` literals == `sushida_os/runtime/routes.py` `ROUTE_*` constants |
 | `navigation` allowlist/blocklist | Chromium managed policy JSON `URLAllowlist`/`URLBlocklist` |
 | `services.*` | Unit file existence in `includes.chroot/etc/systemd/system` |

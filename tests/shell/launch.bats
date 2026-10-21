@@ -225,6 +225,46 @@ run_launcher() {
     grep '^CHROMIUM_ARG:' "$CHROMIUM_LOG" | tail -n 1 | grep -qF "CHROMIUM_ARG:[https://sushida.net/play.html]"
 }
 
+@test "configured zoom percent reaches the fresh profile seed" {
+    printf 'SUSHIDA_URL=https://sushida.net/play.html\nSCREEN_ZOOM_PERCENT=120\n' > "$SUSHIDA_OS_CONFIG"
+    run_launcher
+    [ "$status" -eq 0 ]
+    # log1.2(1.2) = 1
+    grep -qF '{"partition":{"default_zoom_level":{"x":1,' "$SUSHIDA_OS_RUNTIME/chromium/Default/Preferences"
+}
+
+@test "unset zoom keeps the 180 percent default seed" {
+    run_launcher
+    [ "$status" -eq 0 ]
+    grep -qF '"x":3.22390108574154' "$SUSHIDA_OS_RUNTIME/chromium/Default/Preferences"
+}
+
+reject_config() {
+    printf 'SUSHIDA_URL=https://sushida.net/play.html\n%s\n' "$1" > "$SUSHIDA_OS_CONFIG"
+    run_launcher
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"$2"* ]]
+    [ ! -s "$CHROMIUM_LOG" ]
+}
+
+@test "rejects out-of-range zoom before starting chromium" {
+    reject_config SCREEN_ZOOM_PERCENT=301 "SCREEN_ZOOM_PERCENT must be between 50 and 300"
+}
+@test "rejects non-integer volume" {
+    reject_config AUDIO_VOLUME_PERCENT=7O "AUDIO_VOLUME_PERCENT must be an integer"
+}
+@test "rejects setup grace above maximum" {
+    reject_config NETWORK_SETUP_GRACE_SECONDS=61 "must be between 0 and 60"
+}
+@test "rejects unknown config key" { reject_config EVIL=1 "Unknown config key"; }
+@test "rejects disallowed URL" {
+    printf 'SUSHIDA_URL=https://sushida.net.evil.example/\n' > "$SUSHIDA_OS_CONFIG"
+    run_launcher
+    [ "$status" -ne 0 ]
+    [[ "$output" == *disallowed* ]]
+    [ ! -s "$CHROMIUM_LOG" ]
+}
+
 @test "QEMU smoke markers force offline route even with a connected test NIC" {
     export SUSHIDA_OS_NM_STATE=connected
     export SUSHIDA_QEMU_FORCE_OFFLINE=1

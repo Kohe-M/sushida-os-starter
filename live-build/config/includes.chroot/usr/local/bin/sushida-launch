@@ -73,84 +73,24 @@ if [ ! -x "$SESSION_HELPER" ]; then
     exit 1
 fi
 
-# ── Config parser ─────────────────────────────────────────────────────────
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "ERROR: Config file not found: $CONFIG_FILE" >&2
-    exit 1
-fi
-SUSHIDA_URL=""
-NETWORK_SETUP_GRACE_SECONDS=15
-AUDIO_VOLUME_PERCENT=""
-SCREEN_ZOOM_PERCENT=""
-seen_url=false
-seen_setup_grace=false
-seen_volume=false
-seen_zoom=false
-while IFS= read -r line || [ -n "$line" ]; do
-    line="${line%$'\r'}"
-    if [ -z "$line" ] || [[ "$line" == "#"* ]]; then continue; fi
-    if [[ "$line" != *"="* ]]; then
-        echo "ERROR: Invalid config line (missing '='): $line" >&2; exit 1
-    fi
-    key="${line%%=*}"; value="${line#*=}"
-    case "$key" in
-        SUSHIDA_URL)
-            if $seen_url; then echo "ERROR: Duplicate SUSHIDA_URL" >&2; exit 1; fi
-            seen_url=true; SUSHIDA_URL="$value" ;;
-        NETWORK_SETUP_GRACE_SECONDS)
-            if $seen_setup_grace; then
-                echo "ERROR: Duplicate NETWORK_SETUP_GRACE_SECONDS" >&2; exit 1
-            fi
-            seen_setup_grace=true; NETWORK_SETUP_GRACE_SECONDS="$value" ;;
-        AUDIO_VOLUME_PERCENT)
-            if $seen_volume; then
-                echo "ERROR: Duplicate AUDIO_VOLUME_PERCENT" >&2; exit 1
-            fi
-            seen_volume=true; AUDIO_VOLUME_PERCENT="$value" ;;
-        SCREEN_ZOOM_PERCENT)
-            if $seen_zoom; then
-                echo "ERROR: Duplicate SCREEN_ZOOM_PERCENT" >&2; exit 1
-            fi
-            seen_zoom=true; SCREEN_ZOOM_PERCENT="$value" ;;
-        NETWORK_CHECK_INTERVAL_SECONDS) ;;
-        SCREEN_BRIGHTNESS_PERCENT) ;;
-        *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;
-    esac
-done < "$CONFIG_FILE"
-if [ -z "$SUSHIDA_URL" ]; then echo "ERROR: SUSHIDA_URL not set" >&2; exit 1; fi
-case "$NETWORK_SETUP_GRACE_SECONDS" in
-    ''|*[!0-9]*)
-        echo "ERROR: NETWORK_SETUP_GRACE_SECONDS must be an integer" >&2
-        exit 1 ;;
-esac
-if [ "$NETWORK_SETUP_GRACE_SECONDS" -gt 60 ]; then
-    echo "ERROR: NETWORK_SETUP_GRACE_SECONDS exceeds maximum 60" >&2
-    exit 1
-fi
+# ── Config ────────────────────────────────────────────────────────────────
+# sushida_os.config is the single parser/validator for config.env (syntax,
+# key set, URL origin, ranges).  The file is parsed as data, never sourced; a
+# missing or invalid file prints the reason and aborts the launch.
+config_value() {
+    PYTHONPATH="$RUNTIME_LIB" PYTHONDONTWRITEBYTECODE=1 \
+        python3 -m sushida_os.config --file "$CONFIG_FILE" "$1"
+}
+SUSHIDA_URL="$(config_value SUSHIDA_URL)"
+NETWORK_SETUP_GRACE_SECONDS="$(config_value NETWORK_SETUP_GRACE_SECONDS)"
+AUDIO_VOLUME_PERCENT="$(config_value AUDIO_VOLUME_PERCENT)"
+SCREEN_ZOOM_PERCENT="$(config_value SCREEN_ZOOM_PERCENT)"
+# Validated boot defaults for the session helper (best-effort wpctl call and
+# page-zoom seeding); empty means unset, and the helper keeps its defaults.
 if [ -n "$AUDIO_VOLUME_PERCENT" ]; then
-    case "$AUDIO_VOLUME_PERCENT" in
-        *[!0-9]*)
-            echo "ERROR: AUDIO_VOLUME_PERCENT must be an integer" >&2
-            exit 1 ;;
-    esac
-    if [ "$AUDIO_VOLUME_PERCENT" -gt 100 ]; then
-        echo "ERROR: AUDIO_VOLUME_PERCENT exceeds maximum 100" >&2
-        exit 1
-    fi
-    # Validated boot default for the session helper's best-effort wpctl call.
     export SUSHIDA_AUDIO_VOLUME_PERCENT="$AUDIO_VOLUME_PERCENT"
 fi
 if [ -n "$SCREEN_ZOOM_PERCENT" ]; then
-    case "$SCREEN_ZOOM_PERCENT" in
-        *[!0-9]*)
-            echo "ERROR: SCREEN_ZOOM_PERCENT must be an integer" >&2
-            exit 1 ;;
-    esac
-    if [ "$SCREEN_ZOOM_PERCENT" -lt 50 ] || [ "$SCREEN_ZOOM_PERCENT" -gt 300 ]; then
-        echo "ERROR: SCREEN_ZOOM_PERCENT must be between 50 and 300" >&2
-        exit 1
-    fi
-    # Validated boot default for the session helper's page-zoom seeding.
     export SUSHIDA_SCREEN_ZOOM_PERCENT="$SCREEN_ZOOM_PERCENT"
 fi
 

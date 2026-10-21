@@ -96,9 +96,7 @@ def test_config_percent_parser_fails_closed(tmp_path: Path) -> None:
 
     def read(content: str) -> int:
         config.write_text(content)
-        return module.read_config_percent(
-            "SCREEN_BRIGHTNESS_PERCENT", 80, 5, 100, path=config
-        )
+        return module.configured_brightness_percent(config)
 
     assert read("SCREEN_BRIGHTNESS_PERCENT=40\n") == 40
     assert read("SCREEN_BRIGHTNESS_PERCENT=100\n") == 100
@@ -108,10 +106,11 @@ def test_config_percent_parser_fails_closed(tmp_path: Path) -> None:
     assert read("SCREEN_BRIGHTNESS_PERCENT=-5\n") == 80
     assert read("SCREEN_BRIGHTNESS_PERCENT=abc\n") == 80
     assert read("SCREEN_BRIGHTNESS_PERCENT=$(reboot)\n") == 80
-    missing = module.read_config_percent(
-        "SCREEN_BRIGHTNESS_PERCENT", 80, 5, 100, path=tmp_path / "absent"
-    )
+    missing = module.configured_brightness_percent(tmp_path / "absent")
     assert missing == 80
+    # Any invalid config falls back to the default rather than half-trusting it.
+    assert read("SCREEN_BRIGHTNESS_PERCENT=40\nEVIL=1\n") == 80
+    assert read("SCREEN_BRIGHTNESS_PERCENT=40\nSCREEN_BRIGHTNESS_PERCENT=60\n") == 80
 
 
 # ── systemd unit ─────────────────────────────────────────────────────────
@@ -149,20 +148,12 @@ def test_config_env_declares_boot_defaults() -> None:
     assert "SCREEN_ZOOM_PERCENT=180\n" in text
 
 
-def test_launcher_validates_and_exports_volume() -> None:
+def test_launcher_reads_boot_defaults_through_the_validator() -> None:
+    # Validation itself (ranges, empty = unset) is pinned in test_config.py.
     text = LAUNCHER.read_text()
-    assert "AUDIO_VOLUME_PERCENT)" in text
-    assert "SCREEN_BRIGHTNESS_PERCENT) ;;" in text
+    assert 'AUDIO_VOLUME_PERCENT="$(config_value AUDIO_VOLUME_PERCENT)"' in text
+    assert 'SCREEN_ZOOM_PERCENT="$(config_value SCREEN_ZOOM_PERCENT)"' in text
     assert 'export SUSHIDA_AUDIO_VOLUME_PERCENT="$AUDIO_VOLUME_PERCENT"' in text
-    assert "AUDIO_VOLUME_PERCENT exceeds maximum 100" in text
-
-
-def test_launcher_validates_and_exports_zoom() -> None:
-    text = LAUNCHER.read_text()
-    assert "SCREEN_ZOOM_PERCENT)" in text
-    assert "Duplicate SCREEN_ZOOM_PERCENT" in text
-    assert "SCREEN_ZOOM_PERCENT must be an integer" in text
-    assert "SCREEN_ZOOM_PERCENT must be between 50 and 300" in text
     assert 'export SUSHIDA_SCREEN_ZOOM_PERCENT="$SCREEN_ZOOM_PERCENT"' in text
 
 
@@ -176,11 +167,12 @@ def test_session_applies_volume_best_effort() -> None:
     assert text.count("|| true") >= 2
 
 
-def test_network_watch_tolerates_the_new_keys() -> None:
+def test_network_watch_shares_the_validator() -> None:
+    # The watcher accepts every key in the shared table instead of keeping
+    # its own list that must be updated for each new boot default.
     text = WATCHER.read_text()
-    assert "AUDIO_VOLUME_PERCENT) ;;" in text
-    assert "SCREEN_BRIGHTNESS_PERCENT) ;;" in text
-    assert "SCREEN_ZOOM_PERCENT) ;;" in text
+    assert "python3 -m sushida_os.config" in text
+    assert "case \"$key\" in" not in text
 
 
 # ── image registration ───────────────────────────────────────────────────

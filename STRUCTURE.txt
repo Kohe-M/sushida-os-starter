@@ -105,6 +105,7 @@ live-build/
             dist-packages/
               sushida_os/
                 __init__.py
+                config.py
                 runtime/
                   __init__.py
                   kiosk_signal.py
@@ -195,6 +196,7 @@ tests/
     test_audio_graphics.py
     test_builder.py
     test_chromium_policy.py
+    test_config.py
     test_connection_marker.py
     test_development_tooling.py
     test_diagnostics.py

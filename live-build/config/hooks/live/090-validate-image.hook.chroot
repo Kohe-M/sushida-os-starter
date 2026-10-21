@@ -90,6 +90,7 @@ python3 -c 'import hashlib, hmac, html, http.server, json, secrets, threading, u
 backend_package=/usr/lib/python3/dist-packages/sushida_os
 for module in \
     "$backend_package/__init__.py" \
+    "$backend_package/config.py" \
     "$backend_package/wifi/__init__.py" \
     "$backend_package/wifi/types.py" \
     "$backend_package/wifi/storage.py" \
@@ -106,12 +107,21 @@ for module in \
         fail "unsafe owner or mode for $module: $(stat -c '%U:%G:%a' "$module")"
 done
 PYTHONDONTWRITEBYTECODE=1 python3 - <<'PYEOF' || fail "Wi-Fi backend package does not import"
+import sushida_os.config
 import sushida_os.wifi.coordinator
 import sushida_os.wifi.restore
 import sushida_os.wifi.web
 import sushida_os.runtime.routes
 import sushida_os.runtime.runtime_state
 import sushida_os.runtime.kiosk_signal
+PYEOF
+# The shipped config.env must pass the same validator the launcher, network
+# watcher, and input watcher use at runtime, for every accepted key.
+PYTHONDONTWRITEBYTECODE=1 python3 - <<'PYEOF' || fail "shipped config.env does not validate"
+from sushida_os import config
+raw = config.read()
+for key in config.SETTINGS:
+    config.value(raw, key)
 PYEOF
 if find "$backend_package" -name '__pycache__' -o -name '*.pyc' | grep -q .; then
     fail "Wi-Fi backend package must ship without bytecode caches"

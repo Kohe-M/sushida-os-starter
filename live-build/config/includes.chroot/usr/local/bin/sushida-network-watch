@@ -5,8 +5,6 @@ set -euo pipefail
 
 readonly PROD_CONFIG="/etc/sushida-os/config.env"
 readonly PROD_RUNTIME="/run/sushida-os"
-readonly MIN_INTERVAL=30
-readonly MAX_INTERVAL=3600
 
 CONFIG_FILE="${SUSHIDA_OS_CONFIG:-$PROD_CONFIG}"
 RUNTIME_DIR="${SUSHIDA_OS_RUNTIME:-$PROD_RUNTIME}"
@@ -50,59 +48,25 @@ readonly SELF_DIR
 readonly RUNTIME_LIB="$SELF_DIR/../../lib/python3/dist-packages"
 readonly KIOSK_SIGNAL="$SELF_DIR/../libexec/sushida-kiosk-signal"
 
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "ERROR: Config file not found: $CONFIG_FILE" >&2; exit 1
-fi
-SUSHIDA_URL=""; INTERVAL=30; seen_url=false; seen_interval=false
-while IFS= read -r line || [ -n "$line" ]; do
-    line="${line%$'\r'}"
-    if [ -z "$line" ] || [[ "$line" == "#"* ]]; then continue; fi
-    if [[ "$line" != *"="* ]]; then
-        echo "ERROR: Invalid config line (missing '='): $line" >&2; exit 1
-    fi
-    key="${line%%=*}"; value="${line#*=}"
-    case "$key" in
-        SUSHIDA_URL)
-            if $seen_url; then echo "ERROR: Duplicate SUSHIDA_URL" >&2; exit 1; fi
-            seen_url=true; SUSHIDA_URL="$value" ;;
-        NETWORK_CHECK_INTERVAL_SECONDS)
-            if $seen_interval; then
-                echo "ERROR: Duplicate NETWORK_CHECK_INTERVAL_SECONDS" >&2; exit 1
-            fi
-            seen_interval=true; INTERVAL="$value" ;;
-        NETWORK_SETUP_GRACE_SECONDS) ;;
-        AUDIO_VOLUME_PERCENT) ;;
-        SCREEN_BRIGHTNESS_PERCENT) ;;
-        SCREEN_ZOOM_PERCENT) ;;
-        *) echo "ERROR: Unknown config key: $key" >&2; exit 1 ;;
-    esac
-done < "$CONFIG_FILE"
-
-if [ -z "$SUSHIDA_URL" ]; then echo "ERROR: SUSHIDA_URL not set" >&2; exit 1; fi
-case "$SUSHIDA_URL" in
-    https://sushida.net|https://sushida.net/|https://sushida.net/*) ;;
-    *) echo "ERROR: Invalid or disallowed URL: $SUSHIDA_URL" >&2; exit 1 ;;
-esac
-case "$INTERVAL" in
-    ''|*[!0-9]*)
-        echo "ERROR: NETWORK_CHECK_INTERVAL_SECONDS must be a positive integer: $INTERVAL" >&2
-        exit 1 ;;
-esac
-if [ "$INTERVAL" -lt "$MIN_INTERVAL" ]; then
-    echo "ERROR: NETWORK_CHECK_INTERVAL_SECONDS=$INTERVAL is below minimum $MIN_INTERVAL" >&2; exit 1
-fi
-if [ "$INTERVAL" -gt "$MAX_INTERVAL" ]; then
-    echo "ERROR: NETWORK_CHECK_INTERVAL_SECONDS=$INTERVAL exceeds maximum $MAX_INTERVAL" >&2; exit 1
-fi
-case "$MAX_ITER" in
-    ''|*[!0-9]*) echo "ERROR: Invalid SUSHIDA_OS_MAX_ITERATIONS: $MAX_ITER" >&2; exit 1 ;;
-esac
-
 for cmd in nmcli systemctl id stat grep kill sleep python3 readlink; do
     if ! command -v "$cmd" > /dev/null 2>&1; then
         echo "ERROR: Required command not found: $cmd" >&2; exit 1
     fi
 done
+
+# config.env goes through the single parser/validator (sushida_os.config);
+# the URL is validated here even though only the launcher opens it, so a
+# config the launcher would refuse also stops the watcher.
+config_value() {
+    PYTHONPATH="$RUNTIME_LIB" PYTHONDONTWRITEBYTECODE=1 \
+        python3 -m sushida_os.config --file "$CONFIG_FILE" "$1"
+}
+config_value SUSHIDA_URL > /dev/null
+INTERVAL="$(config_value NETWORK_CHECK_INTERVAL_SECONDS)"
+case "$MAX_ITER" in
+    ''|*[!0-9]*) echo "ERROR: Invalid SUSHIDA_OS_MAX_ITERATIONS: $MAX_ITER" >&2; exit 1 ;;
+esac
+
 if [ ! -x "$KIOSK_SIGNAL" ]; then
     echo "ERROR: Kiosk signal helper not found or not executable: $KIOSK_SIGNAL" >&2
     exit 1
