@@ -174,3 +174,18 @@ bats-core（scratchpad）と shellcheck-py（`.venv`）をローカルに用意�
 | bats（bats-core v1.11.1、flash-safety 以外の全 suite） | 203 ok / 3 not ok / 15 skip。not ok 3 件（artifacts #5/#6: jq 不在、qemu-tools UEFI dry run: OVMF 不在）は**変更前の基準 run と同一の環境起因**。launch/network-watch は全件 ok |
 | bats flash-safety | 20 ok の後、fixture 書き込み試験で host 全体の `sync` が D 状態で停止し timeout（WSL の I/O 待ち）。flash.sh・同テストは本 Stage で無変更、基準 run では通過 → **完走は未確認** |
 | make iso / verify / QEMU / 実機 | **未実施**。launcher・watcher・input-watch・新 module が image に入るため、次回 `make iso && make verify` と QEMU boot/smoke での確認が必要 |
+
+### 追補: ISO・QEMU・builder 内テスト（2026-10-22、podman + KVM 導入後）
+
+上表の「未実施 / 完走未確認」項目を、ユーザーが podman 導入・kvm グループ追加・
+WSL 再起動を行った後に実施した。証跡は acceptance registry R11/R12。
+
+| 項目 | 結果 |
+|---|---|
+| make builder（podman） | exit 0 |
+| make container-iso | exit 0。ISO `b2efa231…9490`、090 hook（出荷 config.env 全キー検証を含む）通過、build 内 verify 通過（R11） |
+| make verify（keep-id コンテナ） | exit 0。exact 34 件。`make container-verify` は rootless podman の既知制約（docs/build.md）で scratch 作成不可のため keep-id で実施 |
+| QEMU boot-test BIOS/UEFI（KVM, 300s） | 全判定 PASS（R12） |
+| QEMU smoke BIOS/UEFI（KVM, 300s） | 各 8 判定すべて PASS。kiosk / network-watch / input-watch 起動、config エラー 0（R12） |
+| builder 内 make test | exit 0。pytest 752 + 119、ShellCheck（Debian）exit 0、**bats 229/229 ok・skip 0**（host で環境起因だった 3 件と flash-safety を含む） |
+| 実機 | **未実施**（180% 表示・ホットキー・Wi-Fi 等は従来どおり実機項目） |
