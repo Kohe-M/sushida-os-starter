@@ -103,3 +103,33 @@ git diff --check
 
 - `make container-shell`（bats + ShellCheck）は本環境で実行不可 →
   未実施と明記。H-01/H-02 は shell を変更しないため挙動上の依存は無い。
+
+## 5. Stage H 完了記録（2026-10-22）
+
+### 状態表
+
+| タスク | 状態 | コミット | 備考 |
+|---|---|---|---|
+| H-01 config.env キー集合の contract 化 | DONE | d587135 | runtime contract `config_keys`（6 キー）+ schema。checker が config.env / launcher parser / netwatch parser の 3 者を照合（`DRIFT_CONFIG_KEY`）。fixture 5 件追加（launcher 欠落・netwatch 余剰・parser loop 不在・contract 側削除・schema pattern）。production シェル無変更 |
+| H-02 input-watch backlight 書き込み集約 | DONE | af0885a | `_backlight()` / `_write_brightness()` を抽出。先に characterization 2 件（step 上下・上限・5% 下限・sysfs 不正値）を追加し、抽出前後とも緑 |
+| （付随）inventory TMO-06 の陳腐化 | DONE | da88d32 | FB-01 で 5→8 になった retry 回数が inventory に未反映だった |
+
+### 逸脱
+
+- H-01 手順 5 の「作業書 付録 A へ追記」は、第1弾作業書が「これ以上更新しない」
+  確定文書であるため取りやめ、`docs/contract-inventory.md` のみ更新した
+  （手順文を同コミットで修正済み）。
+- 本クローンには `.venv` が無かったため、付録 C の手順どおり作成した
+  （`.venv/` は git-ignore 済み）。git identity も未設定のため、設定は変更せず
+  既存コミットと同じ author をコミット単位（`git -c`）で指定した。
+
+### ゲート結果（2026-10-22, HEAD da88d32）
+
+| 項目 | 結果 |
+|---|---|
+| python3 tools/check-contracts.py | exit 0 |
+| pytest tests/static/ tests/contracts/ -q | 833 passed（基準 826 + H-01 5 件 + H-02 2 件） |
+| make check-structure | exit 0 |
+| git diff --check | exit 0 |
+| make container-shell（bats + ShellCheck） | **未実施**（container engine なし）。H-01/H-02 とも shell 無変更 |
+| make iso / verify / QEMU | **未実施**。H-02 は shipped file（`sushida-input-watch`）を変更したため、既存 ISO（R9/R10, `e5187348…`）は HEAD と一致しない。次回 `make iso` で反映・検証が必要 |
