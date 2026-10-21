@@ -265,3 +265,64 @@ def test_boot_brightness_retries_until_backlight_appears(tmp_path: Path) -> None
     (device / "brightness").write_text("777\n")
     assert module.ensure_boot_brightness() is True
     assert (device / "brightness").read_text().strip() == "777"
+
+
+def _make_backlight(root: Path, max_raw: int, current: int) -> Path:
+    device = root / "intel_backlight"
+    device.mkdir(parents=True)
+    (device / "max_brightness").write_text(f"{max_raw}\n")
+    (device / "brightness").write_text(f"{current}\n")
+    return device
+
+
+def test_brightness_steps_are_bounded_and_honest(tmp_path: Path) -> None:
+    module = _load_daemon_module()
+    module.BACKLIGHT_ROOT = tmp_path / "backlight"
+
+    # No backlight at all: both directions report failure.
+    assert module.brightness_up() is False
+    assert module.brightness_down() is False
+
+    device = _make_backlight(module.BACKLIGHT_ROOT, 1000, 500)
+    level = device / "brightness"
+    assert module.brightness_up() is True
+    assert level.read_text() == "600\n"
+    assert module.brightness_down() is True
+    assert module.brightness_down() is True
+    assert level.read_text() == "400\n"
+
+    # Ceiling: never above max_brightness.
+    level.write_text("950\n")
+    assert module.brightness_up() is True
+    assert level.read_text() == "1000\n"
+
+    # Floor: repeated presses stop at 5%, never black out the panel.
+    for _ in range(15):
+        assert module.brightness_down() is True
+    assert level.read_text() == "50\n"
+
+    # Unreadable current value or a bogus max_brightness: honest failure,
+    # nothing written.
+    level.write_text("garbage\n")
+    assert module.brightness_up() is False
+    assert level.read_text() == "garbage\n"
+    level.write_text("500\n")
+    (device / "max_brightness").write_text("0\n")
+    assert module.brightness_down() is False
+    assert module.set_brightness_percent(50) is False
+    assert level.read_text() == "500\n"
+
+
+def test_set_brightness_percent_applies_floor_and_ceiling(tmp_path: Path) -> None:
+    module = _load_daemon_module()
+    module.BACKLIGHT_ROOT = tmp_path / "backlight"
+    assert module.set_brightness_percent(50) is False  # no device
+
+    device = _make_backlight(module.BACKLIGHT_ROOT, 255, 0)
+    level = device / "brightness"
+    assert module.set_brightness_percent(40) is True
+    assert level.read_text() == "102\n"
+    assert module.set_brightness_percent(0) is True
+    assert level.read_text() == "12\n"  # 5% floor
+    assert module.set_brightness_percent(150) is True
+    assert level.read_text() == "255\n"

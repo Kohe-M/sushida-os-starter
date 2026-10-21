@@ -95,13 +95,19 @@ def _read_raw(path: Path) -> int | None:
         return None
 
 
-def set_brightness_percent(percent: int) -> bool:
+def _backlight() -> tuple[Path, int] | None:
+    """Return the backlight device and its usable max_brightness, if any."""
     device = backlight_device()
     if device is None:
-        return False
+        return None
     max_raw = _read_raw(device / "max_brightness")
     if max_raw is None or max_raw <= 0:
-        return False
+        return None
+    return device, max_raw
+
+
+def _write_brightness(device: Path, max_raw: int, percent: int) -> bool:
+    """Single write path: every brightness change goes through the clamp."""
     try:
         (device / "brightness").write_text(
             f"{clamp_brightness_raw(percent, max_raw)}\n"
@@ -111,24 +117,26 @@ def set_brightness_percent(percent: int) -> bool:
     return True
 
 
-def step_brightness(direction: int) -> bool:
-    device = backlight_device()
-    if device is None:
+def set_brightness_percent(percent: int) -> bool:
+    backlight = _backlight()
+    if backlight is None:
         return False
-    max_raw = _read_raw(device / "max_brightness")
+    device, max_raw = backlight
+    return _write_brightness(device, max_raw, percent)
+
+
+def step_brightness(direction: int) -> bool:
+    backlight = _backlight()
+    if backlight is None:
+        return False
+    device, max_raw = backlight
     current = _read_raw(device / "brightness")
-    if max_raw is None or max_raw <= 0 or current is None:
+    if current is None:
         return False
     percent = current * 100 // max_raw
     percent += direction * BRIGHTNESS_STEP_PERCENT
     percent = max(BRIGHTNESS_FLOOR_PERCENT, min(100, percent))
-    try:
-        (device / "brightness").write_text(
-            f"{clamp_brightness_raw(percent, max_raw)}\n"
-        )
-    except OSError:
-        return False
-    return True
+    return _write_brightness(device, max_raw, percent)
 
 
 def run_amixer(*args: str) -> bool:
