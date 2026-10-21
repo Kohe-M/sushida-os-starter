@@ -85,6 +85,12 @@ Every column and its meaning:
 | TMO-11 | timeout | HTTP max body size | 8192 (bytes) | sushida_os/wifi/web.py (MAX_REQUEST_BYTES) | — | NO | `http_max_request_bytes` | YES | Upper bound |
 | TMO-12 | timeout | Session audio timeout | 3 (seconds) | sushida-session (AUDIO_TIMEOUT) | — | NO | `session_audio_timeout_seconds` | YES | Best-effort |
 
+### Config keys
+
+| ID | Domain | Contract item | Current value | Production source | Other references | Mismatch | Candidate contract field | Automatable | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| CFG-01 | config | Accepted config.env keys | `SUSHIDA_URL`, `NETWORK_CHECK_INTERVAL_SECONDS`, `NETWORK_SETUP_GRACE_SECONDS`, `AUDIO_VOLUME_PERCENT`, `SCREEN_BRIGHTNESS_PERCENT`, `SCREEN_ZOOM_PERCENT` | `config.env` | sushida-launch / sushida-network-watch parser `case` (unknown key aborts startup), sushida-input-watch (reads `SCREEN_BRIGHTNESS_PERCENT`) | NO | `config_keys` | YES | Stage H-01. Adding a key = contract + config.env + both shell parsers in one commit |
+
 ## Release inventory
 
 ### Artifacts
@@ -209,6 +215,7 @@ behaviour change is performed.
 | `runtime_paths.config_storage_status` / `credential_file` | Literals + derived components in `sushida_os/wifi/storage.py` + config-prepare |
 | `runtime_paths.chromium_profile_dir` / `chromium_sessions_dir` | Basename in launch/session; `SESSIONS_SUBDIR` chain in navwatch |
 | `timeouts.*` (14 fields: 2 in config.env + 12 in production scripts) | Literal values in the corresponding production sources, with config.env verbatim comparison and min-count checks for multi-site activation calls |
+| `config_keys` | Set comparison: contract == keys accepted in `config.env` == launcher config parser `case` labels == netwatch config parser `case` labels (Stage H-01) |
 | `routes` | Set comparison: contract routes == launcher `ACTIVE_ROUTE=` literals == netwatch route `case` literals == `sushida_os/runtime/routes.py` `ROUTE_*` constants |
 | `navigation` allowlist/blocklist | Chromium managed policy JSON `URLAllowlist`/`URLBlocklist` |
 | `services.*` | Unit file existence in `includes.chroot/etc/systemd/system` |
@@ -251,6 +258,7 @@ stages of the refactoring programme:
 | `DRIFT_PATH` | Runtime path mismatch |
 | `DRIFT_TIMEOUT` | Timeout literal mismatch |
 | `DRIFT_ROUTE` | Route set mismatch |
+| `DRIFT_CONFIG_KEY` / `DRIFT_CONFIG_FORMAT` / `DRIFT_CONFIG_DUPLICATE` | config.env syntax / key set (incl. shell parser key sets vs `config_keys`) |
 | `RUNTIME_ALLOWLIST_MISMATCH` / `RUNTIME_BLOCKLIST_MISMATCH` | Policy ↔ contract mismatch |
 | `RUNTIME_SERVICE_MISSING` | Unit file not found |
 | `DRIFT_METADATA_STATIC` / `DRIFT_METADATA` / `DRIFT_METADATA_FORMAT` / `DRIFT_METADATA_UNSUPPORTED` | Metadata inconsistency |

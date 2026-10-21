@@ -678,6 +678,35 @@ def _drift_routes(routes: list, texts: dict[str, str], labels: dict[str, str],
                          f"route model constants {sorted(found)} != contract {sorted(expected)}")
 
 
+# The read loop both shell parsers use for config.env; its case labels are
+# the keys the script accepts (anything else aborts startup).
+_CONFIG_PARSER_BLOCK = re.compile(
+    r'^while IFS= read -r line\b.*?^done < "\$CONFIG_FILE"$',
+    re.MULTILINE | re.DOTALL)
+_CONFIG_PARSER_LABEL = re.compile(r"^\s*([A-Z][A-Z0-9_]*)\)", re.MULTILINE)
+
+
+def _drift_config_parsers(config_keys: list, texts: dict[str, str],
+                          labels: dict[str, str], result: Result) -> None:
+    expected = set(config_keys)
+    if not expected:
+        return
+    for key, name in (("launch", "launcher"), ("netwatch", "network watcher")):
+        text = texts.get(key)
+        if text is None:
+            continue  # a missing source is reported separately
+        block = _CONFIG_PARSER_BLOCK.search(text)
+        if block is None:
+            result.error("DRIFT_CONFIG_KEY", "runtime", "config_keys", labels[key],
+                         f"{name} config.env parser loop not found")
+            continue
+        found = set(_CONFIG_PARSER_LABEL.findall(block.group(0)))
+        if found != expected:
+            result.error("DRIFT_CONFIG_KEY", "runtime", "config_keys", labels[key],
+                         f"{name} config keys: missing {sorted(expected - found)}, "
+                         f"unexpected {sorted(found - expected)}")
+
+
 def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     c = contract
     urls = c.get("urls", {})
@@ -689,21 +718,16 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     # The production launcher and network-watch parse config.env verbatim:
     # only CR is stripped; quotes and leading whitespace are NOT removed.
     # Unknown keys, lines without '=', and duplicate keys all cause a startup
-    # failure, so the checker must reject them too.
+    # failure, so the checker must reject them too.  The accepted key set is
+    # the contract's config_keys; _drift_config_parsers() holds both shell
+    # parsers to the same set.
     #
     # Error messages must never include config.env line content or values
     # because they could contain secrets.  Report line numbers only.
     config_env = _must_exist(root, f"{PRODUCTION_ROOT}/etc/sushida-os/config.env",
                              "config.env", result, "runtime")
     if config_env:
-        allowed = {
-            "SUSHIDA_URL",
-            "NETWORK_CHECK_INTERVAL_SECONDS",
-            "NETWORK_SETUP_GRACE_SECONDS",
-            "AUDIO_VOLUME_PERCENT",
-            "SCREEN_BRIGHTNESS_PERCENT",
-            "SCREEN_ZOOM_PERCENT",
-        }
+        allowed = set(c.get("config_keys", []))
         seen: set[str] = set()
         for line_number, raw_line in enumerate(
                 config_env.read_text().splitlines(), start=1):
@@ -767,6 +791,7 @@ def _drift_runtime(contract: dict, root: Path, result: Result) -> None:
     _drift_runtime_paths(rpaths, services, texts, labels, unit_texts, unit_labels, result)
     _drift_timeouts(timeouts, texts, labels, result)
     _drift_routes(c.get("routes", []), texts, labels, result)
+    _drift_config_parsers(c.get("config_keys", []), texts, labels, result)
 
     # Chromium managed policy URL allowlist and blocklist
     policy_file = _must_exist(root, f"{PRODUCTION_ROOT}/etc/chromium/policies/managed/sushida-os.json",
@@ -1181,7 +1206,7 @@ def main(argv: list[str] | None = None) -> int:
 
         handled_runtime_fields = {
             "schema_version", "urls", "runtime_paths", "routes",
-            "services", "timeouts", "navigation",
+            "services", "timeouts", "navigation", "config_keys",
         }
         for key in runtime:
             if key not in handled_runtime_fields:

@@ -56,7 +56,9 @@ parser `case`（後者 2 つは未知キーで起動失敗する）。FB-04/FB-0
 4. fixture: 最小 repo の launcher/netwatch stub に parser ブロックを追加。
    ドリフト fixture（launcher のキー欠落・netwatch の余剰キー・
    config.env の未登録キー）を追加。
-5. 文書: `docs/contract-inventory.md`・作業書 付録 A に `config_keys` を追記。
+5. 文書: `docs/contract-inventory.md` に `config_keys`（CFG-01・checker coverage・
+   error code）を追記。第1弾作業書の付録 A は「これ以上更新しない」確定文書の
+   ため触らない。
 
 **受け入れ条件**: launcher / netwatch / config.env のいずれか 1 箇所だけに
 キーを足す・消すと checker が exit 1 になる。production シェル無変更。

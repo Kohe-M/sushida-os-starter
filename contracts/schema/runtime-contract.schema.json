@@ -12,7 +12,8 @@
     "routes",
     "services",
     "timeouts",
-    "navigation"
+    "navigation",
+    "config_keys"
   ],
   "properties": {
     "schema_version": { "const": 1 },
@@ -139,6 +140,13 @@
           "minItems": 5
         }
       }
+    },
+    "config_keys": {
+      "description": "Keys accepted in /etc/sushida-os/config.env; every parser rejects any other key.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+      "uniqueItems": true,
+      "minItems": 1
     }
   }
 }
