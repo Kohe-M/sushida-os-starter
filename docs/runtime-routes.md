@@ -33,7 +33,7 @@ sequenceDiagram
     participant K as sushida-kiosk.service
     L->>L: grace 期間まで connectivity を待つ
     L->>L: online なら NTP 同期を確認（不可なら time-sync hold + offline）
-    L->>L: active-route と runtime-state.json を発行 (dual-write)
+    L->>L: runtime-state.json を発行（route の正本、BL-01 以降）
     L->>K: 選択 URL で session 起動
     loop 低頻度
         W->>W: 観測収集 + decide()

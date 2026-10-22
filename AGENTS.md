@@ -6,8 +6,8 @@ truth is `contracts/runtime-contract.json` / `contracts/release-contract.json`
 (see `docs/documentation-map.md`); this file defines the boundaries that must
 never drift.
 
-Restructured 2026-07-21 (Stage F-02). Implementation history: git log of this
-file.
+Restructured 2026-07-21 (Stage F-02); working agreement revised 2026-10-22
+at the user's request. Implementation history: git log of this file.
 
 ## 1. Safety invariants
 
@@ -59,24 +59,31 @@ docs cover UEFI passwords and disabling external/removable boot.
 - Implementing and testing inside this repository, in WSL/Linux, with the
   podman/docker builder container (`make builder`); `make iso` only via the
   privileged builder container.
-- One task = one commit, made by the implementing agent with the task's
-  commit message and Co-Authored-By trailer (working agreement:
-  `docs/refactoring-work-order.md` §1.2).
-- QEMU testing (`make test-qemu*`) where KVM exists; reading logs and
-  artifacts; updating docs together with the change.
-- Behavior-preserving refactors only when a work-order task authorizes them,
-  with the behavioral test suite unchanged as evidence
-  (`docs/refactoring-work-order.md` §2.2, principles P1–P5).
+- Commits (this section is the working agreement; the frozen
+  `docs/refactoring-work-order.md` §1.2 is history only): each task lands as
+  **one code commit** — implementation, tests, and docs together — made by
+  the implementing agent with the configured git identity, a descriptive
+  message, and the Co-Authored-By trailer. Evidence that can only exist
+  after that commit (ISO, QEMU, or hardware results bound to its SHA) is
+  recorded in a follow-up `docs:` commit.
+- QEMU testing (`make test-qemu*`, `make container-qemu-*`) where KVM exists;
+  reading logs and artifacts; updating docs together with the change.
+- Behavior-preserving refactors when the user requests them or a `TASKS.md`
+  record authorizes them, with the behavioral test suite unchanged as
+  evidence (P1–P5, §4). Scope and outcome are recorded in `TASKS.md` and the
+  commit message; a separate work-order document is only for multi-task
+  stages.
 
 ## 3. Prohibited operations
 
-- `git merge / rebase / reset / stash / clean / restore`, history
-  rewriting.
+- `git merge / rebase / reset / stash / clean`, and rewriting history that
+  has been pushed. Allowed exceptions: `git commit --amend` of the agent's own
+  unpushed commit, and `git restore` of files the agent itself changed in the
+  current task (never the user's uncommitted work).
 - Pushing other than a fast-forward of the current branch to `origin`.
-  Agents may push (user authorization 2026-10-22; supersedes "push はユーザー"
-  in `docs/refactoring-work-order.md` §1.2) only after the local gates pass;
-  never `--force` / `--force-with-lease`, never delete remote branches or
-  tags. A rejected (non-fast-forward) push stops the task and is reported.
+  Agents may push (user authorization 2026-10-22) only after the local gates
+  pass; never `--force` / `--force-with-lease`, never delete remote branches
+  or tags. A rejected (non-fast-forward) push stops the task and is reported.
 - Running `dd`/`mkfs`/partitioning against real devices, flashing real media,
   modifying host GRUB/UEFI/Secure Boot/disks/network/`/etc`/accounts,
   rebooting the host. The guarded `scripts/flash.sh` is never executed by an
@@ -87,8 +94,8 @@ docs cover UEFI passwords and disabling external/removable boot.
 - Changing production runtime behavior, contract values, or the security
   boundaries in §1 without an explicit authorized task. Weakening or skipping
   verification (tests, checker, verify-iso.sh) to make work pass.
-- Writing outside the repository except normal container-engine storage and
-  the session scratch area.
+- Writing outside the repository except normal container-engine storage,
+  tool caches (e.g. pip), and the session scratch area.
 
 ## 4. Runtime and release contracts
 
@@ -101,12 +108,22 @@ docs cover UEFI passwords and disabling external/removable boot.
   levels, required packages/services, metadata schema. `scripts/build.sh`,
   `scripts/verify-iso.sh`, and `scripts/clean.sh` all read it; names are not
   repeated per script.
-- New shipped production files require the three-point registration in the
-  same commit: release contract, image validation hook, contract-test fixture
-  (P3).
-- On-disk protocol changes are introduced dual-write with the legacy file
-  authoritative until an explicit switchover task (P4). Reason/enum fields
-  never carry URLs, SSIDs, or secrets (P5).
+- Principles (restated here from the frozen work order):
+  - **P1** Every commit stands green on its own; checker adapters and
+    fixtures move in the same commit as the code they track.
+  - **P2** Behavioral tests are the evidence for behavior-preserving changes
+    (§5).
+  - **P3** New shipped production files require the three-point
+    registration in the same commit: release contract (mapping + required
+    ISO path), image validation hook, contract-test fixture.
+  - **P4** Data that outlives an image — the `SUSHIDA-CFG` config partition,
+    e.g. the stored Wi-Fi credential — keeps reading its previous format or
+    is migrated explicitly, with a test on the old format. Formats that live
+    only in tmpfs/`/run` (e.g. `runtime-state.json`) ship atomically with the
+    image and may change in one commit with all readers and writers.
+  - **P5** Logs, state, and error messages never carry secrets or full URLs;
+    reason/enum fields use fixed token sets and never carry URLs, SSIDs, or
+    secrets.
 
 ## 5. Test requirements
 
@@ -124,10 +141,14 @@ docs cover UEFI passwords and disabling external/removable boot.
   `tools/gen-structure.py`; never hand-edited).
 - CI is `make ci` (test + check-contracts + check-structure + diff check);
   the target list is authoritative in `make help`.
-- Behavioral tests (characterization, bats) are the evidence for
-  behavior-preserving changes and their assertions are not edited to make a
-  refactor pass; only source-pattern checks and loaders may track moved code,
-  recorded as a deviation (P2).
+- Behavioral tests (characterization, bats, pytest that executes code) are
+  the evidence for behavior-preserving changes and their assertions are not
+  edited to make a refactor pass; only source-pattern checks and loaders may
+  track moved code, recorded as a deviation (P2).
+- New tests execute the behavior they pin (call the function, run the
+  script against stubs). Source-text assertions are reserved for security
+  posture that cannot be exercised in a test — absence of `--no-sandbox` or
+  `eval`, fixed argv, registration points.
 - Every commit stands green on its own (P1). A failing check stops the task
   (§8), it is never worked around.
 
@@ -142,14 +163,17 @@ docs cover UEFI passwords and disabling external/removable boot.
   byte-exact comparison with declared mode/owner for every mapping marked
   `exact`.
 - Deterministic inputs (SOURCE_DATE_EPOCH from the commit date, fixed
-  locale/TZ/umask) are controlled per `docs/reproducible-builds.md`; package
-  versions are recorded, never pinned.
+  locale/TZ/umask) are controlled per `docs/reproducible-builds.md`; image
+  package versions are recorded, never pinned. (Host dev tools in
+  `requirements-dev.txt` are pinned; they never enter the image.)
 - Stale or tampered artifacts must fail verification — fixture proof lives in
   `tests/shell/verify-stale.bats`.
 
 ## 7. Final report format
 
-For each completed task report, separately and honestly:
+For each completed implementation task (code, configuration, build, or
+contract change) report, separately and honestly — questions and small doc
+edits need only a plain answer stating what was run:
 
 1. Summary of the change and files touched.
 2. Contracts/invariants relied on and preserved.

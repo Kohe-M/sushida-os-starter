@@ -252,8 +252,9 @@ production Git history.
 
 ## 4. 運用ルール（旧 Working rules の後継）
 
-- 1 タスク = 1 commit（`docs/refactoring-work-order.md` §1.2 の git 運用に従う）
-- 実装とテストは同じタスクで完結させる（原則 P1〜P5 は work order §2.2）
+- 1 タスク = 1 コード commit（実装・テスト・文書を同梱）。commit 後にしか
+  得られない証拠（ISO/QEMU/実機）は後続の `docs:` commit で記録（`AGENTS.md` §2）
+- 実装とテストは同じタスクで完結させる（原則 P1〜P5 は `AGENTS.md` §4）
 - Do not claim a test passed unless the command was executed successfully.
 - Do not fetch, copy, modify, inject into, automate, or redistribute Sushi-da
   content. Never run a flashing script against a real block device during

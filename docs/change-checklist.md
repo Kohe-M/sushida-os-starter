@@ -15,7 +15,7 @@
 | Chromium policy | checker の allow/blocklist 照合、navigation watcher の `classify_url` との境界一致、K シリーズ受け入れ項目 |
 | Wi-Fi backend / state | characterization test（66件）**本体無変更**で緑か（P2）。secret 非露出（P5）。`docs/wifi-state-machine.md` の不変条件 |
 | route / watcher / signal | route 3者一致（launcher / netwatch / routes.py）。bats 挙動テスト無変更。同一 route で signal しないこと |
-| on-disk protocol | dual-write で導入し正本交代は別タスク（P4）。fail-closed read |
+| on-disk protocol | image 更新をまたいで残るデータ（SUSHIDA-CFG 上の資格情報など）は旧形式の読み取り継続か明示的移行 + 旧形式のテスト。tmpfs/`/run` だけの形式は読み手・書き手を同一 commit で更新してよい（P4）。fail-closed read |
 | QEMU テスト | dry-run bats の安全条件（read-only ISO、bounded 実行）維持 |
 | artifact metadata | build-info schema_version・hash 相互照合・`reproducible-builds.md` の分類更新 |
 | build 再現性 | package pin を導入していないこと。SOURCE_DATE_EPOCH 系の制御を壊していないこと |
