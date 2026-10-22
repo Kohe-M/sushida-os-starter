@@ -238,3 +238,18 @@ def test_local_make_overrides_stay_untracked() -> None:
     assert "/local/*\n" in ignore
     assert "!/local/dev.mk.example\n" in ignore
     assert "!/local/dev.mk\n" not in ignore
+
+
+def test_ci_actions_are_pinned_by_commit_sha() -> None:
+    import re
+    uses = re.findall(r"uses:\s*(\S+)", CI_WORKFLOW.read_text())
+    assert uses
+    for ref in uses:
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), f"not SHA-pinned: {ref}"
+    assert "persist-credentials: false" in CI_WORKFLOW.read_text()
+
+
+def test_dependabot_tracks_pinned_tooling() -> None:
+    text = Path(".github/dependabot.yml").read_text()
+    assert "package-ecosystem: github-actions" in text
+    assert "package-ecosystem: pip" in text

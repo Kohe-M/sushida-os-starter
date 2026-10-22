@@ -1,0 +1,14 @@
+# Update PRs for the only third-party versions this repository pins:
+# GitHub Actions (SHA-pinned in ci.yml) and host dev tools
+# (requirements-dev.txt).  Image packages are deliberately unpinned
+# (AGENTS.md §6) and are refreshed by rebuilding the ISO instead.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly

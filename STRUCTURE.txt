@@ -5,6 +5,7 @@
 .containerignore
 .dockerignore
 .github/
+  dependabot.yml
   pull_request_template.md
   workflows/
     ci.yml
