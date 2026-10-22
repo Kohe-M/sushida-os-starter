@@ -27,3 +27,12 @@ rebuild the ISO. Production images also include a fixed loopback-only
 provisioning page for entering a personal Wi-Fi credential when no connection
 is available. It is not a general NetworkManager settings GUI and exposes no
 files, commands, arbitrary URLs, or shell.
+
+## Make defaults
+
+`local/dev.mk` (git-ignored) is included by the Makefile for machine-local
+defaults, for example a host that only has podman:
+
+```bash
+cp local/dev.mk.example local/dev.mk
+```

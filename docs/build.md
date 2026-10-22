@@ -15,6 +15,19 @@ make doctor-build     # also check container engine and builder image
 make doctor-qemu      # also check QEMU, OVMF, socat
 ```
 
+### Host quick loop
+
+```bash
+make venv             # .venv from pinned requirements-dev.txt (pytest, ShellCheck)
+make check            # pytest + checker + structure + diff check + ShellCheck
+make hooks            # opt in: fast pre-commit gate (structure, checker, whitespace)
+```
+
+`make check` is everything that runs without a container; bats stays in the
+builder (`make container-test`).  Machine-local Make defaults such as
+`CONTAINER_ENGINE := podman` go in the git-ignored `local/dev.mk`
+(see `local/dev.mk.example`).
+
 ### Local testing (no container)
 
 ```bash
@@ -35,14 +48,35 @@ make container-shell                    # shell tests only
 make container-configure                # stage live-build config
 make container-iso                      # build release ISO (--privileged)
 make container-verify                   # verify release artifacts
+make container-qemu-boot                # QEMU bootloader test (KVM passthrough)
+make container-qemu-smoke               # QEMU smoke test (KVM passthrough)
+make container-qemu-powerdown           # QEMU powerdown test
+make container-release-check            # iso + verify + QEMU boot/smoke, one summary
 ```
 
 The `container-*` targets use `scripts/container-run.sh`, which:
 
+- runs only a **local** builder image (`--pull=never`) whose
+  `org.sushida-os.builder-hash` label matches `scripts/builder-hash.sh`
+  (the fingerprint of `builder/`); a missing or stale image stops with
+  "run: make builder" instead of testing on an old toolchain or pulling a
+  same-named image from a registry;
 - adds `--cgroup-manager=cgroupfs` automatically for Podman;
 - adds `--privileged` only for the `iso` mode;
-- maps the host UID/GID so test artifacts are not owned by root;
+- maps the host UID/GID so test artifacts are not owned by root, and adds
+  `--userns=keep-id` under rootless Podman so the container can write the
+  bind-mounted `build/`;
+- for `qemu-*` modes, passes `/dev/kvm` (plus its group) when the host user
+  can open it, warns about slow TCG otherwise, and forwards only the
+  documented `SUSHIDA_QEMU_*` duration knobs;
 - sets `PYTHONDONTWRITEBYTECODE=1` to avoid left-over bytecode caches.
+
+`make container-release-check` (`scripts/release-check.sh`) runs iso →
+verify → QEMU boot → QEMU smoke, stops at the first failure, and writes
+`build/release-check/{<step>.log,summary.txt}`.  A QEMU step counts as PASS
+only with exit 0, at least one assessor `PASS`, and no `FAIL`; the run fails
+if HEAD moved meanwhile.  `summary.txt` carries the commit, ISO SHA-256, and
+per-step counts for the acceptance registry row.
 
 ### Privilege boundary
 
@@ -52,7 +86,7 @@ The `container-*` targets use `scripts/container-run.sh`, which:
 | `make container-test` | Container engine only | No |
 | `make iso` (direct host) | Root | Yes — filesystem mounts |
 | `make container-iso` | `--privileged` container | Elevated; current scripts are designed not to target host devices |
-| `make test-qemu` | Container engine + KVM group | No |
+| `make test-qemu`, `make container-qemu-*` | Container engine + KVM group (non-privileged container, `/dev/kvm` only) | No |
 | `scripts/flash.sh` | Root + explicit device confirmation | Yes — reads after write |
 
 QEMU tests and ISO builds are never included in `make ci` or any
@@ -99,11 +133,9 @@ make container-verify      # non-privileged
 Direct `docker run` is not needed for normal development; see
 `scripts/container-run.sh` for the exact invocation used.
 
-Known limitation: with **rootless Podman**, `make container-verify`
-(non-privileged, `-u $(id -u)`) cannot create the verification scratch
-directory under the bind-mounted `build/` because the container UID does not
-map back to the host owner. Run the verify step in the privileged builder
-(as `make container-iso` already does internally) or use Docker.
+Rootless Podman: `container-run.sh` adds `--userns=keep-id` to the
+non-privileged modes, so `make container-verify` can create its scratch
+directory under the bind-mounted `build/` (earlier versions could not).
 
 ## Podman on Linux
 

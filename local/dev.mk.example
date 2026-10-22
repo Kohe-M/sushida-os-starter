@@ -1,0 +1,3 @@
+# Copy to local/dev.mk (git-ignored) to set machine-local Make defaults.
+# Example: this machine has rootless podman but no working docker.
+CONTAINER_ENGINE := podman

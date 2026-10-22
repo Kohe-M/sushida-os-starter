@@ -43,6 +43,21 @@ else
     _status=1
 fi
 
+# Host quick loop (`make check`) runs from the repository-local venv.
+if "$PROJECT_ROOT/.venv/bin/python" -c 'import pytest' > /dev/null 2>&1; then
+    echo "venv=PASS"
+else
+    echo "venv=WARN (run: make venv)"
+fi
+
+# Commits are part of every task; a missing identity only fails at commit time.
+if git -C "$PROJECT_ROOT" config user.name > /dev/null 2>&1 && \
+   git -C "$PROJECT_ROOT" config user.email > /dev/null 2>&1; then
+    echo "git_identity=PASS"
+else
+    echo "git_identity=WARN (git config user.name / user.email unset)"
+fi
+
 if [ -d "$PROJECT_ROOT/.git" ] || [ -f "$PROJECT_ROOT/.git" ]; then
     echo "repository_root=PASS"
 else
@@ -50,9 +65,11 @@ else
     _status=1
 fi
 
-# Check that tracked executable scripts have correct mode bits.
+# Check that tracked executable scripts have correct mode bits.  Sourced
+# libraries and bats files are run by an interpreter and stay 0644.
 _bad_mode=false
 while IFS= read -r path; do
+    case "$path" in scripts/lib/*|*.bats) continue ;; esac
     mode=$(git ls-files --stage "$path" | awk '{print $1}')
     if [ "$mode" != "100755" ]; then
         echo "script_mode:WARN ($path is not 100755)"
@@ -99,10 +116,18 @@ if [ "$PROFILE" = build ]; then
     # Check builder image on the same engine(s) that were connected.
     _builder_found=false
     _builder_image="${BUILDER_IMAGE:-sushida-os-builder:trixie}"
+    _builder_hash="$("$SCRIPT_DIR/builder-hash.sh")"
     for engine in $_connected_engines; do
-        if "$engine" image inspect "$_builder_image" > /dev/null 2>&1; then
-            echo "builder_image=PASS"
+        if _label="$("$engine" image inspect \
+                --format '{{ index .Config.Labels "org.sushida-os.builder-hash" }}' \
+                "$_builder_image" 2>/dev/null)"; then
             _builder_found=true
+            if [ "$_label" = "$_builder_hash" ]; then
+                echo "builder_image=PASS"
+            else
+                echo "builder_image=FAIL (stale on $engine; run: make builder)"
+                _status=1
+            fi
             break
         fi
     done
@@ -120,6 +145,12 @@ fi
 
 # ── QEMU profile ─────────────────────────────────────────────────────────
 if [ "$PROFILE" = qemu ]; then
+    # Without KVM, QEMU falls back to TCG: slow, and UEFI smoke fails (R5).
+    if [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+        echo "kvm_access=PASS"
+    else
+        echo "kvm_access=WARN (no read/write /dev/kvm; join the kvm group)"
+    fi
     check "qemu_system" qemu-system-x86_64
     check "socat" socat
     _ovmf_code_found=false

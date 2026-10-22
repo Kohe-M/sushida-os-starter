@@ -9,6 +9,7 @@
 !/local/README.md
 !/local/wifi.nmconnection.example
 !/local/grub-password.example
+!/local/dev.mk.example
 !/local/.gitkeep
 
 # Python

@@ -31,6 +31,7 @@ not infer those results from static tests or package presence.
 
 ```bash
 make doctor           # check host prerequisites
+make venv && make check  # host quick loop (pytest, checker, structure, ShellCheck)
 make test             # run static tests, contract tests, shell tests
 make check-contracts  # verify contracts against current source
 make check-structure  # verify STRUCTURE.txt is up to date
@@ -43,6 +44,7 @@ make ci               # test + check-contracts + check-structure + git diff
 make builder CONTAINER_ENGINE=docker
 make container-test   # or: make test  inside the builder container
 make container-iso    # --privileged; builds the release ISO
+make container-release-check  # iso + verify + QEMU boot/smoke with an evidence summary
 ```
 
 Normal tests (`make test`, `make container-test`) never use `--privileged`.

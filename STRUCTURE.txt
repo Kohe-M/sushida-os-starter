@@ -141,20 +141,26 @@ live-build/
       kiosk.list.chroot
 local/
   README.md
+  dev.mk.example
   grub-password.example
   wifi.nmconnection.example
 pyproject.toml
+requirements-dev.txt
 scripts/
   boot-test.sh
   build.sh
+  builder-hash.sh
   clean.sh
   container-run.sh
   doctor.sh
   flash.sh
+  git-hooks/
+    pre-commit
   lib/
     iso-extract.sh
     qemu-lib.sh
   powerdown-test.sh
+  release-check.sh
   run-qemu.sh
   shellcheck-targets.sh
   smoke-test.sh
@@ -182,6 +188,7 @@ tests/
     launch.bats
     network-watch.bats
     qemu-tools.bats
+    release-check.bats
     verify-stale.bats
   static/
     conftest.py

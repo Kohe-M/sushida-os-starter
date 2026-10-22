@@ -164,3 +164,77 @@ def test_readme_mentions_developer_workflow() -> None:
     text = README.read_text()
     for target in ("make doctor", "make builder", "make container-test", "make ci"):
         assert target in text
+
+
+# ── Container wrapper hardening and one-shot flows ───────────────────────
+
+
+def test_container_targets_cover_qemu_and_release_check() -> None:
+    text = MAKEFILE.read_text()
+    for target, mode in (
+        ("container-qemu-boot", "container-run.sh qemu-boot"),
+        ("container-qemu-smoke", "container-run.sh qemu-smoke"),
+        ("container-qemu-powerdown", "container-run.sh qemu-powerdown"),
+        ("container-release-check", "release-check.sh"),
+    ):
+        assert f"{target}:" in text, target
+        assert mode in text, mode
+
+
+def test_builder_image_is_labelled_with_source_fingerprint() -> None:
+    text = MAKEFILE.read_text()
+    assert "--label org.sushida-os.builder-hash=$$(./scripts/builder-hash.sh)" in text
+    wrapper = CONTAINER_RUN.read_text()
+    assert "--pull=never" in wrapper
+    assert '"$SCRIPT_DIR/builder-hash.sh"' in wrapper
+    assert "org.sushida-os.builder-hash" in wrapper
+
+
+def test_ci_never_uses_the_qemu_or_release_flows() -> None:
+    text = CI_WORKFLOW.read_text()
+    assert "release-check" not in text
+    assert "container-qemu" not in text
+    assert "/dev/kvm" not in text
+
+
+# ── Host quick loop ──────────────────────────────────────────────────────
+
+
+def test_host_quick_loop_targets() -> None:
+    text = MAKEFILE.read_text()
+    assert "venv:" in text
+    assert "--requirement requirements-dev.txt" in text
+    assert "check:" in text
+    assert "hooks:" in text
+    assert "git config core.hooksPath scripts/git-hooks" in text
+    assert "-include local/dev.mk" in text
+
+
+def test_dev_requirements_are_pinned() -> None:
+    lines = [
+        line for line in Path("requirements-dev.txt").read_text().splitlines()
+        if line and not line.startswith("#")
+    ]
+    assert lines
+    for line in lines:
+        assert "==" in line, f"unpinned dev requirement: {line}"
+
+
+def test_pre_commit_hook_is_fast_and_executable() -> None:
+    hook = Path("scripts/git-hooks/pre-commit")
+    assert hook.stat().st_mode & 0o111
+    text = hook.read_text()
+    assert text.startswith("#!/usr/bin/env bash")
+    assert "gen-structure.py --check" in text
+    assert "check-contracts.py" in text
+    assert "git diff --cached --check" in text
+    # Slow suites belong to `make check` / the container, not every commit.
+    assert "pytest" not in text
+    assert "bats" not in text
+
+
+def test_local_make_overrides_stay_untracked() -> None:
+    ignore = Path(".gitignore").read_text()
+    assert "/local/*\n" in ignore
+    assert "!/local/dev.mk.example\n" in ignore
+    assert "!/local/dev.mk\n" not in ignore

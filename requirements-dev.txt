@@ -1,0 +1,4 @@
+# Host-side tools for `make venv` / `make check`.  The builder container
+# keeps its own Debian-packaged pytest, ShellCheck and bats.
+pytest==9.1.1
+shellcheck-py==0.11.0.1

@@ -21,9 +21,15 @@ setup() {
     export GIT_CONFIG_VALUE_0="$REPO_ROOT"
 
     # Fake docker/podman that record NUL-separated argv.
+    # `image inspect` answers with the builder fingerprint (FAKE_BUILDER_HASH,
+    # or FAKE_INSPECT_EXIT for a missing image) and `info` with the rootless
+    # flag, so only the `run` invocation is recorded.
     cat > "$TEST_ROOT/bin/docker" <<'FAKEDOCKER'
 #!/bin/sh
 set -eu
+case "$1" in
+    image) printf '%s\n' "$FAKE_BUILDER_HASH"; exit "${FAKE_INSPECT_EXIT:-0}" ;;
+esac
 log="${DOCKER_LOG:-$TEST_ROOT/argv-logs/docker.log}"
 mkdir -p "$(dirname "$log")"
 printf '%s\0' docker "$@" > "$log"
@@ -34,6 +40,10 @@ FAKEDOCKER
     cat > "$TEST_ROOT/bin/podman" <<'FAKEPODMAN'
 #!/bin/sh
 set -eu
+case "$1" in
+    image) printf '%s\n' "$FAKE_BUILDER_HASH"; exit "${FAKE_INSPECT_EXIT:-0}" ;;
+    info) printf '%s\n' "${FAKE_PODMAN_ROOTLESS:-true}"; exit 0 ;;
+esac
 log="${PODMAN_LOG:-$TEST_ROOT/argv-logs/podman.log}"
 mkdir -p "$(dirname "$log")"
 printf '%s\0' podman "$@" > "$log"
@@ -42,6 +52,8 @@ FAKEPODMAN
     chmod +x "$TEST_ROOT/bin/podman"
 
     export BUILDER_IMAGE="${BUILDER_IMAGE:-sushida-os-builder:trixie}"
+    FAKE_BUILDER_HASH="$("$REPO_ROOT/scripts/builder-hash.sh")"
+    export FAKE_BUILDER_HASH
 }
 
 # Helper: check that a value appears in a NUL-joined argv log.
@@ -195,6 +207,97 @@ argv_contains() {
     [ "$status" -eq 0 ]
 }
 
+@test "container-run.sh never lets the engine pull the builder image" {
+    LOG="$TEST_ROOT/argv-logs/docker-pull.log"
+    DOCKER_LOG="$LOG" run "$REPO_ROOT/scripts/container-run.sh" test
+    [ "$status" -eq 0 ]
+    run argv_contains "--pull=never" "$LOG"
+    [ "$status" -eq 0 ]
+}
+
+@test "container-run.sh refuses a missing builder image without running" {
+    LOG="$TEST_ROOT/argv-logs/docker-missing.log"
+    DOCKER_LOG="$LOG" FAKE_INSPECT_EXIT=1 run "$REPO_ROOT/scripts/container-run.sh" test
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not found locally"* ]]
+    [[ "$output" == *"make builder"* ]]
+    [ ! -f "$LOG" ]
+}
+
+@test "container-run.sh refuses a builder image built from older sources" {
+    LOG="$TEST_ROOT/argv-logs/docker-stale.log"
+    DOCKER_LOG="$LOG" FAKE_BUILDER_HASH=0000 run "$REPO_ROOT/scripts/container-run.sh" iso
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"stale"* ]]
+    [ ! -f "$LOG" ]
+}
+
+@test "container-run.sh rootless podman maps the host user with keep-id" {
+    LOG="$TEST_ROOT/argv-logs/podman-keepid.log"
+    PODMAN_LOG="$LOG" CONTAINER_ENGINE=podman run "$REPO_ROOT/scripts/container-run.sh" verify
+    [ "$status" -eq 0 ]
+    run argv_contains "--userns=keep-id" "$LOG"
+    [ "$status" -eq 0 ]
+    run argv_contains "$(id -u):$(id -g)" "$LOG"
+    [ "$status" -eq 0 ]
+}
+
+@test "container-run.sh keeps privileged iso and rootful podman free of keep-id" {
+    LOG="$TEST_ROOT/argv-logs/podman-iso.log"
+    PODMAN_LOG="$LOG" CONTAINER_ENGINE=podman run "$REPO_ROOT/scripts/container-run.sh" iso
+    [ "$status" -eq 0 ]
+    run argv_contains "--userns=keep-id" "$LOG"
+    [ "$status" -ne 0 ]
+    LOG="$TEST_ROOT/argv-logs/podman-rootful.log"
+    PODMAN_LOG="$LOG" FAKE_PODMAN_ROOTLESS=false CONTAINER_ENGINE=podman \
+        run "$REPO_ROOT/scripts/container-run.sh" test
+    [ "$status" -eq 0 ]
+    run argv_contains "--userns=keep-id" "$LOG"
+    [ "$status" -ne 0 ]
+}
+
+@test "container-run.sh qemu modes run the QEMU targets unprivileged" {
+    for pair in qemu-boot:test-qemu-boot qemu-smoke:test-qemu-runtime \
+            qemu-powerdown:test-qemu-powerdown; do
+        LOG="$TEST_ROOT/argv-logs/docker-${pair%%:*}.log"
+        DOCKER_LOG="$LOG" run "$REPO_ROOT/scripts/container-run.sh" "${pair%%:*}"
+        [ "$status" -eq 0 ]
+        run argv_contains "${pair#*:}" "$LOG"
+        [ "$status" -eq 0 ]
+        run argv_contains "--privileged" "$LOG"
+        [ "$status" -ne 0 ]
+    done
+}
+
+@test "container-run.sh qemu modes pass /dev/kvm only when it is usable" {
+    LOG="$TEST_ROOT/argv-logs/docker-kvm.log"
+    DOCKER_LOG="$LOG" run "$REPO_ROOT/scripts/container-run.sh" qemu-smoke
+    [ "$status" -eq 0 ]
+    if [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+        run argv_contains "/dev/kvm" "$LOG"
+        [ "$status" -eq 0 ]
+    else
+        [[ "$output" == *"falls back to slow TCG"* ]]
+        run argv_contains "/dev/kvm" "$LOG"
+        [ "$status" -ne 0 ]
+    fi
+}
+
+@test "container-run.sh forwards only the documented QEMU duration knobs" {
+    LOG="$TEST_ROOT/argv-logs/docker-duration.log"
+    DOCKER_LOG="$LOG" SUSHIDA_QEMU_DURATION=42 SUSHIDA_QEMU_OTHER=1 \
+        run "$REPO_ROOT/scripts/container-run.sh" qemu-boot
+    [ "$status" -eq 0 ]
+    run argv_contains "SUSHIDA_QEMU_DURATION=42" "$LOG"
+    [ "$status" -eq 0 ]
+    run grep -c "SUSHIDA_QEMU_OTHER" "$LOG"
+    [ "$output" -eq 0 ]
+    LOG="$TEST_ROOT/argv-logs/docker-test-noenv.log"
+    DOCKER_LOG="$LOG" SUSHIDA_QEMU_DURATION=42 run "$REPO_ROOT/scripts/container-run.sh" test
+    run grep -c "SUSHIDA_QEMU_DURATION" "$LOG"
+    [ "$output" -eq 0 ]
+}
+
 @test "container-run.sh rejects symlinked repository root" {
     # The script resolves PROJECT_ROOT with pwd -P, which follows symlinks.
     # Check the source code contains the safety check instead.
@@ -308,6 +411,26 @@ STUB
     [ "$status" -eq 0 ]
     run grep -q 'ovmf_vars=FAIL' "$REPO_ROOT/scripts/doctor.sh"
     [ "$status" -eq 0 ]
+}
+
+@test "doctor.sh build: stale builder image reports FAIL" {
+    run env FAKE_BUILDER_HASH=0000 CONTAINER_ENGINE=docker \
+        "$REPO_ROOT/scripts/doctor.sh" build
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"builder_image=FAIL (stale"* ]]
+}
+
+@test "doctor.sh build: current builder image reports PASS" {
+    run env CONTAINER_ENGINE=docker "$REPO_ROOT/scripts/doctor.sh" build
+    [[ "$output" == *"builder_image=PASS"* ]]
+}
+
+@test "doctor.sh test: reports venv, git identity, and quiet library modes" {
+    run "$REPO_ROOT/scripts/doctor.sh" test
+    [[ "$output" == *"venv="* ]]
+    [[ "$output" == *"git_identity="* ]]
+    [[ "$output" != *"scripts/lib/"* ]]
+    [[ "$output" != *".bats is not 100755"* ]]
 }
 
 @test "doctor.sh contains WSL mount warning check" {

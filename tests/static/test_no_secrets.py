@@ -32,6 +32,7 @@ def test_only_allowed_tracked_in_local() -> None:
         "local/README.md",
         "local/wifi.nmconnection.example",
         "local/grub-password.example",
+        "local/dev.mk.example",  # Make defaults only; no credentials
     }
     for f in tracked:
         assert f in allowed, f"Unexpected tracked file in local/: {f}"

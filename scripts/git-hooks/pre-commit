@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Fast pre-commit gate (enable with `make hooks`): the checks that catch the
+# most frequent slips -- a stale STRUCTURE.txt, contract drift, and
+# whitespace errors -- in about a second.  The full suites stay in
+# `make check` (host) and `make container-test`.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+python3 tools/gen-structure.py --check
+if ! python3 tools/check-contracts.py > /dev/null; then
+    python3 tools/check-contracts.py
+    exit 1
+fi
+git diff --cached --check
