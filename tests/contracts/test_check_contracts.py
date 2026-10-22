@@ -65,6 +65,9 @@ def _build_minimal_repo(root: Path) -> None:
         "live-build/config/includes.chroot/etc/sushida-os",
         "live-build/config/includes.chroot/etc/chromium/policies/managed",
         "live-build/config/includes.chroot/etc/systemd/system",
+        "live-build/config/includes.chroot/etc/systemd/system/plymouth-quit.service.d",
+        "live-build/config/includes.chroot/etc/plymouth",
+        "live-build/config/includes.chroot/etc/initramfs-tools/hooks",
         "live-build/config/includes.chroot/usr/local/bin",
         "live-build/config/includes.chroot/usr/local/libexec",
         "live-build/config/includes.chroot/usr/lib/python3/dist-packages/sushida_os/wifi",
@@ -106,6 +109,9 @@ def _build_minimal_repo(root: Path) -> None:
             "[Service]\nRuntimeDirectory=sushida-wifi-setup\nRuntimeDirectoryMode=0700\n"
             "ReadWritePaths=/run/sushida-wifi-status\n",
         "sushida-input-watch.service": "[Service]\n",
+        "sushida-preload.service": "[Service]\n",
+        "sushida-shutdown-marker.service": "[Service]\n",
+        "plymouth-quit.service.d/90-sushida-kiosk.conf": "[Service]\n",
         "var-lib-sushida\\x2dconfig.mount":
             "[Mount]\nWhere=/var/lib/sushida-config\n",
     }
@@ -121,6 +127,8 @@ def _build_minimal_repo(root: Path) -> None:
         'systemctl enable sushida-config-prepare.service\n'
         'systemctl enable sushida-wifi-setup.service\n'
         'systemctl enable sushida-input-watch.service\n'
+        'systemctl enable sushida-preload.service\n'
+        'systemctl enable sushida-shutdown-marker.service\n'
         'systemctl enable systemd-timesyncd.service\n'
     )
     (root / "live-build/config/hooks/live/090-validate-image.hook.chroot").write_text(
@@ -134,6 +142,8 @@ def _build_minimal_repo(root: Path) -> None:
         'systemctl mask apt-daily-upgrade.timer\n'
         'systemctl mask apt-daily.service\n'
         'systemctl mask apt-daily-upgrade.service\n'
+        'systemctl mask ldconfig.service\n'
+        'systemctl mask systemd-journal-catalog-update.service\n'
     )
 
     # Minimal scripts
@@ -181,7 +191,8 @@ def _build_minimal_repo(root: Path) -> None:
 # Package list
     pkgs = [
         "linux-image-amd64", "live-boot", "live-config", "systemd-sysv",
-        "cage", "chromium", "network-manager", "wpasupplicant",
+        "cage", "plymouth", "plymouth-themes",
+        "chromium", "network-manager", "wpasupplicant",
         "wireless-regdb", "polkitd", "pipewire", "pipewire-pulse",
         "wireplumber", "libspa-0.2-modules", "dbus-user-session",
         "alsa-ucm-conf", "alsa-utils",
@@ -252,6 +263,23 @@ def _build_minimal_repo(root: Path) -> None:
     )
     (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-input-watch").write_text(
         '#!/usr/bin/env python3\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-preload").write_text(
+        '#!/usr/bin/env bash\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-serial-marker").write_text(
+        '#!/usr/bin/env bash\n'
+        'readonly PROD_CONFIG_MOUNT="/var/lib/sushida-config"\n'
+    )
+    (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-splash-handoff").write_text(
+        '#!/usr/bin/env bash\n'
+        'readonly PROD_STATE_FILE="/run/sushida-os/runtime-state.json"\n'
+    )
+    (root / "live-build/config/includes.chroot/etc/initramfs-tools/hooks/sushida-trim-gpu").write_text(
+        '#!/bin/sh\n'
+    )
+    (root / "live-build/config/includes.chroot/etc/plymouth/plymouthd.conf").write_text(
+        '[Daemon]\nTheme=bgrt\n'
     )
     (root / "live-build/config/includes.chroot/usr/local/libexec/sushida-config-prepare").write_text(
         '#!/usr/bin/env bash\n'
@@ -679,6 +707,26 @@ class TestCheckContracts:
         r = _run_checker(clean_repo)
         assert r.returncode == 1
         assert "DRIFT_PATH" in r.stdout
+
+    def test_serial_marker_config_mount_drift_exit_1(self, clean_repo: Path) -> None:
+        p = clean_repo / (
+            "live-build/config/includes.chroot/usr/local/libexec/sushida-serial-marker"
+        )
+        p.write_text(p.read_text().replace(
+            "/var/lib/sushida-config", "/var/lib/other-config"))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "runtime_paths.config_mount_path" in r.stdout
+
+    def test_splash_handoff_state_path_drift_exit_1(self, clean_repo: Path) -> None:
+        p = clean_repo / (
+            "live-build/config/includes.chroot/usr/local/libexec/sushida-splash-handoff"
+        )
+        p.write_text(p.read_text().replace(
+            "/run/sushida-os/runtime-state.json", "/run/sushida-os/other.json"))
+        r = _run_checker(clean_repo)
+        assert r.returncode == 1
+        assert "runtime_paths.runtime_state_file" in r.stdout
 
     # ── Release mapping / ISO path drift ───────────────────────────
 

@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+#
+# Serial-only boot/shutdown marker.  The production boot is silent on screen
+# (Plymouth splash, systemd status off), so QEMU tests and headless diagnosis
+# read these fixed lines from the first serial port instead.  The line goes
+# to /dev/ttyS0 only, never /dev/console, so it can never appear on the
+# display; machines without that UART simply get nothing.  The output is a
+# fixed token set (stage + whether the SUSHIDA-CFG filesystem is mounted):
+# no URLs, SSIDs, credentials or other runtime data.
+#
+# Usage: sushida-serial-marker kiosk-route-published|splash-timeout|shutdown
+set -euo pipefail
+
+readonly PROD_SERIAL_DEVICE="/dev/ttyS0"
+readonly PROD_CONFIG_MOUNT="/var/lib/sushida-config"
+
+SERIAL_DEVICE="${SUSHIDA_SERIAL_MARKER_DEVICE:-$PROD_SERIAL_DEVICE}"
+CONFIG_MOUNT="${SUSHIDA_SERIAL_MARKER_CONFIG_MOUNT:-$PROD_CONFIG_MOUNT}"
+if { [ "$SERIAL_DEVICE" != "$PROD_SERIAL_DEVICE" ] || \
+     [ "$CONFIG_MOUNT" != "$PROD_CONFIG_MOUNT" ]; } && \
+   [ "${SUSHIDA_OS_TEST_MODE:-0}" != 1 ]; then
+    echo "ERROR: serial marker overrides require SUSHIDA_OS_TEST_MODE=1" >&2
+    exit 1
+fi
+
+if [ $# -ne 1 ]; then
+    echo "ERROR: Usage: sushida-serial-marker <stage>" >&2
+    exit 1
+fi
+case "$1" in
+    kiosk-route-published|splash-timeout|shutdown) stage="$1" ;;
+    *)
+        echo "ERROR: unknown serial marker stage" >&2
+        exit 1
+        ;;
+esac
+
+config=unmounted
+if mountpoint -q -- "$CONFIG_MOUNT" 2>/dev/null; then
+    config=mounted
+fi
+line="sushida-os-marker: stage=$stage config=$config"
+echo "$line"
+
+# Production writes only to a real character device.  The bounded dd keeps a
+# missing or flow-controlled UART from stalling boot or shutdown.
+if [ "$SERIAL_DEVICE" = "$PROD_SERIAL_DEVICE" ] && [ ! -c "$SERIAL_DEVICE" ]; then
+    exit 0
+fi
+printf '%s\r\n' "$line" | \
+    timeout 2 dd of="$SERIAL_DEVICE" oflag=append conv=notrunc status=none \
+    2>/dev/null || true

@@ -1,0 +1,26 @@
+[Unit]
+Description=Sushi-da OS serial shutdown marker
+# Started before the SUSHIDA-CFG mount, so at shutdown it stops after that
+# filesystem has been unmounted and reports the result on the serial port
+# (sushida-serial-marker).  Nothing waits on it at boot.
+DefaultDependencies=no
+Before=var-lib-sushida\x2dconfig.mount shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/local/libexec/sushida-serial-marker shutdown
+TimeoutStopSec=10
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

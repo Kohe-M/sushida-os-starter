@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# initramfs-tools hook: keep the initrd small for slow (USB 2.0) boot media.
+# Plymouth's hook queues every DRM driver for the initrd; AMD's amdgpu and
+# Intel's xe bring ~85 MB of GPU firmware that the boot firmware must read
+# before Linux starts.  The splash already runs on the firmware framebuffer
+# (plymouth.use-simpledrm), and these drivers load normally from the root
+# filesystem, so take them off the queue.
+#
+# Hooks only queue module names in $__MODULES_TO_ADD; mkinitramfs installs
+# the queued modules and their firmware in one batch after all hooks (this
+# hook runs after the packaged ones).  If a future initramfs-tools stops
+# exporting the queue, this hook does nothing and the initrd is just larger.
+set -e
+
+case "${1:-}" in
+    prereqs)
+        exit 0
+        ;;
+esac
+
+queue="${__MODULES_TO_ADD:-}"
+[ -n "${queue}" ] && [ -f "${queue}" ] || exit 0
+
+kept="$(grep -v -x -e amdgpu -e xe "${queue}" || true)"
+if [ -n "${kept}" ]; then
+    printf '%s\n' "${kept}" > "${queue}"
+else
+    : > "${queue}"
+fi

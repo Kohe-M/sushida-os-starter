@@ -129,3 +129,37 @@ run_qemu_dry() {
     ' bash "$QEMU_FIXTURE"
     [ "$status" -eq 0 ]
 }
+
+@test "serial markers are the production boot and shutdown evidence" {
+    # shellcheck source=scripts/lib/qemu-lib.sh
+    . "$BATS_TEST_DIRNAME/../../scripts/lib/qemu-lib.sh"
+    log="$BATS_TEST_TMPDIR/serial.log"
+    printf '[    3.1] random kernel line\r\nsushida-os-marker: stage=kiosk-route-published config=mounted\r\n' > "$log"
+    serial_has_kiosk_marker "$log"
+    serial_has_config_mounted_marker "$log"
+    run serial_has_config_unmounted_marker "$log"
+    [ "$status" -ne 0 ]
+    printf 'sushida-os-marker: stage=shutdown config=unmounted\r\n[  60.0] reboot: Power down\r\n' >> "$log"
+    serial_has_config_unmounted_marker "$log"
+}
+
+@test "serial markers do not accept an unmounted config or a still-mounted shutdown" {
+    . "$BATS_TEST_DIRNAME/../../scripts/lib/qemu-lib.sh"
+    log="$BATS_TEST_TMPDIR/serial.log"
+    printf 'sushida-os-marker: stage=kiosk-route-published config=unmounted\nsushida-os-marker: stage=shutdown config=mounted\n' > "$log"
+    serial_has_kiosk_marker "$log"
+    run serial_has_config_mounted_marker "$log"
+    [ "$status" -ne 0 ]
+    run serial_has_config_unmounted_marker "$log"
+    [ "$status" -ne 0 ]
+}
+
+@test "systemd status lines alone are not production boot evidence" {
+    . "$BATS_TEST_DIRNAME/../../scripts/lib/qemu-lib.sh"
+    log="$BATS_TEST_TMPDIR/serial.log"
+    printf '[  OK  ] Started sushida-kiosk.service - Sushi-da OS Kiosk.\n[  OK  ] Mounted var-lib-sushida\\x2dconfig.mount\n' > "$log"
+    run serial_has_kiosk_marker "$log"
+    [ "$status" -ne 0 ]
+    run serial_has_config_mounted_marker "$log"
+    [ "$status" -ne 0 ]
+}

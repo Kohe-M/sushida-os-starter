@@ -368,7 +368,7 @@ wait_boot_evidence() {
     [ "$QEMU_BOOT_TEST" = true ] || return 0
     local kiosk_ready=false _boot
     for _boot in $(seq 1 "$DURATION"); do
-        if serial_matches "$SERIAL_LOG" 'Started[[:space:]]+sushida-(kiosk|navigation-watch)\.service([[:space:]-]|$)'; then
+        if serial_has_kiosk_marker "$SERIAL_LOG"; then
             kiosk_ready=true
             break
         fi
@@ -386,7 +386,7 @@ run_powerdown() {
     # build/qemu; no host shutdown command is ever used.
     local kiosk_ready=false _boot _shutdown
     for _boot in $(seq 1 "$DURATION"); do
-        if serial_matches "$SERIAL_LOG" 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)'; then
+        if serial_has_kiosk_marker "$SERIAL_LOG"; then
             kiosk_ready=true
             break
         fi
@@ -413,12 +413,10 @@ run_powerdown() {
     [ "$qemu_status" -eq 0 ] || fail "QEMU returned status $qemu_status after powerdown"
     config_mount_seen=false
     config_unmount_seen=false
-    if serial_matches "$SERIAL_LOG" \
-        'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dcon)'; then
+    if serial_has_config_mounted_marker "$SERIAL_LOG"; then
         config_mount_seen=true
     fi
-    if serial_matches "$SERIAL_LOG" \
-        'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dcon)'; then
+    if serial_has_config_unmounted_marker "$SERIAL_LOG"; then
         config_unmount_seen=true
     fi
     RUN_FINISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"

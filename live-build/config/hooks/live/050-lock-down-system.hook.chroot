@@ -18,3 +18,9 @@ systemctl mask ctrl-alt-del.target
 # Debian's package refreshers after boot and writing to the live overlay.
 systemctl mask apt-daily.timer apt-daily-upgrade.timer
 systemctl mask apt-daily.service apt-daily-upgrade.service
+
+# The dynamic-linker cache and journal catalog are built into the image and
+# never change on a read-only system.  Their ConditionNeedsUpdate= rebuilds
+# would otherwise run on every boot (live /etc always looks out of date) and
+# delay sysinit by seconds on slow USB media.
+systemctl mask ldconfig.service systemd-journal-catalog-update.service

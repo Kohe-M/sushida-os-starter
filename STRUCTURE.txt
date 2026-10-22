@@ -78,6 +78,11 @@ live-build/
               sushida-os.json
         default/
           keyboard
+        initramfs-tools/
+          hooks/
+            sushida-trim-gpu
+        plymouth/
+          plymouthd.conf
         polkit-1/
           rules.d/
             60-sushida-wifi-setup.rules
@@ -93,11 +98,15 @@ live-build/
           system.conf.d/
             90-sushida-kiosk.conf
           system/
+            plymouth-quit.service.d/
+              90-sushida-kiosk.conf
             sushida-config-prepare.service
             sushida-input-watch.service
             sushida-kiosk.service
             sushida-navigation-watch.service
             sushida-network-watch.service
+            sushida-preload.service
+            sushida-shutdown-marker.service
             sushida-wifi-setup.service
             var-lib-sushida\x2dconfig.mount
       usr/
@@ -132,7 +141,10 @@ live-build/
             sushida-config-prepare
             sushida-input-watch
             sushida-kiosk-signal
+            sushida-preload
+            sushida-serial-marker
             sushida-session
+            sushida-splash-handoff
             sushida-wifi-setup
         share/
           sushida-os/
@@ -180,6 +192,7 @@ tests/
     smoke-test.sh
   shell/
     artifacts.bats
+    boot-splash.bats
     config-persistence.bats
     dev-tools.bats
     diagnostics.bats
@@ -202,6 +215,7 @@ tests/
         blocked-sametab.bin
     test_artifact_pipeline.py
     test_audio_graphics.py
+    test_boot_experience.py
     test_builder.py
     test_chromium_policy.py
     test_config.py

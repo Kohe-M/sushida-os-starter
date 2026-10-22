@@ -3,8 +3,8 @@
 ## Runtime chain
 
 ```text
-bootloader
-  -> Debian live system
+bootloader (hidden, immediate)
+  -> Debian live system (Plymouth splash from the initramfs on)
   -> systemd
   -> SUSHIDA-CFG mount + constrained Wi-Fi setup backend
   -> sushida-kiosk.service
@@ -29,6 +29,75 @@ separate poweroff target.
 The normal systemd poweroff transaction therefore unmounts `SUSHIDA-CFG`; a
 QEMU-only monitor test sends `system_powerdown` to an isolated guest socket and
 requires natural exit without affecting the host.
+
+## Boot presentation and startup time
+
+From power-on the screen shows only the firmware logo, then the Plymouth
+`bgrt` splash (the same firmware/ACPI BGRT vendor logo with a spinner;
+machines without a BGRT logo, e.g. legacy BIOS boot, show the spinner
+alone), then the kiosk. No Debian branding, boot menu, kernel/systemd text
+or console cursor is shown:
+
+- GRUB boots its single unrestricted entry with `timeout_style=hidden`,
+  `timeout=0`, no theme, font or beep; ISOLINUX has no menu UI and
+  `PROMPT 0`. Menu/command-line editing stays locked exactly as before
+  (`superusers` without a password; `ALLOWOPTIONS 0`, `NOESCAPE 1`).
+- The kernel command line (identical in `live-build/auto/config`, GRUB and
+  ISOLINUX) adds `loglevel=3`, `rd.udev.log_level=3`, `udev.log_level=3`,
+  `systemd.show_status=false`, `rd.systemd.show_status=false`,
+  `vt.global_cursor_default=0`, `plymouth.ignore-serial-consoles` (Plymouth
+  would otherwise force its text-only splash when a serial console exists)
+  and `plymouth.use-simpledrm` (splash on the firmware framebuffer before
+  the GPU driver loads). Kernel errors still reach the serial console when
+  one exists, and everything stays in the volatile journal.
+- Serial-only boot evidence: with systemd status off and Plymouth holding
+  the console, `sushida-serial-marker` writes fixed lines to `/dev/ttyS0`
+  only (never `/dev/console`, so never the screen; machines without that
+  UART get nothing): `sushida-os-marker: stage=kiosk-route-published
+  config=mounted|unmounted` from the splash handoff (`stage=splash-timeout`
+  if the bounded wait expires), and `stage=shutdown config=...` from the
+  `sushida-shutdown-marker` unit, which is ordered before the `SUSHIDA-CFG`
+  mount and therefore stops after it has been unmounted. The
+  tokens are a fixed set: no URLs, SSIDs or credentials. The
+  production-bootloader QEMU boot and powerdown tests read these markers.
+- Plymouth -> Cage handoff: a drop-in makes `plymouth-quit.service` run
+  `sushida-splash-handoff` first. It waits, bounded at 120 s (network grace
+  maximum 60 s + clock-sync wait 30 s, with margin), until the launcher has
+  written `runtime-state.json`, which happens immediately before the Cage
+  session starts. Plymouth then quits with `--retain-splash`, so the splash
+  stays up through the launcher's network wait and its last frame remains
+  until Cage draws. The helper only tests the file's existence; a failing
+  helper is ignored so Plymouth always quits. Kiosk restarts later in the
+  session (route changes, crashes) do not involve Plymouth.
+
+Startup time on slow live media (USB 2.0 reads at ~20-35 MB/s) is dominated
+by firmware loading the kernel and initrd, Chromium's cold start reading
+from the SquashFS, and the boot-menu countdown. The image therefore:
+
+- boots without the former 3 s menu countdown;
+- masks `ldconfig.service` and `systemd-journal-catalog-update.service`,
+  whose `ConditionNeedsUpdate=/etc` rebuilds otherwise ran on every live
+  boot (the caches are built into the read-only image);
+- starts the `sushida-preload` read-ahead early in sysinit: a sandboxed
+  (`DynamicUser`, no capabilities, no network) best-effort read of a fixed
+  file list (Chromium, Cage/wlroots, the CJK font) into the page cache, so
+  those USB reads overlap NetworkManager, DHCP and the launcher's network
+  wait. Nothing is ordered after it;
+- compresses the SquashFS with zstd (level 19) instead of xz: similar read
+  volume, several times faster decompression on low-end CPUs;
+- trims the initrd with `/etc/initramfs-tools/hooks/sushida-trim-gpu`:
+  Plymouth's initramfs hook queues every DRM driver, which brings `amdgpu`
+  and Intel `xe` plus ~85 MB of their firmware that the boot firmware would
+  read at USB speed. The hook takes those two off initramfs-tools' module
+  queue (`$__MODULES_TO_ADD`, installed in one batch after all hooks); the
+  splash runs on the firmware framebuffer instead, and those drivers load
+  from the root filesystem as before. If initramfs-tools stops exporting
+  that queue the hook is a no-op and the initrd is merely larger.
+
+The early CPU microcode (~15 MB of the initrd) is kept deliberately: it
+carries CPU vulnerability fixes that old firmware lacks. USB 3.x media in a USB 3.x port removes most of the
+remaining media-bound time; that is a deployment choice, not an image
+setting.
 
 ## Read-only live-system boundary
 

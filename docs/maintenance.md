@@ -78,10 +78,12 @@ This starts BIOS and UEFI guests from private writable-media copies, waits for
 kiosk startup, sends monitor `system_powerdown`, and requires natural guest
 exit. It never calls host `poweroff`, `shutdown`, or `reboot`. The checker
 requires the run's Git commit, ISO SHA-256, `SHA256SUMS`, and `build-info.json`
-to describe the current clean checkout. Review each
-`build/qemu/*-powerdown/serial.log` for explicit `Mounted` and `Unmounted`
-evidence for `SUSHIDA-CFG`, as well as the absence of failures for that unit,
-before treating the test as passed. live-boot may report an unrelated
+to describe the current clean checkout. The production boot entry keeps systemd
+status off the console, so review each `build/qemu/*-powerdown/serial.log` for
+the image's serial-only markers instead: `sushida-os-marker:
+stage=kiosk-route-published config=mounted` at boot and `sushida-os-marker:
+stage=shutdown config=unmounted` at shutdown (plus the kernel's
+`reboot: Power down`), before treating the test as passed. live-boot may report an unrelated
 `/run/live/medium` busy-unmount during QEMU teardown; that does not replace the
 required positive `SUSHIDA-CFG` evidence.
 

@@ -33,18 +33,21 @@ SERIAL_PLAIN="$RUN_DIR/serial.plain.log"
 serial_without_ansi "$SERIAL" > "$SERIAL_PLAIN"
 _exit_report=0
 
-# Verify the bootloader succeeded in reaching kiosk services.
+# Verify the bootloader succeeded in reaching the kiosk.  The production
+# entry is silent on the console, so the evidence is the image's serial-only
+# marker: the launcher published its route (Cage starts next) and the
+# SUSHIDA-CFG filesystem was mounted.
 _serial_kiosk=false
-_serial_graphical=false
-if grep -Eiq 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)' "$SERIAL_PLAIN"; then
+_serial_config=false
+if serial_has_kiosk_marker "$SERIAL"; then
     _serial_kiosk=true
 else
-    echo "ERROR: serial output lacks kiosk service start" >&2
+    echo "ERROR: serial output lacks the kiosk route marker" >&2
 fi
-if grep -Fiq 'graphical.target' "$SERIAL_PLAIN"; then
-    _serial_graphical=true
+if serial_has_config_mounted_marker "$SERIAL"; then
+    _serial_config=true
 else
-    echo "ERROR: serial output lacks graphical.target" >&2
+    echo "ERROR: serial marker does not report SUSHIDA-CFG mounted" >&2
 fi
 
 # Verify the run completed cleanly.
@@ -76,7 +79,7 @@ fi
 if [ -z "$BUILD_COMMIT" ] || [ "$CURRENT_HEAD" != "$BUILD_COMMIT" ]; then
     _git_ok=false; _exit_report=1
 fi
-if [ "$_serial_kiosk" != true ] || [ "$_serial_graphical" != true ]; then
+if [ "$_serial_kiosk" != true ] || [ "$_serial_config" != true ]; then
     _boot_ok=false; _exit_report=1
 fi
 

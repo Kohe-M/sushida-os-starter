@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+#
+# Plymouth -> Cage handoff gate, run as ExecStartPre of plymouth-quit.service.
+# Returns once the kiosk launcher has published its route: runtime-state.json
+# is written immediately before the launcher starts the Cage session, so
+# Plymouth releases the display just before Cage needs it.  The wait is
+# bounded (network grace maximum 60 s + clock-sync wait 30 s, with margin)
+# so a kiosk that never starts cannot hold the splash forever.  Only the
+# file's existence is checked; its content is never read or logged.  The
+# outcome is also reported on the serial port (sushida-serial-marker), the
+# boot evidence QEMU tests read now that the screen stays silent.
+set -euo pipefail
+
+readonly PROD_STATE_FILE="/run/sushida-os/runtime-state.json"
+readonly PROD_MAX_WAIT_SECONDS=120
+readonly PROD_MARKER="/usr/local/libexec/sushida-serial-marker"
+
+STATE_FILE="${SUSHIDA_SPLASH_STATE_FILE:-$PROD_STATE_FILE}"
+MAX_WAIT_SECONDS="${SUSHIDA_SPLASH_MAX_WAIT_SECONDS:-$PROD_MAX_WAIT_SECONDS}"
+MARKER="${SUSHIDA_SPLASH_MARKER:-$PROD_MARKER}"
+
+if { [ "$STATE_FILE" != "$PROD_STATE_FILE" ] || \
+     [ "$MAX_WAIT_SECONDS" != "$PROD_MAX_WAIT_SECONDS" ] || \
+     [ "$MARKER" != "$PROD_MARKER" ]; } && \
+   [ "${SUSHIDA_OS_TEST_MODE:-0}" != 1 ]; then
+    echo "ERROR: splash handoff overrides require SUSHIDA_OS_TEST_MODE=1" >&2
+    exit 1
+fi
+case "$MAX_WAIT_SECONDS" in
+    ''|*[!0-9]*)
+        echo "ERROR: invalid splash handoff wait" >&2
+        exit 1
+        ;;
+esac
+
+ticks=0
+max_ticks=$((MAX_WAIT_SECONDS * 10))
+while [ ! -e "$STATE_FILE" ]; do
+    if [ "$ticks" -ge "$max_ticks" ]; then
+        echo "splash-handoff: stage=timeout"
+        "$MARKER" splash-timeout > /dev/null 2>&1 || true
+        exit 0
+    fi
+    sleep 0.1
+    ticks=$((ticks + 1))
+done
+echo "splash-handoff: stage=route-published"
+"$MARKER" kiosk-route-published > /dev/null 2>&1 || true

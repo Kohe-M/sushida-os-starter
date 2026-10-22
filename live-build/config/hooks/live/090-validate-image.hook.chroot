@@ -35,7 +35,8 @@ require_executable() {
         fail "unsafe owner or mode for $1: $(stat -c '%U:%G:%a' "$1")"
 }
 
-for cmd in dpkg-query getent id stat systemctl systemd-analyze python3 setupcon; do
+for cmd in dpkg-query getent id stat systemctl systemd-analyze python3 setupcon \
+    plymouth-set-default-theme; do
     require_command "$cmd"
 done
 
@@ -76,7 +77,7 @@ for package in \
     libgl1-mesa-dri mesa-va-drivers \
     libegl1 libgles2 libgbm1 libdrm2 libwayland-client0 \
     libwayland-server0 python3-minimal python3 python3-evdev pciutils \
-    systemd-timesyncd firmware-sof-signed; do
+    systemd-timesyncd firmware-sof-signed plymouth plymouth-themes; do
     require_package "$package"
 done
 
@@ -150,7 +151,11 @@ for file in \
     /usr/local/libexec/sushida-config-prepare \
     /usr/local/libexec/sushida-wifi-setup \
     /usr/local/libexec/sushida-kiosk-signal \
-    /usr/local/libexec/sushida-input-watch; do
+    /usr/local/libexec/sushida-input-watch \
+    /usr/local/libexec/sushida-preload \
+    /usr/local/libexec/sushida-splash-handoff \
+    /usr/local/libexec/sushida-serial-marker \
+    /etc/initramfs-tools/hooks/sushida-trim-gpu; do
     require_executable "$file"
 done
 
@@ -193,7 +198,8 @@ fi
 for unit in sushida-kiosk.service sushida-network-watch.service \
     sushida-navigation-watch.service \
     sushida-config-prepare.service sushida-wifi-setup.service \
-    sushida-input-watch.service \
+    sushida-input-watch.service sushida-preload.service \
+    sushida-shutdown-marker.service \
     'var-lib-sushida\x2dconfig.mount'; do
     require_file "/etc/systemd/system/$unit"
     systemctl is-enabled "$unit" > /dev/null 2>&1 || fail "$unit is not enabled"
@@ -203,7 +209,8 @@ systemctl is-enabled systemd-timesyncd.service > /dev/null 2>&1 || \
 for unit in getty@.service autovt@.service serial-getty@.service \
     console-getty.service container-getty@.service ctrl-alt-del.target \
     apt-daily.timer apt-daily-upgrade.timer apt-daily.service \
-    apt-daily-upgrade.service; do
+    apt-daily-upgrade.service ldconfig.service \
+    systemd-journal-catalog-update.service; do
     [ "$(systemctl is-enabled "$unit" 2>/dev/null || true)" = "masked" ] || \
         fail "$unit is not masked"
 done
@@ -214,7 +221,24 @@ systemd-analyze verify \
     /etc/systemd/system/sushida-config-prepare.service \
     /etc/systemd/system/sushida-wifi-setup.service \
     /etc/systemd/system/sushida-input-watch.service \
+    /etc/systemd/system/sushida-preload.service \
+    /etc/systemd/system/sushida-shutdown-marker.service \
     '/etc/systemd/system/var-lib-sushida\x2dconfig.mount'
+
+# Boot splash: firmware-logo theme, and Plymouth quits only through the
+# bounded kiosk handoff (keeping its last frame for Cage).
+plymouth_conf=/etc/plymouth/plymouthd.conf
+require_file "$plymouth_conf"
+grep -qx 'Theme=bgrt' "$plymouth_conf" || fail "Plymouth theme is not bgrt"
+require_file /usr/share/plymouth/themes/bgrt/bgrt.plymouth
+[ "$(plymouth-set-default-theme)" = "bgrt" ] || fail "Plymouth default theme is not bgrt"
+splash_dropin=/etc/systemd/system/plymouth-quit.service.d/90-sushida-kiosk.conf
+require_file "$splash_dropin"
+grep -qx 'ExecStartPre=-/usr/local/libexec/sushida-splash-handoff' "$splash_dropin" || \
+    fail "Plymouth quit does not wait for the kiosk handoff"
+grep -qx 'ExecStart=-/usr/bin/plymouth quit --retain-splash' "$splash_dropin" || \
+    fail "Plymouth quit does not retain the splash"
+systemd-analyze verify /usr/lib/systemd/system/plymouth-quit.service
 
 polkit_rule=/etc/polkit-1/rules.d/60-sushida-wifi-setup.rules
 require_file "$polkit_rule"

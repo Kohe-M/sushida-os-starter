@@ -22,6 +22,24 @@ serial_matches() {
     serial_without_ansi "$1" | grep -Ei -- "$2" > /dev/null
 }
 
+# Serial-only markers written by the image (sushida-serial-marker).  The
+# production boot entry keeps the screen and /dev/console silent (Plymouth
+# splash, systemd status off), so these fixed lines on ttyS0 are the boot,
+# config-mount and shutdown evidence for the production-bootloader runs.
+# The kiosk marker is written when the launcher has published its route, i.e.
+# immediately before the Cage session starts.
+serial_has_kiosk_marker() {
+    serial_matches "$1" 'sushida-os-marker: stage=kiosk-route-published config=(mounted|unmounted)([^[:alnum:]]|$)'
+}
+
+serial_has_config_mounted_marker() {
+    serial_matches "$1" 'sushida-os-marker: stage=kiosk-route-published config=mounted([^[:alnum:]]|$)'
+}
+
+serial_has_config_unmounted_marker() {
+    serial_matches "$1" 'sushida-os-marker: stage=shutdown config=unmounted([^[:alnum:]]|$)'
+}
+
 # result_value <result-env> <key>
 # Print the value recorded exactly once for <key>; fail on zero or duplicates.
 result_value() {

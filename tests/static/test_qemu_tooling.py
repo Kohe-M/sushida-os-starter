@@ -68,7 +68,13 @@ def test_powerdown_mode_is_monitor_only_and_bounded() -> None:
     assert "SHA256SUMS" in checker
     assert "CONFIG_MOUNT_SEEN" in runner
     assert "CONFIG_UNMOUNT_SEEN" in runner
-    assert "Started[[:space:]]+sushida-kiosk" in checker
+    # The production entry is silent on the console; boot/shutdown evidence
+    # comes from the image's serial-only markers (scripts/lib/qemu-lib.sh).
+    assert "serial_has_kiosk_marker" in checker
+    assert "serial_has_config_mounted_marker" in checker
+    assert "serial_has_config_unmounted_marker" in checker
+    assert "serial_has_kiosk_marker" in runner
+    assert "reboot: Power down" in checker
     for forbidden in ("\npoweroff ", "\nshutdown ", "\nreboot "):
         assert forbidden not in runner.lower()
         assert forbidden not in script.lower()
@@ -173,17 +179,24 @@ def test_builder_has_qemu_uefi_and_monitor_tools() -> None:
         assert package in text
 
 
-def test_bios_and_uefi_boot_menus_have_bounded_autoboot() -> None:
-    isolinux = ISOLINUX.read_text()
+def test_bios_and_uefi_boot_straight_into_the_locked_entry() -> None:
+    isolinux = "\n".join(l for l in ISOLINUX.read_text().splitlines()
+                         if not l.lstrip().startswith("#"))
     grub = GRUB.read_text()
-    assert "default vesamenu.c32" in isolinux
-    assert "TIMEOUT 30" in isolinux or "timeout 30" in isolinux
-    assert "timeout 0" not in isolinux
+    # BIOS: no menu UI and no prompt, so the default label boots at once;
+    # a non-zero TIMEOUT keeps the boot bounded should a prompt reappear.
+    assert "vesamenu.c32" not in isolinux
+    assert "menu.cfg" not in isolinux
+    assert "PROMPT 0" in isolinux
+    assert "DEFAULT sushi-da-os" in isolinux
+    assert "TIMEOUT 1" in isolinux
+    assert "TIMEOUT 0" not in isolinux
     assert "ALLOWOPTIONS 0" in isolinux
     assert "NOESCAPE 1" in isolinux
+    # UEFI: hidden menu, immediate boot, editing still locked.
     assert "set default=0" in grub
-    assert "set timeout=3" in grub
-    assert "set timeout=0" not in grub
+    assert "set timeout_style=hidden" in grub
+    assert "set timeout=0" in grub
     assert '--unrestricted' in grub
     assert 'set superusers="kiosk"' in grub
 

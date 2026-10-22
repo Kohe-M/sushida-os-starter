@@ -267,5 +267,9 @@ The dedicated `make test-qemu-powerdown` path uses
 writable-media copy, and restricts the monitor socket to the selected
 `build/qemu/*-powerdown` run directory. Its result is accepted only when
 `build-info.json`, `SHA256SUMS`, the ISO hash, and the current clean Git HEAD
-agree, and the serial log contains positive `Mounted` and `Unmounted` evidence
-for `SUSHIDA-CFG`. It does not issue any power operation to the host.
+agree, and the serial log contains the image's serial-only markers reporting
+`SUSHIDA-CFG` mounted at kiosk start (`stage=kiosk-route-published
+config=mounted`) and unmounted at shutdown (`stage=shutdown config=unmounted`),
+plus the kernel's `reboot: Power down`. The production-bootloader boot test
+(`make test-qemu-boot`) likewise requires the kiosk marker, because the
+production entry prints no systemd status to any console. It does not issue any power operation to the host.

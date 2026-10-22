@@ -93,11 +93,13 @@ if metadata.get("iso_sha256") != expected_sha:
     raise SystemExit("build-info.json ISO checksum does not match the current ISO")
 PY
 
-serial_matches "$SERIAL" 'Started[[:space:]]+sushida-kiosk\.service([[:space:]-]|$)' || {
+serial_has_kiosk_marker "$SERIAL" || {
     echo "ERROR: serial log lacks kiosk startup evidence" >&2
     exit 1
 }
-serial_matches "$SERIAL" 'poweroff\.target|Powering off|Reached target Shutdown' || {
+# The kernel's own "reboot: Power down" (printed at emergency level, so it
+# reaches the serial console despite loglevel=3) proves the poweroff path.
+serial_matches "$SERIAL" 'reboot: Power down|poweroff\.target|Powering off|Reached target Shutdown' || {
     echo "ERROR: serial log lacks normal systemd poweroff evidence" >&2
     exit 1
 }
@@ -114,13 +116,11 @@ fi
     echo "ERROR: serial log lacks successful SUSHIDA-CFG unmount evidence" >&2
     exit 1
 }
-serial_matches "$SERIAL" \
-    'Mounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dcon)' || {
+serial_has_config_mounted_marker "$SERIAL" || {
     echo "ERROR: serial log lacks positive SUSHIDA-CFG mount evidence" >&2
     exit 1
 }
-serial_matches "$SERIAL" \
-    'Unmounted[[:space:]].*(/var/lib/sushida-config|var-lib-sushida\\x2dcon)' || {
+serial_has_config_unmounted_marker "$SERIAL" || {
     echo "ERROR: serial log lacks positive SUSHIDA-CFG unmount evidence" >&2
     exit 1
 }

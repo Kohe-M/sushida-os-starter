@@ -345,6 +345,8 @@ RUNTIME_SOURCE_FILES = {
     "wifi_web": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
                 "sushida_os/wifi/web.py",
     "configprep": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-config-prepare",
+    "splash_handoff": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-splash-handoff",
+    "serial_marker": f"{PRODUCTION_ROOT}/usr/local/libexec/sushida-serial-marker",
     "config": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/sushida_os/config.py",
     "runtime_routes": f"{PRODUCTION_ROOT}/usr/lib/python3/dist-packages/"
                       "sushida_os/runtime/routes.py",
@@ -523,6 +525,12 @@ def _drift_runtime_paths(rpaths: dict, services: dict, texts: dict[str, str],
                         rf'PROD_RUNTIME_DIR = Path\("{re.escape(os.path.dirname(state_file))}"\)',
                         result, "DRIFT_PATH", "runtime_paths.runtime_state_file",
                         "state module production directory mismatch")
+        # The Plymouth handoff gate only waits for the file to appear (it
+        # never reads it), so it names the full path directly.
+        _expect_pattern(texts, labels, "splash_handoff",
+                        rf'PROD_STATE_FILE="{re.escape(state_file)}"',
+                        result, "DRIFT_PATH", "runtime_paths.runtime_state_file",
+                        "splash handoff does not wait for the runtime-state file")
 
     wifi_setup_dir = rpaths.get("wifi_setup_runtime_dir", "")
     csrf_file = rpaths.get("csrf_token_file", "")
@@ -570,6 +578,11 @@ def _drift_runtime_paths(rpaths: dict, services: dict, texts: dict[str, str],
                         rf'CONFIG_MOUNT="{re.escape(config_mount)}"',
                         result, "DRIFT_PATH", "runtime_paths.config_mount_path",
                         f"config mount {config_mount!r} not declared")
+        # The serial boot/shutdown marker reports whether this mount is up.
+        _expect_pattern(texts, labels, "serial_marker",
+                        rf'PROD_CONFIG_MOUNT="{re.escape(config_mount)}"',
+                        result, "DRIFT_PATH", "runtime_paths.config_mount_path",
+                        f"serial marker does not check {config_mount!r}")
         mount_unit = services.get("config_mount_unit", "")
         if mount_unit:
             _expect_pattern(unit_texts, unit_labels, mount_unit,

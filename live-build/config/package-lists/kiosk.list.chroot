@@ -7,6 +7,10 @@ systemd-sysv
 # Kiosk compositor -- Wayland wlroots-based kiosk
 cage
 
+# Boot splash (firmware logo + spinner) from kernel start until Cage
+plymouth
+plymouth-themes
+
 # Web browser
 chromium
 

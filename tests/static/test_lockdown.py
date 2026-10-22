@@ -189,11 +189,13 @@ EXPECTED_MASK_TARGETS = {
     "apt-daily-upgrade.timer",
     "apt-daily.service",
     "apt-daily-upgrade.service",
+    "ldconfig.service",
+    "systemd-journal-catalog-update.service",
 }
 
 
 def test_hook_masks_console_and_apt_units() -> None:
-    """Hook must mask login, reboot, and background APT units."""
+    """Hook must mask login, reboot, background APT, and per-boot rebuild units."""
     exec_lines = _hook_exec_lines()
     mask_cmds = [l for l in exec_lines if l.startswith("systemctl mask")]
     assert mask_cmds, "No systemctl mask command found in hook"

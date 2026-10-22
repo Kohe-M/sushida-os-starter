@@ -250,6 +250,33 @@ production Git history.
 - Manual checks: `make hooks` はユーザーの opt-in（未有効化のまま）
 - Evidence: `f692e78`、ISO `adc968c9…`（R13/R14） / 2026-10-22
 
+### UX-01 / 起動画面の商用品質化と USB 2.0 起動の高速化
+
+- Status: REVIEW | Severity: Medium（ユーザー依頼 2026-10-22）
+- Scope: bootloader 設定、kernel command line、Plymouth（`bgrt` テーマ +
+  kiosk への handoff）、起動時の不要な再生成 unit の mask、read-ahead
+  service、SquashFS 圧縮方式。route・URL・policy・kiosk 境界は変更しない
+- 対応: GRUB/ISOLINUX はメニュー・テーマ・ビープなしで即起動（編集ロックは
+  維持）。kernel/udev/systemd の画面出力を抑止しカーソル非表示、Plymouth の
+  ファームウェアロゴ + スピナーを kiosk まで表示（launcher の route 確定まで
+  bounded に保持し `--retain-splash` で Cage へ引き継ぎ）。`ldconfig` /
+  journal catalog の毎起動再生成を mask、`sushida-preload` で Chromium 等を
+  早期に page cache へ、SquashFS を zstd -19 に、Plymouth が initrd に
+  持ち込む AMD/Xe GPU ドライバと firmware（約 85 MB）を initramfs hook で除去。
+  CPU microcode（initrd 中 約 15 MB）はユーザー判断で残す（脆弱性対策優先）
+- Acceptance criteria: `docs/acceptance-tests.md` B01〜B04
+- Verification: static `test_boot_experience.py` ほか pinned 値更新、bats
+  `boot-splash.bats` / `qemu-tools.bats` に handoff・preload・initrd trim・
+  serial marker の挙動テスト、checker の handoff/marker path adapter + drift test
+- QEMU 証拠経路の変更（ユーザー承認 2026-10-22）: production 起動は console に
+  systemd status を出さないため、boot/powerdown テストは image の
+  シリアル専用マーカー（`sushida-serial-marker`、`/dev/ttyS0` のみ、固定 token）
+  で kiosk 起動・SUSHIDA-CFG mount/unmount を判定する
+- Manual checks: 実機での B01〜B04（未実施）。QEMU の USB 2.0 相当
+  （30 MB/s 制限）計測は補助証拠
+- Out of scope: microcode の除去、kiosk 画面内のローディング表示、
+  route モデルの変更
+
 ## 4. 運用ルール（旧 Working rules の後継）
 
 - 1 タスク = 1 コード commit（実装・テスト・文書を同梱）。commit 後にしか

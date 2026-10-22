@@ -35,6 +35,14 @@ in Chromium 150, the watcher checks every tab's current entry, so popup
 navigations to disallowed origins are also recovered. Normal Sushi-da gameplay
 never triggers a restart because every active URL is within the allowlist.
 
+The boot path shows no menu: GRUB and ISOLINUX boot their single entry
+immediately, and editing the kernel command line remains impossible
+(password-less `superusers`; `ALLOWOPTIONS 0` / `NOESCAPE 1`). The Plymouth
+boot splash is display-only: it has no shell or command interface, no
+password prompt is ever requested, and it quits before Cage starts. Its Esc
+key toggles a text view of boot messages; that view shows the same
+non-secret status text the serial console carries and offers no input.
+
 Residual risks include Chromium/Cage/kernel vulnerabilities, unverified policy
 runtime semantics, PID-reuse races in network recovery, USB/input
 firmware behavior, and shortcuts not caught by the selected components.

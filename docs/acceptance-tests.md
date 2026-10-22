@@ -95,6 +95,15 @@
 | P07 | physical hardware | Hold the physical power button | Long press is ignored; only the normal short-press action is supported |  |  | Confirm with firmware/ACPI behavior |
 | P08 | QEMU | QEMU monitor `system_powerdown` | Dedicated BIOS/UEFI test exits naturally, serial logs show normal poweroff, and explicit `SUSHIDA-CFG` mount plus unmount evidence is present |  |  | Monitor socket must be below `build/qemu`; result is bound to current Git commit and release checksums |
 
+## Boot presentation
+
+| ID | Class | Operation | Expected result | Actual result | Pass/Fail | Notes |
+|---|---|---|---|---|---|---|
+| B01 | QEMU / physical | Power on and watch the screen until the kiosk page appears | Firmware logo, then Plymouth splash (firmware logo + spinner, or spinner alone), then the kiosk; no boot menu, Debian branding, kernel/systemd text or blinking cursor |  |  | UEFI machines with a BGRT logo keep the vendor logo |
+| B02 | QEMU / physical | Boot with the network cable unplugged | Splash stays up during the network grace period, then the setup/offline page; no text console in between |  |  | Handoff waits for runtime-state.json, bounded at 120 s |
+| B03 | physical hardware | Press Esc, Tab, arrow keys and `e`/`c` during boot | Boot continues unchanged; no menu, editor or shell appears |  |  | Esc may toggle Plymouth's read-only message view |
+| B04 | physical hardware | Measure power-on to kiosk page from the same USB 2.0 stick, previous vs. current ISO | Current ISO is faster; record both times and the media/port |  |  | QEMU throttled-USB measurement is supporting evidence only |
+
 ## Audio
 
 | ID | Class | Operation | Expected result | Actual result | Pass/Fail | Notes |

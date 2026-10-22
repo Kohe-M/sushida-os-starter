@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#
+# Boot read-ahead: pull the files the kiosk session needs first into the page
+# cache while the rest of the system boots.  On slow live media (USB 2.0)
+# Chromium's cold start is bound by squashfs reads; starting them early
+# overlaps that I/O with udev, NetworkManager, DHCP and the launcher's network
+# wait.  Strictly best-effort: missing files are skipped, failures are ignored,
+# and nothing waits for this service.  The file list is fixed; no arguments,
+# no configuration.
+set -uo pipefail
+
+PRELOAD_FILES=(
+    /usr/lib/chromium/chromium
+    /usr/lib/chromium/resources.pak
+    /usr/lib/chromium/icudtl.dat
+    /usr/lib/chromium/v8_context_snapshot.bin
+    /usr/lib/chromium/chrome_100_percent.pak
+    /usr/lib/chromium/chrome_200_percent.pak
+    /usr/lib/chromium/locales/en-US.pak
+    /usr/bin/cage
+    /usr/lib/x86_64-linux-gnu/libwlroots-0.18.so
+    /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+)
+
+loaded=0
+for file in "${PRELOAD_FILES[@]}"; do
+    [ -f "$file" ] || continue
+    cat -- "$file" > /dev/null 2>&1 && loaded=$((loaded + 1))
+done
+echo "preload: stage=done files=$loaded/${#PRELOAD_FILES[@]}"
