@@ -20,7 +20,14 @@ lsblk -o NAME,TYPE,TRAN,RM,HOTPLUG,SIZE,MODEL,SERIAL,MOUNTPOINTS
 The supplied path must be a `/dev/disk/by-id/usb-*` symlink. The resolved
 device must independently report `TYPE=disk`, `TRAN=usb`, `RM=1`, `HOTPLUG=1`,
 `ID_BUS=usb` through udev, a non-empty serial number, and a capacity between the
-ISO size and 128 GiB. The target and all descendants must be unmounted, absent
+ISO size and 128 GiB. The only alternative to `HOTPLUG=1` is a USB/IP
+attachment (usbipd-win into WSL, or `usbip` on Linux): the vhci_hcd virtual host
+controller reports its ports as `removable=unknown`, so `lsblk` shows
+`HOTPLUG=0` for a stick plugged in moments ago. The writer accepts that only
+when the disk's sysfs device path runs through a `vhci_hcd.N` platform device
+bound to the `vhci_hcd` driver, and shows
+`Hot-pluggable : 1 (attached via USB/IP vhci_hcd)`; every other property above
+is still required. The target and all descendants must be unmounted, absent
 from active swap, and unused by device-mapper, LVM, RAID, or other holders.
 The detected current system disk is always rejected by the system-disk
 protection. Failure to determine any required property is a refusal, not a
@@ -47,9 +54,20 @@ run `dd`, call `sync`, and hash the written prefix against the ISO SHA-256.
 confirmation or any safety check. There is deliberately no `--force` escape
 hatch. Some legitimate USB media may be rejected because USB bridges expose
 `RM=0`, omit a serial, or otherwise lack the required attributes; use another
-USB flash drive rather than weakening the checks. If WSL does not expose a
-stable `/dev/disk/by-id/usb-*` entry, use a native Debian/Linux deployment
-workstation and do not fall back to `/dev/sdX`.
+USB flash drive rather than weakening the checks.
+
+From WSL, attach the stick with usbipd-win first (Windows PowerShell; install
+with `winget install --interactive --exact dorssel.usbipd-win`, run `bind` as
+administrator once), then use the `/dev/disk/by-id/usb-*` entry it creates:
+
+```powershell
+usbipd list
+usbipd bind --busid <BUSID>
+usbipd attach --wsl --busid <BUSID>
+```
+
+If WSL still does not expose a stable `/dev/disk/by-id/usb-*` entry, use a
+native Debian/Linux deployment workstation and do not fall back to `/dev/sdX`.
 
 No automated repository test writes a block device. The flash BATS suite uses
 only small regular files inside an isolated test directory. Codex must never

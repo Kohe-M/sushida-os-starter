@@ -93,6 +93,97 @@ setup() {
     [[ "$output" == *"not marked hot-pluggable"* ]]
 }
 
+# Fake sysfs for a USB/IP-attached disk: vhci_hcd.0 bound to the vhci_hcd
+# driver, with the SCSI disk below it, as usbipd-win exposes it in WSL.
+make_vhci_sysfs() {
+    local driver_name="${1:-vhci_hcd}" node="${2:-vhci_hcd.0}"
+    local sys="$TEST_ROOT/sys"
+    mkdir -p "$sys/bus/platform/drivers/$driver_name" \
+        "$sys/devices/platform/$node/usb1/1-1/1-1:1.0/host1/target1:0:0/1:0:0:0"
+    ln -sfn "$sys/bus/platform/drivers/$driver_name" "$sys/devices/platform/$node/driver"
+    VHCI_DEVICE="$sys/devices/platform/$node/usb1/1-1/1-1:1.0/host1/target1:0:0/1:0:0:0"
+    export VHCI_DEVICE
+}
+
+@test "USB/IP-attached target without the hotplug flag writes and verifies" {
+    make_vhci_sysfs
+    run env SUSHIDA_OS_FLASH_TEST_HOTPLUG=0 SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE="$VHCI_DEVICE" \
+        bash -c 'printf "ERASE USB TESTSERIAL001\n" | "$FLASH" --yes "$TARGET"'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Hot-pluggable : 1 (attached via USB/IP vhci_hcd)"* ]]
+    [[ "$output" == *"SHA-256 verification passed"* ]]
+    [ "$(head -c 16 "$TARGET_FILE")" = "safe test image" ]
+}
+
+@test "USB/IP basis does not bypass the removable check" {
+    make_vhci_sysfs
+    run env SUSHIDA_OS_FLASH_TEST_HOTPLUG=0 SUSHIDA_OS_FLASH_TEST_REMOVABLE=0 \
+        SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE="$VHCI_DEVICE" "$FLASH" --yes "$TARGET"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not marked removable"* ]]
+    [ "$(cat "$TARGET_FILE")" = "old target data" ]
+}
+
+@test "USB/IP basis does not bypass the serial, transport or system-disk checks" {
+    make_vhci_sysfs
+    run env SUSHIDA_OS_FLASH_TEST_HOTPLUG=0 SUSHIDA_OS_FLASH_TEST_SERIAL= \
+        SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE="$VHCI_DEVICE" "$FLASH" --yes "$TARGET"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"serial number is unavailable"* ]]
+    run env SUSHIDA_OS_FLASH_TEST_HOTPLUG=0 SUSHIDA_OS_FLASH_TEST_TRANSPORT=sata \
+        SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE="$VHCI_DEVICE" "$FLASH" --yes "$TARGET"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not USB: sata"* ]]
+    run env SUSHIDA_OS_FLASH_TEST_HOTPLUG=0 SUSHIDA_OS_FLASH_TEST_SYSTEM_DISK="$TARGET_FILE" \
+        SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE="$VHCI_DEVICE" "$FLASH" --yes "$TARGET"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"current system disk"* ]]
+    [ "$(cat "$TARGET_FILE")" = "old target data" ]
+}
+
+@test "vhci_hcd node bound to another driver is not a USB/IP basis" {
+    make_vhci_sysfs not_vhci
+    run env SUSHIDA_OS_FLASH_TEST_HOTPLUG=0 SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE="$VHCI_DEVICE" \
+        "$FLASH" --yes "$TARGET"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not marked hot-pluggable"* ]]
+}
+
+@test "vhci_hcd node without a bound driver is not a USB/IP basis" {
+    make_vhci_sysfs
+    rm "$TEST_ROOT/sys/devices/platform/vhci_hcd.0/driver"
+    run env SUSHIDA_OS_FLASH_TEST_HOTPLUG=0 SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE="$VHCI_DEVICE" \
+        "$FLASH" --yes "$TARGET"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not marked hot-pluggable"* ]]
+}
+
+@test "look-alike vhci node names are not a USB/IP basis" {
+    make_vhci_sysfs vhci_hcd vhci_hcd.0-evil
+    run env SUSHIDA_OS_FLASH_TEST_HOTPLUG=0 SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE="$VHCI_DEVICE" \
+        "$FLASH" --yes "$TARGET"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not marked hot-pluggable"* ]]
+}
+
+@test "a vhci path outside the sysfs device tree is not a USB/IP basis" {
+    make_vhci_sysfs
+    run env SUSHIDA_OS_FLASH_TEST_HOTPLUG=0 \
+        SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE="/elsewhere/devices/platform/vhci_hcd.0/usb1/1-1" \
+        "$FLASH" --yes "$TARGET"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not marked hot-pluggable"* ]]
+}
+
+@test "a native non-hotplug USB path is still rejected" {
+    mkdir -p "$TEST_ROOT/sys/devices/pci0000:00/0000:00:14.0/usb1/1-1"
+    run env SUSHIDA_OS_FLASH_TEST_HOTPLUG=0 \
+        SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE="$TEST_ROOT/sys/devices/pci0000:00/0000:00:14.0/usb1/1-1" \
+        "$FLASH" --yes "$TARGET"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"not marked hot-pluggable"* ]]
+}
+
 @test "non-USB udev bus is rejected even with --yes" {
     run env SUSHIDA_OS_FLASH_TEST_ID_BUS=ata "$FLASH" --yes "$TARGET"
     [ "$status" -ne 0 ]

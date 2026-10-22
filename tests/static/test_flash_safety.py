@@ -43,6 +43,12 @@ def test_requires_multiple_independent_usb_properties() -> None:
     assert '"$id_bus" = "usb"' in text
     assert '"$removable" = "1"' in text
     assert '"$hotplug" = "1"' in text
+    # The only alternative hot-plug basis: a USB/IP (vhci_hcd) attachment,
+    # proven by the sysfs device path and the bound vhci_hcd driver.
+    assert 'usbip_attached "$device_path" "$sysfs_root"' in text
+    assert '^vhci_hcd\\.[0-9]+$' in text
+    assert '"$(basename "$driver")" = "vhci_hcd"' in text
+    assert '/sys/class/block/$(basename "$resolved")/device' in text
     assert "USB serial number is unavailable" in text
     assert "128 GiB safety limit" in text
     assert "target is smaller than the ISO" in text

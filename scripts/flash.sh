@@ -113,9 +113,29 @@ else
     SYSTEM_DISK="$(readlink -f "$SYSTEM_DISK")"
 fi
 
+# USB/IP (usbipd-win into WSL, or usbip on Linux) attaches a device at run
+# time through the vhci_hcd virtual host controller.  Its ports report
+# removable=unknown, so lsblk shows HOTPLUG=0 even for a USB flash drive that
+# was plugged in moments ago.  Such a device is hot-plugged by construction;
+# accept that as the hot-plug basis only when its sysfs device path runs
+# through a vhci_hcd.N platform device that is bound to the vhci_hcd driver.
+# Every other target property is still checked independently.
+usbip_attached() {
+    local device_path="$1" platform="$2/devices/platform" node driver
+    [ -n "$device_path" ] || return 1
+    case "$device_path" in "$platform"/vhci_hcd.*/*) ;; *) return 1 ;; esac
+    node="${device_path#"$platform"/}"
+    node="${node%%/*}"
+    [[ "$node" =~ ^vhci_hcd\.[0-9]+$ ]] || return 1
+    [ -L "$platform/$node/driver" ] || return 1
+    driver="$(readlink -f -- "$platform/$node/driver")" || return 1
+    [ "$(basename "$driver")" = "vhci_hcd" ]
+}
+
 validate_usb_target() {
     local supplied="$1"
     local expected_by_id_root resolved type transport removable hotplug id_bus
+    local hotplug_basis sysfs_root device_path
     local size_bytes serial model base node descendants swap_devices device_number
     local test_mounted test_swap test_holders
 
@@ -154,6 +174,8 @@ validate_usb_target() {
         test_mounted="${SUSHIDA_OS_FLASH_TEST_MOUNTED-0}"
         test_swap="${SUSHIDA_OS_FLASH_TEST_SWAP-0}"
         test_holders="${SUSHIDA_OS_FLASH_TEST_HOLDERS-0}"
+        sysfs_root="$TEST_ROOT/sys"
+        device_path="${SUSHIDA_OS_FLASH_TEST_SYSFS_DEVICE-}"
 
         if [ "$VALIDATION_COUNT" -gt 1 ]; then
             if [ -v SUSHIDA_OS_FLASH_TEST_SECOND_SERIAL ]; then
@@ -174,6 +196,9 @@ validate_usb_target() {
         model="$(lsblk -dnro MODEL "$resolved" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
         id_bus="$(udevadm info --query=property --name="$resolved" | sed -n 's/^ID_BUS=//p')"
         device_number="$(stat -Lc '%t:%T' "$resolved")"
+        sysfs_root=/sys
+        device_path="$(readlink -f -- "/sys/class/block/$(basename "$resolved")/device")" || \
+            device_path=""
         test_mounted=0
         test_swap=0
         test_holders=0
@@ -183,7 +208,13 @@ validate_usb_target() {
     [ "$transport" = "usb" ] || fail "target transport is not USB: ${transport:-unknown}"
     [ "$id_bus" = "usb" ] || fail "udev does not identify target as USB"
     [ "$removable" = "1" ] || fail "target is not marked removable"
-    [ "$hotplug" = "1" ] || fail "target is not marked hot-pluggable"
+    hotplug_basis=""
+    if [ "$hotplug" = "1" ]; then
+        hotplug_basis="1"
+    elif usbip_attached "$device_path" "$sysfs_root"; then
+        hotplug_basis="1 (attached via USB/IP vhci_hcd)"
+    fi
+    [ -n "$hotplug_basis" ] || fail "target is not marked hot-pluggable"
     [ -n "$serial" ] || fail "USB serial number is unavailable"
 
     case "$size_bytes" in ''|*[!0-9]*) fail "cannot determine target capacity" ;; esac
@@ -230,7 +261,7 @@ validate_usb_target() {
     TARGET="$resolved"
     TRANSPORT="$transport"
     REMOVABLE="$removable"
-    HOTPLUG="$hotplug"
+    HOTPLUG="$hotplug_basis"
     CAPACITY_BYTES="$size_bytes"
     SERIAL="$serial"
     MODEL="$model"

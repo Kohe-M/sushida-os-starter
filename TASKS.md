@@ -280,6 +280,21 @@ production Git history.
   （R15〜R18）/ 2026-10-22。release-check PASS（boot 6/0・smoke 16/0）、
   powerdown BIOS/UEFI PASS、USB 2.0 相当 QEMU で UEFI 約 28 s（旧 約 37–40 s）
 
+### DX-02 / flash.sh の USB/IP（usbipd-win → WSL）対応
+
+- Status: DONE | Severity: Low（ユーザー依頼 2026-10-22）
+- 背景: usbipd-win で WSL に渡した USB は vhci_hcd 配下になり、ポートが
+  `removable=unknown` のため `lsblk` の HOTPLUG が 0 となり、`flash.sh` が
+  「not marked hot-pluggable」で拒否していた（実機: Silicon-Power 16G で確認）
+- 対応: HOTPLUG=1 の代替根拠を 1 つだけ追加。sysfs の device path が
+  `vhci_hcd.N` platform device を通り、その driver が `vhci_hcd` の場合のみ
+  hot-plug とみなす。TYPE/TRAN/ID_BUS/RM/serial/容量/system disk/mount/swap/
+  holder、シリアル番号の入力確認、確認後の再検証は従来どおり
+- Verification: bats `flash-safety.bats` に 8 件（受理 1、vhci 以外の driver・
+  driver 未 bind・類似名・sysfs 外 path・native 非 hotplug の拒否、他チェックの
+  非迂回）、static `test_flash_safety.py` に判定箇所の pin を追加
+- Manual checks: 実デバイスへの書き込みはユーザーが実行（agent は実行しない）
+
 ## 4. 運用ルール（旧 Working rules の後継）
 
 - 1 タスク = 1 コード commit（実装・テスト・文書を同梱）。commit 後にしか
