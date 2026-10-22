@@ -276,6 +276,9 @@ production Git history.
   （30 MB/s 制限）計測は補助証拠
 - Out of scope: microcode の除去、kiosk 画面内のローディング表示、
   route モデルの変更
+- Evidence（実機未確認のため REVIEW のまま）: `c54d33b`、ISO `d3265ce1…`
+  （R15〜R18）/ 2026-10-22。release-check PASS（boot 6/0・smoke 16/0）、
+  powerdown BIOS/UEFI PASS、USB 2.0 相当 QEMU で UEFI 約 28 s（旧 約 37–40 s）
 
 ## 4. 運用ルール（旧 Working rules の後継）
 
