@@ -70,8 +70,13 @@ docs cover UEFI passwords and disabling external/removable boot.
 
 ## 3. Prohibited operations
 
-- `git push / merge / rebase / reset / stash / clean / restore`, history
-  rewriting. Pushing is the user's action.
+- `git merge / rebase / reset / stash / clean / restore`, history
+  rewriting.
+- Pushing other than a fast-forward of the current branch to `origin`.
+  Agents may push (user authorization 2026-10-22; supersedes "push はユーザー"
+  in `docs/refactoring-work-order.md` §1.2) only after the local gates pass;
+  never `--force` / `--force-with-lease`, never delete remote branches or
+  tags. A rejected (non-fast-forward) push stops the task and is reported.
 - Running `dd`/`mkfs`/partitioning against real devices, flashing real media,
   modifying host GRUB/UEFI/Secure Boot/disks/network/`/etc`/accounts,
   rebooting the host. The guarded `scripts/flash.sh` is never executed by an
