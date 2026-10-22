@@ -235,6 +235,21 @@ production Git history.
 - Manual checks: 実機での 180% 表示・Ctrl+± 動作は未確認（USB 再書き込みが必要）
 - Evidence: `1ef9670`、ISO `e5187348…`（R9/R10） / 2026-07-22
 
+### DX-01 / 開発環境・フローの効率化と堅牢化
+
+- Status: DONE | Severity: Medium（ユーザー依頼 2026-10-22）
+- 対応: container wrapper の堅牢化（`--pull=never` + builder 由来 hash label の
+  照合で stale/未ビルド image を拒否、rootless podman の keep-id）、
+  `container-qemu-*`（KVM passthrough）、`make container-release-check`
+  （iso→verify→QEMU boot/smoke を一括、`build/release-check/summary.txt` に
+  registry 用の値を出力）、host 用 `make venv` / `make check`（pinned
+  `requirements-dev.txt`）、opt-in `make hooks`（約 0.05 s の pre-commit）、
+  `local/dev.mk`、doctor 追加（venv・git identity・KVM・stale builder）
+- Verification: bats 17 件 + static 7 件追加、builder 内 `make test`（wrapper
+  経由）pytest 878・bats 246/246、`make container-release-check` result=PASS
+- Manual checks: `make hooks` はユーザーの opt-in（未有効化のまま）
+- Evidence: `f692e78`、ISO `adc968c9…`（R13/R14） / 2026-10-22
+
 ## 4. 運用ルール（旧 Working rules の後継）
 
 - 1 タスク = 1 commit（`docs/refactoring-work-order.md` §1.2 の git 運用に従う）
